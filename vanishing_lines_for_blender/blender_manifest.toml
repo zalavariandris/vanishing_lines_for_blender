@@ -3,10 +3,10 @@ schema_version = "1.0.0"
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
 id = "vanishinglines"
-version = "0.7.0"
+version = "0.7.1"
 name = "VanishingLines"
-tagline = "Align camera to vanishing lines."
-maintainer = "András Zalavári"
+tagline = "Align camera to vanishing lines in the 3D View"
+maintainer = "BabLab (András Zalavári)"
 type = "add-on" # Supported types: "add-on", "theme"
 
 # Optional link to documentation, support, source files, etc

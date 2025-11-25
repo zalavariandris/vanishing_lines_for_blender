@@ -3,31 +3,36 @@ import bpy
 
 
 class Point(bpy.types.PropertyGroup):
-    x: bpy.props.FloatProperty(name="x", default=0.0)
+    name="Point"
+    x: bpy.props.FloatProperty(name="x", default=0.0)# is_animatable=False, subtype='PIXEL')
     y: bpy.props.FloatProperty(name="y", default=0.0)
 
 
 class Line(bpy.types.PropertyGroup):
+    name="Line"
     start: bpy.props.PointerProperty(name="start", type=Point)
     end: bpy.props.PointerProperty(name="end", type=Point)
 
 
 class VLSettings(bpy.types.PropertyGroup):
-    points_index: bpy.props.IntProperty(name="Active Point Index", default=0)
+    name="VL Settings"
+
+    initialized: bpy.props.BoolProperty(name="Initialized", default=False, options={'HIDDEN'})
+
     origin: bpy.props.PointerProperty(name="origin", type=Point)
+
     first_vanishing_lines: bpy.props.CollectionProperty(
-        name="first_vanishing_lines",
+        name="First Vanishing Lines",
         type=Line
     )
     second_vanishing_lines: bpy.props.CollectionProperty(
-        name="second_vanishing_lines", 
+        name="Second Vanishing Lines", 
         type=Line
     )
     
-    points: bpy.props.CollectionProperty(name="points", type=Point)
     mode: bpy.props.EnumProperty(
-        name="Mode",
-        description="Vanishing line mode",
+        name="Perspective Mode",
+        description="Perspective Mode",
         items=[
             ('ONE_POINT', "1-Point", "Use 1-point perspective"),
             ('TWO_POINT', "2-Point", "Use 2-point perspective"),
@@ -47,7 +52,6 @@ class VLSettings(bpy.types.PropertyGroup):
         max=100.0
     )
 
-
 ######################
 # REGISTER FUNCTIONS #
 ######################
@@ -55,12 +59,11 @@ def register():
     bpy.utils.register_class(Point)
     bpy.utils.register_class(Line)
     bpy.utils.register_class(VLSettings)
-    bpy.types.Scene.vl_settings = bpy.props.PointerProperty(type=VLSettings)
+    bpy.types.Camera.vl_settings = bpy.props.PointerProperty(type=VLSettings, name="VL Settings")
     
 def unregister():
-    if hasattr(bpy.types.Scene, 'vl_settings'):
-        del bpy.types.Scene.vl_settings
-
+    if hasattr(bpy.types.Camera, 'vl_settings'):
+        del bpy.types.Camera.vl_settings
     bpy.utils.unregister_class(Point)
     bpy.utils.unregister_class(Line)
     bpy.utils.unregister_class(VLSettings)

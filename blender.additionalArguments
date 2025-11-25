@@ -1,0 +1,5 @@
+"blender.additionalArguments": [
+    "--factory-startup", // any arguments you want
+    // "--open-last", // Open the most recently opened blend file, or:
+    "./path/to/my-file.blend" // prefered to be last argument, watch out for trailing spaces (which are invisible in VS code UI)
+],

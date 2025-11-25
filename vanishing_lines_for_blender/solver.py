@@ -213,9 +213,6 @@ def second_vanishing_point_from_focal_length(
     if glm.distance(Fu, P) < 1e-7:
         return None
 
-    if glm.distance(Fu, P) < 1e-7:
-        return None
-
     Fu_P = Fu - P
 
     k = -(glm.dot(Fu_P, Fu_P) + f * f) / glm.dot(Fu_P, horizonDir)
@@ -225,22 +222,31 @@ def second_vanishing_point_from_focal_length(
 
 def compute_orientation_from_single_vanishing_point(
         Fu:glm.vec2,
-        Fv:glm.vec2,
+        P:glm.vec2,
         f:float,
+        horizon_direction:glm.vec3=glm.vec3(1,0,0)
     ):
-    Fu_Fv = Fu-Fv
-    forward = glm.normalize( glm.vec3(Fu_Fv.x, Fu_Fv.y,  -f))
-    right = glm.vec3(1,0,0)
-    up =   glm.normalize( glm.cross(right, forward))
-    right =      glm.normalize( glm.cross(up, forward))
-    view_orientation_matrix = glm.mat3(forward, right, up)
+    """
+    Computes the camera orientation matrix from a single vanishing point.
+    """
 
+    # Direction from principal point to vanishing point
+    Fu_P = Fu-P
+    forward = glm.normalize( glm.vec3(Fu_P.x, Fu_P.y,  -f))
+
+    # 
+    up =   glm.normalize( glm.cross(horizon_direction, forward))
+    right =      glm.normalize( glm.cross(up, forward))
+
+    #
+    view_orientation_matrix = glm.mat3(forward, right, up)
 
     # validate if matrix is a purely rotational matrix
     determinant = glm.determinant(view_orientation_matrix)
     if math.fabs(determinant - 1) > 1e-6:
         view_orientation_matrix = _gram_schmidt_orthogonalization(view_orientation_matrix)
         logger.warning(f'Warning: Invalid vanishing point configuration. Rotation determinant {determinant}\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
+    
     return view_orientation_matrix
 
 def compute_orientation_from_two_vanishing_points(
@@ -488,37 +494,6 @@ def _compute_focal_length_from_vanishing_points_simple(
     
     return math.sqrt(focal_length_squared)
 
-def _compute_focal_length_from_vanishing_points_OLD(
-        Fu: glm.vec2, # first vanishing point
-        Fv: glm.vec2, # second vanishing point
-        P: glm.vec2   # principal point
-    )-> float:
-    """Computes the relative focal length from two vanishing points and the principal point."""
-    # compute Puv, the orthogonal projection of P onto FuFv
-    Fu_Fv = glm.vec3(Fu-Fv, 0.0)
-    dirFu_Fv = glm.normalize(Fu_Fv)
-
-    P_Fv = glm.vec3(P - Fv, 0.0)
-    proj = glm.dot(dirFu_Fv, P_Fv)
-    Puv = glm.vec2(
-      proj * dirFu_Fv.x + Fv.x,
-      proj * dirFu_Fv.y + Fv.y
-    )
-
-    # compute focal length using the _focal length formula_: f² = |Fv_Puv| * |Fu_Puv| - |P_Puv|²
-    P_Puv  = glm.vec3(P  - Puv, 0.0) #TODO: check if z=0 is necessary
-    Fv_Puv = glm.vec3(Fv - Puv, 0.0)
-    Fu_Puv = glm.vec3(Fu - Puv, 0.0)
-
-    fSq = glm.length(Fv_Puv) * glm.length(Fu_Puv) - glm.length2(P_Puv)
-
-    if fSq <= 0:
-        raise ValueError(f"Invalid vanishing point configuration: cannot compute focal length. "
-                        f"Vanishing points may be too close together or collinear with principal point. "
-                        f"fSq = {fSq}, distances: FvPuv={glm.length(Fv_Puv):.6f}, FuPuv={glm.length(Fu_Puv):.6f}, PPuv={glm.length(P_Puv):.6f}")
-
-    return math.sqrt(fSq)
-
 def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.mat3:
     """
     Creates an axis assignment matrix that maps vanishing point directions to user-specified world axes.
@@ -546,7 +521,7 @@ def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.ma
     up = glm.cross(forward, right)
     
     # Build the matrix with each row representing the target world axis
-    axis_aqssignment_matrix = glm.mat3( # TODO: this is the inverse of the mat3_from_directions
+    axis_assignment_matrix = glm.mat3( # TODO: this is the inverse of the mat3_from_directions
         forward.x,
         forward.y,
         forward.z,
@@ -559,8 +534,8 @@ def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.ma
     )
     
     # Validate that we have a proper orthogonal matrix
-    assert math.fabs(1 - glm.determinant(axis_aqssignment_matrix)) < 1e-7, "Invalid axis assignment: axes must be orthogonal"
-    return axis_aqssignment_matrix
+    assert math.fabs(1 - glm.determinant(axis_assignment_matrix)) < 1e-7, "Invalid axis assignment: axes must be orthogonal"
+    return axis_assignment_matrix
 
 ###########################
 # Solver helper functions #
@@ -592,7 +567,7 @@ def _axis_vector(axis: Axis)->glm.vec3:
       case Axis.PositiveZ:
         return glm.vec3(0, 0, 1)
 
-def _axis_positive_vector(axis):
+def _axis_positive_vector(axis)->glm.vec3:
     match axis:
         case Axis.PositiveX | Axis.NegativeX:
             return glm.vec3(1, 0, 0)

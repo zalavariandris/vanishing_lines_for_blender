@@ -1,6 +1,6 @@
 # standard library
 import math
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Literal
 
 # Blender
 import bpy
@@ -15,12 +15,30 @@ import glm
 # local
 from . import solver
 
+
 ####################
 # HELPER FUNCTIONS #
 ####################
-def view3d_zoom_to_fac(camzoom: float) -> float:
-            """Blender internal zoom conversion"""
-            return ((math.sqrt(2.0) + camzoom / 50.0) ** 2) / 4.0
+def _get_viewer_camera(context) -> bpy.types.Object|None:
+    for area in context.window.screen.areas:
+        if area.type == 'VIEW_3D':
+            for space in area.spaces:
+                if space.type == 'VIEW_3D':
+                    if space.region_3d.view_perspective == 'CAMERA': # only return if viewing through camera
+                        return space.camera # get the camera associated with the viewport
+    return None
+
+def _set_viewer_camera(context, camera_object: bpy.types.Object):
+    for area in context.window.screen.areas:
+        if area.type == 'VIEW_3D':
+            for space in area.spaces:
+                if space.type == 'VIEW_3D':
+                    space.camera = camera_object  # Set the viewport camera
+                    space.region_3d.view_perspective = 'CAMERA'  # Switch to camera view
+
+def get_view3d_zoom_to_fac(camzoom: float) -> float:
+    """Blender internal zoom conversion"""
+    return ((math.sqrt(2.0) + camzoom / 50.0) ** 2) / 4.0
 
 def map_from_image_to_region_space(coord, context):
     """
@@ -42,7 +60,7 @@ def map_from_image_to_region_space(coord, context):
     y = (y / resolution_y - 0.5) * 2.0
     
     # Apply zoom
-    zoom_fac = view3d_zoom_to_fac(view_camera_zoom)
+    zoom_fac = get_view3d_zoom_to_fac(view_camera_zoom)
     x *= zoom_fac
     y *= zoom_fac
     
@@ -87,7 +105,7 @@ def map_from_region_to_image_space(coord, context):
     y = (y / region_height - 0.5) * 2.0
     
     # Unapply camera pan
-    zoom_fac = view3d_zoom_to_fac(view_camera_zoom)
+    zoom_fac = get_view3d_zoom_to_fac(view_camera_zoom)
     offset_x, offset_y = view_camera_offset
     x += offset_x * 4.0 * zoom_fac
     y += offset_y * 4.0 * zoom_fac
@@ -111,24 +129,6 @@ def map_from_region_to_image_space(coord, context):
     y = (y * 0.5 + 0.5) * resolution_y
     
     return x, y
-
-# camera helpers
-def _get_viewer_camera(context) -> bpy.types.Object|None:
-    for area in context.window.screen.areas:
-        if area.type == 'VIEW_3D':
-            for space in area.spaces:
-                if space.type == 'VIEW_3D':
-                    if space.region_3d.view_perspective == 'CAMERA': # only return if viewing through camera
-                        return space.camera # get the camera associated with the viewport
-    return None
-
-def _set_viewer_camera(context, camera_object: bpy.types.Object):
-    for area in context.window.screen.areas:
-        if area.type == 'VIEW_3D':
-            for space in area.spaces:
-                if space.type == 'VIEW_3D':
-                    space.camera = camera_object  # Set the viewport camera
-                    space.region_3d.view_perspective = 'CAMERA'  # Switch to camera view
 
 def _hit_test_point(pos:glm.vec2, mouse_x:float, mouse_y:float, padding:float=35.0)->bool:
     return (mouse_x >= pos.x - padding and
@@ -193,23 +193,26 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             self.report({'ERROR'}, "No active window manager found")
             return {'CANCELLED'}
         
-        self._props = scene.vl_settings
-
-        # Default Control Points
-        self.set_origin(glm.vec2(700, 450))
-        self.set_first_vanishing_lines([
-            (glm.vec2(300, 350),  glm.vec2(600, 500)),
-            (glm.vec2(1115, 130), glm.vec2(830, 400))
-        ])
-        self.set_second_vanishing_lines([
-            (glm.vec2(450, 650), glm.vec2(1020, 700)),
-            (glm.vec2(450, 100), glm.vec2(1020, 100))
-        ])        
-        
         # activate the camera view
         _set_viewer_camera(context, scene.camera)
         self._active_camera = _get_viewer_camera(context)
-
+        if self._active_camera is None:
+            self.report({'ERROR'}, "Scene has no active camera set")
+            return {'CANCELLED'}
+        
+        # Default Control Points
+        if not self._active_camera.data.vl_settings.initialized:
+            self.set_origin(glm.vec2(700, 450))
+            self.set_first_vanishing_lines([
+                (glm.vec2(300, 350),  glm.vec2(600, 500)),
+                (glm.vec2(1115, 130), glm.vec2(830, 400))
+            ])
+            self.set_second_vanishing_lines([
+                (glm.vec2(450, 650), glm.vec2(1020, 700)),
+                (glm.vec2(450, 100), glm.vec2(1020, 100))
+            ])
+            self._active_camera.data.vl_settings.initialized = True
+        
         if not self._depsgraph_update_post_handler:
             self._depsgraph_update_post_handler = bpy.app.handlers.depsgraph_update_post.append(self._on_deps_graph_update)
 
@@ -266,7 +269,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             add_line(self._project(context, line[0]), self._project(context, line[1]), GREEN)
 
         RED = (1,0,0,1)
-        match self._props.mode:
+        print("on view draw, mode:", self._active_camera.data.vl_settings.mode, "quad_mode:", self._active_camera.data.vl_settings.quad_mode)
+        match self._active_camera.data.vl_settings.mode:
             case "ONE_POINT":
                 line = self.get_second_vanishing_lines()[0]
                 for cp in line:
@@ -275,18 +279,12 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
 
             case "TWO_POINT":
-                if self._props.quad_mode:
-                    for line in self.get_second_vanishing_lines():
+                for line in self.get_second_vanishing_lines():
+                    if not self._active_camera.data.vl_settings.quad_mode:
                         for cp in line:
                             P = self._project(context, (cp.x, cp.y))
                             add_point( P, RED )
-                        add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
-                else:        
-                    for line in self.get_second_vanishing_lines():
-                        for cp in line:
-                            P = self._project(context, (cp.x, cp.y))
-                            add_point( P, RED )
-                        add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
+                    add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
 
         # override color for hovered/active control points
         if self._hovered_idx is not None:
@@ -316,13 +314,13 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             ...
 
         # draw text
-        for name, pos, color in zip(["Origin", "y", "y", "y", "y", "x", "x", "x", "x"], point_attributes['pos'], point_attributes['color']):
-            x, y = pos
-            font_id = 0
-            blf.position(font_id, x+3 , y+6, 0)
-            blf.size(font_id, 12)
-            blf.color(font_id, *color)
-            blf.draw(font_id, f"{name}")
+        # for name, pos, color in zip(["Origin", "y", "y", "y", "y", "x", "x", "x", "x"], point_attributes['pos'], point_attributes['color']):
+        #     x, y = pos
+        #     font_id = 0
+        #     blf.position(font_id, x+3 , y+6, 0)
+        #     blf.size(font_id, 12)
+        #     blf.color(font_id, *color)
+        #     blf.draw(font_id, f"{name}")
 
         # draw error message
         if self._solve_error:
@@ -338,22 +336,22 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         
     def _get_control_point_refs(self):
         """Returns references to the actual point objects (not copies)."""
-        yield self._props.origin
+        yield self._active_camera.data.vl_settings.origin
 
-        match self._props.mode:
+        match self._active_camera.data.vl_settings.mode:
             case "ONE_POINT":
-                for line in self._props.first_vanishing_lines:
+                for line in self._active_camera.data.vl_settings.first_vanishing_lines:
                     yield line.start
                     yield line.end
-                yield self._props.second_vanishing_lines[0].start
-                yield self._props.second_vanishing_lines[0].end
+                yield self._active_camera.data.vl_settings.second_vanishing_lines[0].start
+                yield self._active_camera.data.vl_settings.second_vanishing_lines[0].end
 
             case "TWO_POINT":
-                for line in self._props.first_vanishing_lines:
+                for line in self._active_camera.data.vl_settings.first_vanishing_lines:
                     yield line.start
                     yield line.end
-                if not self._props.quad_mode:
-                    for line in self._props.second_vanishing_lines:
+                if not self._active_camera.data.vl_settings.quad_mode:
+                    for line in self._active_camera.data.vl_settings.second_vanishing_lines:
                         yield line.start
                         yield line.end
     
@@ -366,16 +364,16 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
     def get_origin(self):
         return glm.vec2(
-            self._props.origin.x, 
-            self._props.origin.y
+            self._active_camera.data.vl_settings.origin.x, 
+            self._active_camera.data.vl_settings.origin.y
         )
     
     def set_origin(self, origin:glm.vec2):
-        self._props.origin.x = origin.x
-        self._props.origin.y = origin.y
+        self._active_camera.data.vl_settings.origin.x = origin.x
+        self._active_camera.data.vl_settings.origin.y = origin.y
     
     def get_first_vanishing_lines(self)->List[Tuple[glm.vec2, glm.vec2]]:
-        vl1 = self._props.first_vanishing_lines
+        vl1 = self._active_camera.data.vl_settings.first_vanishing_lines
         return [
             (
                 glm.vec2(vl1[0].start.x, vl1[0].start.y),
@@ -388,7 +386,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         ]
 
     def set_first_vanishing_lines(self, lines:List[Tuple[glm.vec2, glm.vec2]]):
-        vl1 = self._props.first_vanishing_lines
+        vl1 = self._active_camera.data.vl_settings.first_vanishing_lines
         if len(vl1) < len(lines):
             while len(vl1) < len(lines):
                 vl1.add()
@@ -406,20 +404,34 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         vl1[1].end.y =   lines[1][1].y
 
     def get_second_vanishing_lines(self)->List[Tuple[glm.vec2, glm.vec2]]:
-        vl2 = self._props.second_vanishing_lines
-        return [
-            (
-                glm.vec2(vl2[0].start.x, vl2[0].start.y),
-                glm.vec2(vl2[0].end.x, vl2[0].end.y)
-            ),
-            (
-                glm.vec2(vl2[1].start.x, vl2[1].start.y),
-                glm.vec2(vl2[1].end.x, vl2[1].end.y)
-            )
-        ]
+        if self._active_camera.data.vl_settings.mode == 'TWO_POINT' and self._active_camera.data.vl_settings.quad_mode:
+            vl1 = self._active_camera.data.vl_settings.first_vanishing_lines
+            return [
+                (
+                    glm.vec2(vl1[0].start.x, vl1[0].start.y),
+                    glm.vec2(vl1[1].start.x, vl1[1].start.y)
+                    
+                ),
+                (
+                    glm.vec2(vl1[0].end.x, vl1[0].end.y),
+                    glm.vec2(vl1[1].end.x, vl1[1].end.y)
+                )
+            ]
+        else:
+            vl2 = self._active_camera.data.vl_settings.second_vanishing_lines
+            return [
+                (
+                    glm.vec2(vl2[0].start.x, vl2[0].start.y),
+                    glm.vec2(vl2[0].end.x, vl2[0].end.y)
+                ),
+                (
+                    glm.vec2(vl2[1].start.x, vl2[1].start.y),
+                    glm.vec2(vl2[1].end.x, vl2[1].end.y)
+                )
+            ]
     
     def set_second_vanishing_lines(self, lines:List[Tuple[glm.vec2, glm.vec2]]):
-        vl2 = self._props.second_vanishing_lines
+        vl2 = self._active_camera.data.vl_settings.second_vanishing_lines
         if len(vl2) < len(lines):
             while len(vl2) < len(lines):
                 vl2.add()
@@ -454,7 +466,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             self.cleanup(context)
             if area.type == 'VIEW_3D':
                 area.tag_redraw()
-            return {'CANCELLED'}
+            return {'FINISHED'}
         
         if self._active_camera != _get_viewer_camera(context):
             self.cleanup(context)
@@ -599,9 +611,11 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         principal = glm.vec2(resolution_x / 2.0, resolution_y / 2.0) # TODO: assume center principal point
         origin = self.get_origin()
 
+        scene_scale = self._active_camera.data.vl_settings.scene_scale
+
         try:
             self._solve_error = None
-            match self._props.mode:
+            match self._active_camera.data.vl_settings.mode:
                 case "ONE_POINT":
                     first_vanishing_lines = self.get_first_vanishing_lines()
                     second_vanishing_line = self.get_second_vanishing_lines()[0]
@@ -618,7 +632,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                                 O =                     origin,
                                 first_axis =            solver.Axis.PositiveY, # Blenders camera axes
                                 second_axis =           solver.Axis.NegativeX, # - " -
-                                scale =                 10.0
+                                scale =                 scene_scale
                     )
                     
                     transform_list = [[v for v in row] for row in glm.transpose(camera_transform)]
@@ -641,7 +655,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                                 O =                     origin,
                                 first_axis =            solver.Axis.PositiveY, # Blenders camera axes
                                 second_axis =           solver.Axis.NegativeX, # - " -
-                                scale =                 10.0
+                                scale =                 scene_scale
                     )
                     
                     transform_list = [[v for v in row] for row in glm.transpose(camera_transform)]
