@@ -70,6 +70,7 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
             match mode:
                 case 'ONE_POINT':
                     panel.prop(camera.data, "lens", text="Focal Length")
+                    panel.prop(camera.data.vl_settings, "enable_manual_principal", text="Manual Principal Point")
 
                 case 'TWO_POINT':
                     panel.prop(camera.data.vl_settings, "quad_mode", text="Quad Mode")
@@ -97,10 +98,14 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
             # principal
             row = panel.row(align=True)
             row.label(text="Principal")
-            row.prop(camera.data.vl_settings.manual_principal, "x", text="X")
-            row.prop(camera.data.vl_settings.manual_principal, "y", text="Y")
+            row.prop(camera.data.vl_settings.principal, "x", text="X")
+            row.prop(camera.data.vl_settings.principal, "y", text="Y")
 
-            for label, lines in [("Y Axis", camera.data.vl_settings.first_vanishing_lines), ("X Axis", camera.data.vl_settings.second_vanishing_lines)]:
+            for label, lines in [
+                ("Y Axis", camera.data.vl_settings.first_vanishing_lines), 
+                ("X Axis", camera.data.vl_settings.second_vanishing_lines),
+                ("Z Axis", camera.data.vl_settings.second_vanishing_lines),
+            ]:
                 panel.separator()
                 panel.label(text=label)
                 for line in lines:

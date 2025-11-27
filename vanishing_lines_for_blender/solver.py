@@ -110,9 +110,6 @@ class SolverResults:
     def get_euler(self, order: EulerOrder=EulerOrder.ZXY) -> glm.vec3:
         return glm.vec3(extract_euler(self.transform, order))
 
-        # IO
-
-    # IO
     def as_dict(self)->dict:
         position = self.get_position()
         quaternion = self.get_quaternion()
@@ -233,7 +230,7 @@ def solve1vp(
             f, 
             view_matrix, 
             O,
-            P,
+            glm.vec2(P.x, height-P.y), # Pass TL P so compute_camera_position uses the same shift logic
             scale
         )
 
@@ -273,7 +270,9 @@ def solve1vp(
             fovy=fov_from_focal_length(f, height),
             aspect=width/height,
             near_plane=0.1,
-            far_plane=100.0
+            far_plane=100.0,
+            shift_x = -(P.x - width / 2) / (width / 2),
+            shift_y = (P.y - height / 2) / (height / 2)
         )
 
 def solve2vp(
@@ -329,7 +328,7 @@ def solve2vp(
         width, 
         height, 
         f, 
-        glm.mat4(view_orientation_matrix), 
+        view_matrix, 
         O,
         glm.vec2(P.x, height-P.y), # Pass TL P so compute_camera_position uses the same shift logic
         scale

@@ -27,7 +27,7 @@ class VLSettings(bpy.types.PropertyGroup):
         default=False
     )
     
-    manual_principal: bpy.props.PointerProperty(name="manual_principal", type=Point)
+    principal: bpy.props.PointerProperty(name="principal", type=Point)
 
     first_vanishing_lines: bpy.props.CollectionProperty(
         name="First Vanishing Lines",
