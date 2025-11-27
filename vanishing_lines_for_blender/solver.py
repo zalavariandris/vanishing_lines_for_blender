@@ -7,7 +7,8 @@ import logging
 
 # third party library
 import glm
-
+import numpy as np
+from dataclasses import dataclass
 # set up logger
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,147 @@ class EulerOrder(IntEnum):
     ZXY = 4
     ZYX = 5
 
+
+def pretty_matrix(value:np.array, separator:str='\t') -> str:
+    """format a matrix nicely for printing"""
+    text = np.array2string(
+        value,
+        precision=3,
+        suppress_small=True,
+        separator=separator,  # Use double space as separator
+        prefix='',
+        suffix='',
+        formatter={'float_kind': lambda x: f"{'+' if np.sign(x)>=0 else '-'}{abs(x):.3f}"}  # Right-aligned with 8 characters width
+    )
+    
+    text = text.replace('[', ' ').replace(']', '')
+    from textwrap import dedent
+    text = dedent(text).strip()
+    text = text.replace('+', ' ')
+    return text
+
+@dataclass
+class SolverResults:
+    transform: glm.mat4
+    fovy: float
+    aspect: float
+    near_plane: float = 0.1
+    far_plane: float = 1000.0
+    shift_x: float = 0.0
+    shift_y: float = 0.0
+
+    def get_projection(self)->glm.mat4|None:
+        # Camera parameters
+
+        top = self.near_plane * glm.tan(self.fovy / 2)
+        bottom = -top
+        right = top * self.aspect
+        left = -right
+
+        # Apply shifts
+        width = right - left
+        height = top - bottom
+
+        left += self.shift_x * width / 2
+        right += self.shift_x * width / 2
+        bottom += self.shift_y * height / 2
+        top += self.shift_y * height / 2
+
+        # Create the projection matrix with lens shift
+        return glm.frustum(left, right, bottom, top, self.near_plane, self.far_plane)
+    
+    def get_fovx(self)->float:
+        return 2.0 * math.atan(math.tan(self.fovy * 0.5) * self.aspect)
+
+    def get_position(self) -> glm.vec3|None:
+        scale = glm.vec3()
+        quat = glm.quat()  # This will be our quaternion
+        translation = glm.vec3()
+        skew = glm.vec3()
+        perspective = glm.vec4()
+        success = glm.decompose(self.transform, scale, quat, translation, skew, perspective)
+        if not success:
+            logger.error("Failed to decompose transformation matrix")
+            return None
+        return translation
+    
+    def get_quaternion(self) -> glm.quat|None:
+        scale = glm.vec3()
+        quat = glm.quat()  # This will be our quaternion
+        translation = glm.vec3()
+        skew = glm.vec3()
+        perspective = glm.vec4()
+        success = glm.decompose(self.transform, scale, quat, translation, skew, perspective)
+        if not success:
+            logger.error("Failed to decompose transformation matrix")
+            return None
+        return quat
+    
+    def get_euler(self, order: EulerOrder=EulerOrder.ZXY) -> glm.vec3:
+        return glm.vec3(extract_euler(self.transform, order))
+
+        # IO
+
+    # IO
+    def as_dict(self)->dict:
+        position = self.get_position()
+        quaternion = self.get_quaternion()
+        projection = self.get_projection()
+        return {
+            "transform": np.array(self.transform).reshape(4,4).tolist(),
+            "fovy": self.fovy,
+            "position": tuple(position) if position else None,
+            "quaternion": tuple(quaternion) if quaternion else None,
+            "euler_order": EulerOrder.ZXY.name,
+            "euler": tuple(self.get_euler(order=EulerOrder.ZXY)),
+            "projection": np.array(projection).reshape(4,4).tolist() if projection is not None else None,
+            "aspect": self.aspect,
+            "near_plane": self.near_plane,
+            "far_plane": self.far_plane,
+            "shift_x": self.shift_x,
+            "shift_y": self.shift_y
+        }
+
+    def as_blender_script(self, camera_name: str="VLCamera")-> str:
+        """Generate a Blender Python script to recreate the camera setup."""
+        from imgui_bundle import hello_imgui
+        from pathlib import Path
+
+        blender_template_path = hello_imgui.asset_file_full_path("blender_camera_factory_template.py")
+        try:
+            script = Path(blender_template_path).read_text()
+        except Exception as e:
+            logger.error(f"Failed to read Blender template: {e}")
+            return "# Failed to read Blender template."
+
+        fovx = 2.0 * math.degrees(math.atan(math.tan(math.radians(self.fovy) * 0.5) * self.aspect))
+        script = script.replace("<CAMERA_FOV>", str(math.radians(max(fovx, self.fovy))))
+        transform_list = [[v for v in row] for row in glm.transpose(self.transform)]
+        script = script.replace("<CAMERA_TRANSFORM>", str(transform_list))
+        script = script.replace("<CAMERA_NAME>", f"'{camera_name}'")
+        return script
+
+    def __str__(self)->str:
+        from textwrap import dedent
+        transform_text = pretty_matrix(np.array(self.transform).reshape(4,4), separator=" ") if self.transform is not None else "N/A"
+        position_text =  pretty_matrix(np.array(self.get_position()), separator=" ")
+        quat_text =      pretty_matrix(np.array(self.get_quaternion()), separator=" ")
+        euler_text =     pretty_matrix(np.array([math.degrees(radians) for radians in self.get_euler()]), separator=" ")
+
+        projection_text = pretty_matrix(np.array(self.get_projection()).reshape(4,4), separator=" ") if self.get_projection() is not None else "N/A"
+
+        return dedent(f"""Solver Results:\n
+transform:\n{transform_text}\n
+position:\n{position_text}\n
+quaternion:\n{quat_text}\n
+euler (degrees):\n{euler_text}\n
+projection:\n{projection_text}\n
+fovy: {math.degrees(self.fovy)}\n
+fovx: {math.degrees(self.get_fovx())}\n
+shift_x: {self.shift_x}\n
+shift_y: {self.shift_y}\n
+        """)
+
 #########################
 # MAIN SOLVER FUNCTIONS #
 #########################
@@ -44,7 +186,7 @@ def solve1vp(
         first_axis = Axis.PositiveZ,
         second_axis = Axis.PositiveX,
         scale:float=1.0
-    )->glm.mat4:
+    )->SolverResults:
         """
         Solve camera orientation from a single vanishing point and focal length,
         and computes the camera position from the scene origin 'O'.
@@ -90,7 +232,8 @@ def solve1vp(
             height, 
             f, 
             view_matrix, 
-            O, 
+            O,
+            P,
             scale
         )
 
@@ -101,13 +244,15 @@ def solve1vp(
         # 3. Adjust Camera Roll #
         #########################
         # Roll the camera based on the horizon line projected to 3D
+        shift_x = (P.x - width / 2) / (width / 2)
+        shift_y = (P.y - height / 2) / (height / 2)
         if second_vanishing_line:
             fovy = fov_from_focal_length(f, height)
             roll_matrix = compute_roll_matrix(
                 width, 
                 height, 
                 second_vanishing_line,
-                projection_matrix=glm.perspective(fovy, width/height, 0.1, 100.0),
+                projection_matrix=perspective_tiltshift(fovy, width/height, 0.1, 100.0, shift_x, shift_y),
                 view_matrix=view_matrix
             )
 
@@ -115,15 +260,21 @@ def solve1vp(
             view_matrix = view_matrix * roll_matrix
 
         # world transform from view_matrix
-        camera_transform = glm.inverse(view_matrix)
+        camera_transform:glm.mat4 = glm.inverse(view_matrix)
 
         ############################
         # 4. Apply axis assignment #
         ############################
         axis_assignment_matrix:glm.mat3 = create_axis_assignment_matrix(first_axis, second_axis)       
-        camera_transform= glm.mat4(axis_assignment_matrix)*camera_transform
+        camera_transform = glm.mat4(axis_assignment_matrix)*camera_transform
 
-        return camera_transform
+        return SolverResults(
+            transform=camera_transform,
+            fovy=fov_from_focal_length(f, height),
+            aspect=width/height,
+            near_plane=0.1,
+            far_plane=100.0
+        )
 
 def solve2vp(
         width:int,
@@ -135,17 +286,18 @@ def solve2vp(
         first_axis = Axis.PositiveZ,
         second_axis = Axis.PositiveX,
         scale:float=1.0
-    )->Tuple[float, glm.mat4]:
+    )->SolverResults:
     """ Solve camera intrinsics and orientation from 3 orthogonal vanishing points.
     returns (fovy in radians, camera_orientation_matrix, camera_position)
     """
+
     ###########################
     # 2. COMPUTE Focal Length #
     ###########################
     f = compute_focal_length_from_vanishing_points(
-        Fu = Fu, 
-        Fv = Fv, 
-        P =  P
+        Fu=Fu,
+        Fv=Fv,
+        P=P
     )
     fovy = fov_from_focal_length(f, height)
 
@@ -153,10 +305,10 @@ def solve2vp(
     # 3. COMPUTE Camera Orientation #
     #################################
     view_orientation_matrix = compute_orientation_from_two_vanishing_points(
-        Fu,
-        Fv,
-        P,
-        f
+        Fu=Fu,
+        Fv=Fv,
+        P=P,
+        f=f
     )
 
     view_matrix = glm.mat4(view_orientation_matrix)
@@ -164,12 +316,22 @@ def solve2vp(
     ##############################
     # 4. COMPUTE Camera Position #
     ##############################
+    # Calculate Lens Shift
+    # X Shift: Negated because positive shift moves frustum right (center projects left)
+    # Y Shift: Standard because positive shift moves frustum up (center projects down... wait)
+    # Standard OpenGL: +ShiftY moves window UP. (0,0,0) projects to -Y_ndc.
+    # If P is Top (y=0), we want projection Top (y=+1). We need -ShiftY.
+    # (P_tl.y - H/2) for P=0 is Negative. So this formula is correct for Y.
+    shift_x = -(P.x - width / 2) / (width / 2)
+    shift_y = (P.y - height / 2) / (height / 2)
+
     camera_position = compute_camera_position(
         width, 
         height, 
         f, 
         glm.mat4(view_orientation_matrix), 
-        O, 
+        O,
+        glm.vec2(P.x, height-P.y), # Pass TL P so compute_camera_position uses the same shift logic
         scale
     )
 
@@ -185,7 +347,15 @@ def solve2vp(
     axis_assignment_matrix:glm.mat3 = create_axis_assignment_matrix(first_axis, second_axis)       
     camera_transform= glm.mat4(axis_assignment_matrix)*camera_transform
 
-    return fovy, camera_transform
+    return SolverResults(
+        transform=camera_transform,
+        fovy=fovy,
+        aspect=width/height,
+        near_plane=0.1,
+        far_plane=100.0,
+        shift_x=shift_x,
+        shift_y=shift_y
+    )
 
 ########################
 # CORE SOLVER FUNCTIOS #
@@ -275,6 +445,7 @@ def compute_camera_position(
         f:float,
         view_matrix:glm.mat4,
         O:glm.vec2,
+        P:glm.vec2,
         scale:float=1.0,
     )-> glm.vec3:
     """
@@ -283,11 +454,18 @@ def compute_camera_position(
     fovy = fov_from_focal_length(f, height)
     near = 0.1
     far = 100
-    projection_matrix = glm.perspective(
-        fovy, # fovy in radians
-        width/height, # aspect 
+
+    # Updated Shift Logic: Negate X to align with OpenGL frustum projection
+    shift_x = -(P.x - width / 2) / (width / 2)
+    shift_y = (P.y - height / 2) / (height / 2)
+
+    projection_matrix = perspective_tiltshift(
+        fovy, 
+        width/height, 
         near,
-        far
+        far, 
+        shift_x, 
+        shift_y
     )
 
     # convert to 4x4 matrix for transformations
@@ -312,7 +490,7 @@ def compute_roll_matrix(
         view_matrix:glm.mat4,
         first_axis:Axis=Axis.PositiveX,
         second_axis:Axis=Axis.PositiveY
-):
+)->glm.mat4:
     """
     Compute a roll correction matrix to align the horizon based on the second vanishing lines.
     """
@@ -423,6 +601,20 @@ def compute_focal_length_from_vanishing_points(
         logger.warning(f"Warning: Computed focal length {focal_length:.1f} is outside reasonable range [{min_focal}, {max_focal}]")
     
     return focal_length
+
+def triangle_ortho_center(k: glm.vec2, l: glm.vec2, m: glm.vec2)-> glm.vec2:
+    a = k.x
+    b = k.y
+    c = l.x
+    d = l.y
+    e = m.x
+    f = m.y
+
+    N = b * c + d * e + f * a - c * f - b * e - a * d
+    x = ((d - f) * b * b + (f - b) * d * d + (b - d) * f * f + a * b * (c - e) + c * d * (e - a) + e * f * (a - c)) / N
+    y = ((e - c) * a * a + (a - e) * c * c + (c - a) * e * e + a * b * (f - d) + c * d * (b - f) + e * f * (d - b)) / N
+
+    return glm.vec2(x, y)
 
 def _compute_focal_length_from_vanishing_points_simple(
         Fu: glm.vec2, # first vanishing point
@@ -596,6 +788,34 @@ def flip_coordinate_handness(mat: glm.mat4) -> glm.mat4:
     flipZ = glm.scale(glm.vec3(1.0, 1.0, -1.0))
     return flipZ * mat # todo: check order
 
+def perspective_tiltshift(fovy:float, aspect:float, near:float, far:float, shift_x:float, shift_y:float) -> glm.mat4:
+    """ Create a perspective projection matrix with lens shift.
+    glm.persective with lens shift support.
+    params:
+        fovy: field of view in y direction (radians)
+        aspect: aspect ratio (width/height)
+        near: near clipping plane
+        far: far clipping plane
+        shift_x: horizontal lens shift (-1..1, where 0 is center)
+        shift_y: vertical lens shift (-1..1, where 0 is center)
+    """
+    # Compute top/bottom/left/right in view space
+    top = near * glm.tan(fovy / 2)
+    bottom = -top
+    right = top * aspect
+    left = -right
+
+    # Apply shifts
+    width = right - left
+    height = top - bottom
+
+    left += shift_x * width / 2
+    right += shift_x * width / 2
+    bottom += shift_y * height / 2
+    top += shift_y * height / 2
+
+    # Create the projection matrix with lens shift
+    return glm.frustum(left, right, bottom, top, near, far)
 ###########################
 # 2D-3D GOMETRY FUNCTIONS #
 ###########################
@@ -865,7 +1085,7 @@ def mat3_to_euler_zxy(M: glm.mat3) -> Tuple[float, float, float]:
 ##################
 # GLM EXTENSIONS #
 ##################
-def extract_euler_XYZ(M: glm.mat4) -> Tuple[float, float, float]:
+def extract_euler_XYZ(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
     T1 = math.atan2(M[2][1], M[2][2])
     C2 = math.sqrt(M[0][0] * M[0][0] + M[1][0] * M[1][0])
     T2 = math.atan2(-M[2][0], C2)
@@ -874,7 +1094,7 @@ def extract_euler_XYZ(M: glm.mat4) -> Tuple[float, float, float]:
     T3 = math.atan2(S1 * M[0][2] - C1 * M[0][1], C1 * M[1][1] - S1 * M[1][2])
     return -T1, -T2, -T3
 
-def extract_euler_YXZ(M: glm.mat4) -> Tuple[float, float, float]:
+def extract_euler_YXZ(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
     T1 = math.atan2(M[2][0], M[2][2])
     C2 = math.sqrt(M[0][1] * M[0][1] + M[1][1] * M[1][1])
     T2 = math.atan2(-M[2][1], C2)
@@ -883,7 +1103,7 @@ def extract_euler_YXZ(M: glm.mat4) -> Tuple[float, float, float]:
     T3 = math.atan2(S1 * M[1][2] - C1 * M[1][0], C1 * M[0][0] - S1 * M[0][2])
     return T1, T2, T3
 
-def extract_euler_XZY(M: glm.mat4) -> Tuple[float, float, float]:
+def extract_euler_XZY(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
     T1 = math.atan2(M[1][2], M[1][1])
     C2 = math.sqrt(M[0][0] * M[0][0] + M[2][0] * M[2][0])
     T2 = math.atan2(-M[1][0], C2)
@@ -892,7 +1112,7 @@ def extract_euler_XZY(M: glm.mat4) -> Tuple[float, float, float]:
     T3 = math.atan2(S1 * M[0][1] - C1 * M[0][2], C1 * M[2][2] - S1 * M[2][1])
     return T1, T2, T3
 
-def extract_euler_YZX(M: glm.mat4) -> Tuple[float, float, float]:
+def extract_euler_YZX(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
     T1 = math.atan2(-M[0][2], M[0][0])
     C2 = math.sqrt(M[1][1] * M[1][1] + M[2][1] * M[2][1])
     T2 = math.atan2(M[0][1], C2)
@@ -901,7 +1121,7 @@ def extract_euler_YZX(M: glm.mat4) -> Tuple[float, float, float]:
     T3 = math.atan2(S1 * M[1][0] + C1 * M[1][2], S1 * M[2][0] + C1 * M[2][2])
     return T1, T2, T3
 
-def extract_euler_ZYX(M: glm.mat4) -> Tuple[float, float, float]:
+def extract_euler_ZYX(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
     T1 = math.atan2(M[0][1], M[0][0])
     C2 = math.sqrt(M[1][2] * M[1][2] + M[2][2] * M[2][2])
     T2 = math.atan2(-M[0][2], C2)
@@ -910,7 +1130,7 @@ def extract_euler_ZYX(M: glm.mat4) -> Tuple[float, float, float]:
     T3 = math.atan2(S1 * M[2][0] - C1 * M[2][1], C1 * M[1][1] - S1 * M[1][0])
     return T1, T2, T3
 
-def extract_euler_ZXY(M: glm.mat4) -> Tuple[float, float, float]:
+def extract_euler_ZXY(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
     T1 = math.atan2(-M[1][0], M[1][1])
     C2 = math.sqrt(M[0][2] * M[0][2] + M[2][2] * M[2][2])
     T2 = math.atan2(M[1][2], C2)
@@ -919,7 +1139,7 @@ def extract_euler_ZXY(M: glm.mat4) -> Tuple[float, float, float]:
     T3 = math.atan2(C1 * M[2][0] + S1 * M[2][1], C1 * M[0][0] + S1 * M[0][1])
     return T1, T2, T3
 
-def extract_euler(M: glm.mat3, order: EulerOrder) -> Tuple[float, float, float]:
+def extract_euler(M: glm.mat4|glm.mat3, order: EulerOrder) -> Tuple[float, float, float]:
     """
     Convert a glm.mat3 rotation matrix
     to Euler angles (radians) for the specified rotation order.

@@ -28,9 +28,8 @@ class CAMERA_OT_remove_bg_image(bpy.types.Operator):
 from pathlib import Path
 
 def is_operator_running(op_idname):
-    wm = bpy.context.window_manager
-    for op in wm.operators:
-        if op.bl_idname == op_idname and getattr(op, "is_running", False):
+    for op in bpy.context.window.modal_operators:
+        if op.bl_idname == 'VIEW_OT_vanishing_lines_operator':
             return True
     return False
 
@@ -53,27 +52,34 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
         
         self.layout.label(text=f"Active Camera: '{camera.name}'")
 
-        self.layout.operator("view.vanishing_lines_operator", text="Start Vanishing Lines")
-
-        if is_operator_running("view.vanishing_lines_operator"):
-            self.layout.label(text="Vanishing Lines Operator is running...", icon='INFO')
+        if not is_operator_running("VIEW_OT_vanishing_lines_operator"):
+            self.layout.operator("view.vanishing_lines_operator", text="Start Vanishing Lines")
+            return
 
         ##########
         # SOLVER #
         ##########
-        # header, panel = self.layout.panel("solver", default_closed=False)
-        # header.label(text="Solver Settings")
-        # if panel:
-        self.layout.prop(camera.data.vl_settings, "scene_scale", text="Scene Scale")
-        self.layout.prop(camera.data.vl_settings, "mode", text="Mode")
+        header, panel = self.layout.panel("solver", default_closed=False)
+        header.label(text="Solver")
+        if panel:
+            panel.prop(camera.data.vl_settings, "scene_scale", text="Scene Scale")
+            panel.prop(camera.data.vl_settings, "mode", text="Mode")
 
-        mode = camera.data.vl_settings.mode
+            mode = camera.data.vl_settings.mode
 
-        match mode:
-            case 'ONE_POINT':
-                self.layout.prop(camera.data, "lens", text="Focal Length")
-            case 'TWO_POINT':
-                self.layout.prop(camera.data.vl_settings, "quad_mode", text="Quad Mode")
+            match mode:
+                case 'ONE_POINT':
+                    panel.prop(camera.data, "lens", text="Focal Length")
+
+                case 'TWO_POINT':
+                    panel.prop(camera.data.vl_settings, "quad_mode", text="Quad Mode")
+                    panel.prop(camera.data.vl_settings, "enable_manual_principal", text="Manual Principal Point")
+
+                case 'THREE_POINT':
+                    panel.prop(camera.data.vl_settings, "quad_mode", text="Quad Mode")
+            
+            panel.separator()
+                
 
         ##################
         # CONTROL POINTS #
@@ -82,11 +88,17 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
         header.label(text="Coordinates")
 
         if panel:
-            # group.label(text="Origin")
+            # origin
             row = panel.row(align=True)
             row.label(text="Origin")
             row.prop(camera.data.vl_settings.origin, "x", text="X")
             row.prop(camera.data.vl_settings.origin, "y", text="Y")
+
+            # principal
+            row = panel.row(align=True)
+            row.label(text="Principal")
+            row.prop(camera.data.vl_settings.manual_principal, "x", text="X")
+            row.prop(camera.data.vl_settings.manual_principal, "y", text="Y")
 
             for label, lines in [("Y Axis", camera.data.vl_settings.first_vanishing_lines), ("X Axis", camera.data.vl_settings.second_vanishing_lines)]:
                 panel.separator()
@@ -102,6 +114,8 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
                     grid.label(text="end")
                     grid.prop(line.end, "x", text="X")
                     grid.prop(line.end, "y", text="Y")
+
+            panel.separator()
 
         #####################
         # BACKGROUND IMAGES #
@@ -121,6 +135,8 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
                 header.prop(bg, "show_background_image", text="", icon="HIDE_ON" if bg.show_background_image else "HIDE_OFF", emboss=False)
                 if panel:
                     panel.prop(bg, "alpha", text="Opacity", slider=True)
+
+            panel.separator()
                 
 
 

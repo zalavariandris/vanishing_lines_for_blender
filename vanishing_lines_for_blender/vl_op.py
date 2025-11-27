@@ -142,6 +142,45 @@ def flatten(xss):
 ###############
 # VL OPERATOR #
 ###############
+from typing import Sequence
+
+
+class GraphicsLines:
+    def __init__(self):
+        # --- SHADER ---
+        vertex_shader = '''
+        uniform mat4 ModelViewProjectionMatrix;
+        in vec3 pos;
+        void main()
+        {
+            gl_Position = ModelViewProjectionMatrix * vec4(pos, 1.0);
+        }
+        '''
+
+        fragment_shader = '''
+        out vec4 FragColor;
+        void main()
+        {
+            FragColor = vec4(1.0, 0.0, 0.0, 1.0); // red
+        }
+        '''
+
+        self._shader = gpu.types.GPUShader(vertex_shader, fragment_shader)
+
+        # simple triangle in front of the camera
+        self._content = {
+            'pos': [
+                (-0.5, -0.5, 0),
+                ( 0.5, -0.5, 0),
+                ( 0.0,  0.5, 0),
+            ]
+        }
+
+        self._batch = batch_for_shader(self._shader , 'TRIS', self._content)
+
+    def draw(self):
+        self._batch.draw(self._shader)
+
 class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     """alignt the camer based on vanishing lines"""
     
@@ -269,7 +308,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             add_line(self._project(context, line[0]), self._project(context, line[1]), GREEN)
 
         RED = (1,0,0,1)
-        print("on view draw, mode:", self._active_camera.data.vl_settings.mode, "quad_mode:", self._active_camera.data.vl_settings.quad_mode)
+        # print("on view draw, mode:", self._active_camera.data.vl_settings.mode, "quad_mode:", self._active_camera.data.vl_settings.quad_mode)
         match self._active_camera.data.vl_settings.mode:
             case "ONE_POINT":
                 line = self.get_second_vanishing_lines()[0]
@@ -309,24 +348,19 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
         self.lines_batch.draw(self.shader)
 
+        self.aag_lines = GraphicsLines()
+        self.aag_lines.draw()
+
         # draw circles around hovered/active control points
         if self._hovered_idx is not None :
             ...
-
-        # draw text
-        # for name, pos, color in zip(["Origin", "y", "y", "y", "y", "x", "x", "x", "x"], point_attributes['pos'], point_attributes['color']):
-        #     x, y = pos
-        #     font_id = 0
-        #     blf.position(font_id, x+3 , y+6, 0)
-        #     blf.size(font_id, 12)
-        #     blf.color(font_id, *color)
-        #     blf.draw(font_id, f"{name}")
-
+            
         # draw error message
         if self._solve_error:
             lines = str(self._solve_error).splitlines()
             line_height = 12
             text_height = line_height * len(lines)
+            font_id = 0
             blf.position(font_id, 20, text_height+40, 0)
             blf.size(font_id, 12)
             blf.color(font_id, 1,0,0,1)

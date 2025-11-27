@@ -21,12 +21,26 @@ class VLSettings(bpy.types.PropertyGroup):
 
     origin: bpy.props.PointerProperty(name="origin", type=Point)
 
+    enable_manual_principal: bpy.props.BoolProperty(
+        name="Manual Principal Point",
+        description="Set principal point manually",
+        default=False
+    )
+    
+    manual_principal: bpy.props.PointerProperty(name="manual_principal", type=Point)
+
     first_vanishing_lines: bpy.props.CollectionProperty(
         name="First Vanishing Lines",
         type=Line
     )
+
     second_vanishing_lines: bpy.props.CollectionProperty(
         name="Second Vanishing Lines", 
+        type=Line
+    )
+
+    third_vanishing_lines: bpy.props.CollectionProperty(
+        name="Third Vanishing Lines", 
         type=Line
     )
     
@@ -34,20 +48,23 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Perspective Mode",
         description="Perspective Mode",
         items=[
-            ('ONE_POINT', "1-Point", "Use 1-point perspective"),
-            ('TWO_POINT', "2-Point", "Use 2-point perspective"),
+            ('ONE_POINT',   "1-Point", "Use 1-point perspective"),
+            ('TWO_POINT',   "2-Point", "Use 2-point perspective"),
+            ('THREE_POINT', "3-Point", "Use 3-point perspective")
         ],
-        default='TWO_POINT'
+        default='THREE_POINT'
     )
+
     quad_mode: bpy.props.BoolProperty(
         name="Quad Mode",
         description="Enable quad mode for 2-point perspective",
         default=False
     )
+
     scene_scale: bpy.props.FloatProperty(
         name="Scene Scale",
         description="Scale of the scene for vanishing lines",
-        default=1.0,
+        default=10.0,
         min=0.01,
         max=100.0
     )
