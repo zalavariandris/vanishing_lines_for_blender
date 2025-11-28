@@ -15,6 +15,77 @@ import glm
 # local
 from . import solver
 
+class DrawLayer:
+    def __init__(self):
+        self.shader = gpu.shader.from_builtin('FLAT_COLOR')
+
+        self._point_attributes: dict[str, List[Tuple[float, ...]]] = {
+            "pos":   [],
+            "color": [],
+        }
+
+        self._line_attributes = {
+            "pos":   [],
+            "color": [],
+        }
+
+        self._annotations = []
+
+    def clear(self):
+        self._point_attributes = {
+            "pos":   [],
+            "color": [],
+        }
+        self._line_attributes = {
+            "pos":   [],
+            "color": [],
+        }
+        self._annotations = []
+
+    def add_line(self, start, end, color):
+        self._line_attributes['pos'].append( start )
+        self._line_attributes['color'].append( color )
+        self._line_attributes['pos'].append( end )
+        self._line_attributes['color'].append( color )
+
+    def add_point(self, pos, color):
+        self._point_attributes['pos'].append( pos )
+        self._point_attributes['color'].append( color )
+
+    def add_text(self, pos, text, color):
+            self._annotations.append( (pos, text, color) )
+
+    def draw(self):
+        gpu.state.blend_set('ALPHA')
+
+        # render points
+        self.point_batch = batch_for_shader(
+            self.shader, 
+            'POINTS', 
+            self._point_attributes
+        )
+        self.point_batch.draw(self.shader)
+
+        self.lines_batch = batch_for_shader(
+            self.shader,
+            "LINES",
+            self._line_attributes
+        )
+
+        self.lines_batch.draw(self.shader)
+
+
+        # render annotations
+        for pos, text, color in self._annotations:
+            font_id = 0
+            blf.position(font_id, pos[0]+10, pos[1]+10, 0)
+            blf.size(font_id, 12)
+            blf.color(font_id, *color)
+            blf.draw(font_id, f"{text}")
+
+####################
+# HELPER FUNCTIONS #
+####################
 def apply_solver_results_to_blender_camera(results:solver.SolverResults, camera_object: bpy.types.Object):
     camera_data: bpy.types.Camera = camera_object.data
     transform_list = [[v for v in row] for row in glm.transpose(results.transform)]
@@ -26,9 +97,6 @@ def apply_solver_results_to_blender_camera(results:solver.SolverResults, camera_
     camera_data.shift_x = results.shift_x/2
     camera_data.shift_y = -results.shift_y/2 / results.aspect
 
-####################
-# HELPER FUNCTIONS #
-####################
 def _get_viewer_camera(context) -> bpy.types.Object|None:
     for area in context.window.screen.areas:
         if area.type == 'VIEW_3D':
@@ -208,7 +276,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
     # draw
     _view_draw_screen_handler: Any= None # keep our drawing handler
-    shader: gpu.types.GPUShader|None = None
+    draw_layer: DrawLayer|None = None
     point_batch: gpu.types.GPUBatch|None = None
     lines_batch: gpu.types.GPUBatch|None = None
 
@@ -218,7 +286,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
     def invoke(self, context, event):
         # Setup Drawing
-        self.shader = gpu.shader.from_builtin('FLAT_COLOR')
+        self.draw_layer = DrawLayer()
         if not self._view_draw_screen_handler:
             self._view_draw_screen_handler = bpy.types.SpaceView3D.draw_handler_add(
                 self._on_view_draw, 
@@ -294,137 +362,85 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
     def _on_view_draw(self, context):
         """create batches for drawing points and lines"""
-        if self.shader is None:
+        if self.draw_layer is None:
             return
         
-        point_attributes: dict[str, List[Tuple[float, ...]]] = {
-            "pos":   [],
-            "color": [],
-        }
-
-        line_attributes = {
-            "pos":   [],
-            "color": [],
-        }
-
-        annotations = []
-
-        def add_point(pos, color:Tuple[float, float, float, float]):
-            point_attributes['pos'].append( pos )
-            point_attributes['color'].append( color )
-
-        def add_line(start, end, color:Tuple[float, float, float, float]):
-            line_attributes['pos'].append( start )
-            line_attributes['color'].append( color )
-            line_attributes['pos'].append( end )
-            line_attributes['color'].append( color )
-
-        def add_text(pos, text:str, color:Tuple[float, float, float, float]):
-            annotations.append( (pos, text, color) )
-
         GREEN = (0,1,0,1)
         RED = (1,0,0,1)
         BLUE = (0,0.3, 1.0, 1.0)
         YELLOW = (1,1,0,1)
 
+        self.draw_layer.clear()
+        self.draw_layer.add_point(self._project(context, (self.get_origin().x, self.get_origin().y)), YELLOW)
+        self.draw_layer.add_text(self._project(context, (self.get_origin().x, self.get_origin().y)), "O", YELLOW)
+        self.draw_layer.add_point(self._project(context, (self.get_principal().x, self.get_principal().y)), YELLOW)
+        self.draw_layer.add_text(self._project(context, (self.get_principal().x, self.get_principal().y)), "P", YELLOW)
 
-        # point_attributes['pos'].append( self._project(context, (self.get_origin().x, self.get_origin().y)) )
-        # point_attributes['color'].append( YELLOW )
-
-        add_point(self._project(context, (self.get_origin().x, self.get_origin().y)), YELLOW)
-        add_text(self._project(context, (self.get_origin().x, self.get_origin().y)), "O", YELLOW)
-        add_point(self._project(context, (self.get_principal().x, self.get_principal().y)), YELLOW)
-        add_text(self._project(context, (self.get_principal().x, self.get_principal().y)), "P", YELLOW)
-
+        def closest_point_to_vp(points, vp):
+            return sorted([points[0], points[1]], key=lambda P: glm.distance2(P, vp))[0]
         
-        for line in self.get_first_vanishing_lines():
-            for cp in line:
-                P = self._project(context, (cp.x, cp.y))
-                add_point( P, GREEN )
-            add_line(self._project(context, line[0]), self._project(context, line[1]), GREEN)
+        def dim_color(color:Tuple[float, float, float, float], factor:float=0.18)->Tuple[float, float, float, float]:
+            return (color[0], color[1], color[2], color[3]*factor)
 
-        
 
-        match self._active_camera.data.vl_settings.mode:
-            case "ONE_POINT":
+
+        NumberOfVanishigPoints = {
+            "ONE_POINT": 1,
+            "TWO_POINT": 2,
+            "THREE_POINT": 3
+        }[self._active_camera.data.vl_settings.mode]
+
+        if NumberOfVanishigPoints >= 1:
+            # draw first vanishing lines
+            vp1 = tuple(solver.least_squares_intersection_of_lines(self.get_first_vanishing_lines()))
+            for line in self.get_first_vanishing_lines():
+                for cp in line:
+                    P = self._project(context, (cp.x, cp.y))
+                    self.draw_layer.add_point( P, GREEN )
+                self.draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), GREEN)
+                self.draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp1)), self._project(context, vp1), dim_color(GREEN))
+
+            # draw second vanishing line (first line only)
+            if not self._active_camera.data.vl_settings.quad_mode or NumberOfVanishigPoints == 1:
                 line = self.get_second_vanishing_lines()[0]
                 for cp in line:
                     P = self._project(context, (cp.x, cp.y))
-                    add_point( P, RED )
-                add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
+                    self.draw_layer.add_point( P, RED )
+                self.draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
 
-            case "TWO_POINT":
-                if not self._active_camera.data.vl_settings.quad_mode:
-                    for line in self.get_second_vanishing_lines():
-                        for cp in line:
-                            P = self._project(context, (cp.x, cp.y))
-                            add_point( P, RED )
-                    add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
-                else:
-                    for line in self.get_quad_mode_second_vanishing_lines():
-                        for cp in line:
-                            P = self._project(context, (cp.x, cp.y))
-                            add_point( P, RED )
-                    add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
+        if NumberOfVanishigPoints >= 2:
+            # draw second vanishing lines
+            if self._active_camera.data.vl_settings.quad_mode:
+                second_vl = self.get_quad_mode_second_vanishing_lines()
+            else:
+                second_vl = self.get_second_vanishing_lines()
 
-            case "THREE_POINT":
-                if not self._active_camera.data.vl_settings.quad_mode:
-                    for line in self.get_second_vanishing_lines():
-                        for cp in line:
-                            P = self._project(context, (cp.x, cp.y))
-                            add_point( P, RED )
-                    add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
-                else:
-                    for line in self.get_quad_mode_second_vanishing_lines():
-                        for cp in line:
-                            P = self._project(context, (cp.x, cp.y))
-                            add_point( P, RED )
-                    add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
+            vp2 = tuple(solver.least_squares_intersection_of_lines(second_vl))
+            for line in second_vl:
+                for cp in line:
+                    P = self._project(context, (cp.x, cp.y))
+                    self.draw_layer.add_point( P, RED )
+                self.draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
+                self.draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp2)), self._project(context, vp2), dim_color(RED))
 
-                for line in self.get_third_vanishing_lines():
-                    for cp in line:
-                        P = self._project(context, (cp.x, cp.y))
-                        add_point(P, BLUE)
-                    add_line(self._project(context, line[0]), self._project(context, line[1]), BLUE)
+        if NumberOfVanishigPoints >= 3:
+            vp3 = tuple(solver.least_squares_intersection_of_lines(self.get_third_vanishing_lines()))
+            for line in self.get_third_vanishing_lines():
+                for cp in line:
+                    P = self._project(context, (cp.x, cp.y))
+                    self.draw_layer.add_point(P, BLUE)
+                self.draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), BLUE)
+                self.draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp3)), self._project(context, vp3), dim_color(BLUE))
 
         # override color for hovered/active control points
         if self._hovered_idx is not None:
-            point_attributes['color'][self._hovered_idx] = (1,1,1,1)
+            self.draw_layer._point_attributes['color'][self._hovered_idx] = (1,1,1,1)
 
         if self._active_idx is not None:
-            point_attributes['color'][self._active_idx] = (1,1,1,1)
+            self.draw_layer._point_attributes['color'][self._active_idx] = (1,1,1,1)
 
-        # render points
-        self.point_batch = batch_for_shader(
-            self.shader, 
-            'POINTS', 
-            point_attributes
-        )
-        self.point_batch.draw(self.shader)
+        self.draw_layer.draw()
 
-        self.lines_batch = batch_for_shader(
-            self.shader,
-            "LINES",
-            line_attributes
-        )
-
-        self.lines_batch.draw(self.shader)
-
-        self.aag_lines = GraphicsLines()
-        self.aag_lines.draw()
-
-        # render annotations
-        for pos, text, color in annotations:
-            font_id = 0
-            blf.position(font_id, pos[0]+10, pos[1]+10, 0)
-            blf.size(font_id, 12)
-            blf.color(font_id, *color)
-            blf.draw(font_id, f"{text}")
-
-        # draw circles around hovered/active control points
-        if self._hovered_idx is not None :
-            ...
-            
         # draw error message
         if self._solve_error:
             lines = str(self._solve_error).splitlines()
@@ -443,35 +459,34 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         yield self._active_camera.data.vl_settings.origin
         yield self._active_camera.data.vl_settings.principal
 
-        match self._active_camera.data.vl_settings.mode:
-            case "ONE_POINT":
-                for line in self._active_camera.data.vl_settings.first_vanishing_lines:
-                    yield line.start
-                    yield line.end
-                yield self._active_camera.data.vl_settings.second_vanishing_lines[0].start
-                yield self._active_camera.data.vl_settings.second_vanishing_lines[0].end
+        NumberOfVanishigPoints = {
+            "ONE_POINT": 1,
+            "TWO_POINT": 2,
+            "THREE_POINT": 3
+        }[self._active_camera.data.vl_settings.mode]
 
-            case "TWO_POINT":
-                for line in self._active_camera.data.vl_settings.first_vanishing_lines:
+        if NumberOfVanishigPoints >= 1:
+            # yield all first vanishing lines
+            for line in self._active_camera.data.vl_settings.first_vanishing_lines:
+                yield line.start
+                yield line.end
+
+            # first line of second vanishing lines
+            yield self._active_camera.data.vl_settings.second_vanishing_lines[0].start
+            yield self._active_camera.data.vl_settings.second_vanishing_lines[0].end
+
+        if NumberOfVanishigPoints >= 2:
+            if not self._active_camera.data.vl_settings.quad_mode:
+                # all (but first) second vanishing lines
+                for line in self._active_camera.data.vl_settings.second_vanishing_lines[1:]:
                     yield line.start
                     yield line.end
 
-                if not self._active_camera.data.vl_settings.quad_mode:
-                    for line in self._active_camera.data.vl_settings.second_vanishing_lines:
-                        yield line.start
-                        yield line.end
-
-            case "THREE_POINT":
-                for line in self._active_camera.data.vl_settings.first_vanishing_lines:
-                    yield line.start
-                    yield line.end
-                if not self._active_camera.data.vl_settings.quad_mode:
-                    for line in self._active_camera.data.vl_settings.second_vanishing_lines:
-                        yield line.start
-                        yield line.end
-                for line in self._active_camera.data.vl_settings.third_vanishing_lines:
-                    yield line.start
-                    yield line.end
+        if NumberOfVanishigPoints >= 3:
+            # all third vanishing lines
+            for line in self._active_camera.data.vl_settings.third_vanishing_lines:
+                yield line.start
+                yield line.end
     
     def _set_control_point(self, idx: int, pos: Tuple[float, float]):
         # Build the same list structure as get_control_points
@@ -542,7 +557,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         line2 = vl1[-1]
         
         return [
-            (glm.vec2(line1[0].x, line2[0].y), glm.vec2(line1[1].x, line2[1].y))
+            (glm.vec2(line1[0].x, line1[0].y), glm.vec2(line2[0].x, line2[0].y)),
+            (glm.vec2(line1[1].x, line1[1].y), glm.vec2(line2[1].x, line2[1].y))
         ]
     
     def set_second_vanishing_lines(self, lines:List[Tuple[glm.vec2, glm.vec2]]): 

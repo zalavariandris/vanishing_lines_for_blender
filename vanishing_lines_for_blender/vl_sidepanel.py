@@ -78,6 +78,7 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
 
                 case 'THREE_POINT':
                     panel.prop(camera.data.vl_settings, "quad_mode", text="Quad Mode")
+                    panel.label(text="")
             
             panel.separator()
                 

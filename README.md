@@ -12,8 +12,21 @@ __work in progress__
 - move the vanishing line endpoints to match the camera to the background
 
 
+## ChangeLog
+### **0.7.2 - 2025-11-24**
+- [x] ADD draw vanishing lines extended to vanishing points
+- [x] ADD support three-point perspective mode
+- [x] ADD manual principal point
+- [x] FIX quad mode
+
+### **0.7.1 - 2025-11-24**
+
+**Added**
+- [x] ADD quad mode for two-point perspective mode.
+
+
 ## Todo
-- [ ] FIX quad mode
+- [x] FIX quad mode
 - [ ] ADD reference distance
 - [ ] ADD axis assignment
 
@@ -25,9 +38,9 @@ __work in progress__
 - [ ] ADD align tracked camera
 - [ ] ADD animation
 
-- [?] ADD draw horizon
-- [x] ADD draw vanishing lines
-- [x] ADD draw vanishing points
+- [ ] ADD draw horizon
+
+- [ ] ADD draw vanishing points
 - [x] ADD manual principal point to TWO and THREE-Point mode
 - [x] FIX use principal point for til_shift, and apply to blender camera
 - [x] ADD solve three vanishing point mode
@@ -35,13 +48,3 @@ __work in progress__
 - [x] FIX start running VL modal operator
 - [x] ADD solve two vanishing point
 - [x] ADD solve single vanishing point
-
-## ChangeLog
-### **0.7.2 - 2025-11-24**
-- support three-point perspective mode
-- manual principal point
-
-### **0.7.1 - 2025-11-24**
-
-**Added**
-- quad mode for two-point perspective mode.
