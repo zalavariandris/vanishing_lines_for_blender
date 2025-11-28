@@ -14,83 +14,7 @@ import glm
 
 # local
 from . import solver
-
-class DrawLayer:
-    def __init__(self):
-        self.shader = gpu.shader.from_builtin('FLAT_COLOR')
-
-        self._point_attributes: dict[str, List[Tuple[float, ...]]] = {
-            "pos":   [],
-            "color": [],
-        }
-
-        self._line_attributes = {
-            "pos":   [],
-            "color": [],
-        }
-
-        self._annotations = []
-
-    def clear(self):
-        self._point_attributes = {
-            "pos":   [],
-            "color": [],
-        }
-        self._line_attributes = {
-            "pos":   [],
-            "color": [],
-        }
-        self._annotations = []
-
-    def add_line(self, start, end, color):
-        self._line_attributes['pos'].append( start )
-        self._line_attributes['color'].append( color )
-        self._line_attributes['pos'].append( end )
-        self._line_attributes['color'].append( color )
-
-    def add_rect(self, top_left, bottom_right, color):
-        x0, y0 = top_left
-        x1, y1 = bottom_right
-
-        self.add_line( (x0, y0), (x1, y0), color ) # top
-        self.add_line( (x1, y0), (x1, y1), color ) # right
-        self.add_line( (x1, y1), (x0, y1), color ) # bottom
-        self.add_line( (x0, y1), (x0, y0), color ) # left
-
-    def add_point(self, pos, color):
-        self._point_attributes['pos'].append( pos )
-        self._point_attributes['color'].append( color )
-
-    def add_text(self, pos, text, color):
-            self._annotations.append( (pos, text, color) )
-
-    def draw(self):
-        gpu.state.blend_set('ALPHA')
-
-        # render points
-        self.point_batch = batch_for_shader(
-            self.shader, 
-            'POINTS', 
-            self._point_attributes
-        )
-        self.point_batch.draw(self.shader)
-
-        self.lines_batch = batch_for_shader(
-            self.shader,
-            "LINES",
-            self._line_attributes
-        )
-
-        self.lines_batch.draw(self.shader)
-
-
-        # render annotations
-        for pos, text, color in self._annotations:
-            font_id = 0
-            blf.position(font_id, pos[0]+10, pos[1]+10, 0)
-            blf.size(font_id, 12)
-            blf.color(font_id, *color)
-            blf.draw(font_id, f"{text}")
+from . draw_layer import DrawLayer
 
 ####################
 # HELPER FUNCTIONS #
@@ -174,20 +98,61 @@ def crop_space_to_aspect(
 
     return new_x, new_y, new_w, new_h
 
-def apply_solver_results_to_blender_camera(results:solver.SolverResults, camera_object: bpy.types.Object)->None:
+def apply_solver_results_to_blender_camera(
+        results: solver.SolverResults, 
+        camera_object: bpy.types.Object,
+        compute_space: solver.Viewport,
+        output_space: solver.Viewport
+    ) -> None:
+    """
+    Apply solver results to Blender camera, accounting for aspect ratio differences
+    between compute space and output space.
+    
+    Args:
+        results: Solver results with transform and FOV
+        camera_object: Blender camera object to modify
+        compute_space: The viewport used for computation (e.g., [-1,-1,2,2])
+        output_space: The actual render output viewport
+    """
     if not isinstance(camera_object.data, bpy.types.Camera):
         raise TypeError("Expected a Camera data-block")
     
     camera_data: bpy.types.Camera = cast(bpy.types.Camera, camera_object.data)
 
+    # Apply transform
     transform_list = [[v for v in row] for row in glm.transpose(results.transform)]
     camera_object.matrix_world = mathutils.Matrix(transform_list)
 
-    focal_length = solver.focal_length_from_fov(results.fovy, camera_data.sensor_width/results.aspect) # TODO: currently this is slightly wrong, because blender fit the sensor, the region and the rendersize based on paameters.
-    camera_data.lens = focal_length  
+    # Calculate the aspect ratio correction factor
+    compute_aspect = compute_space.width / compute_space.height
+    output_aspect = output_space.width / output_space.height
     
-    camera_data.shift_x = results.shift_x/2
-    camera_data.shift_y = -results.shift_y/2 / results.aspect
+    # The focal length needs to be adjusted based on which dimension is constraining
+    # When compute space is cropped to match output aspect, the effective sensor size changes
+    if compute_aspect > output_aspect:
+        # Compute space is wider - height is constraining dimension
+        # Use results.fovy directly, but adjust sensor width
+        focal_length = solver.focal_length_from_fov(results.fovy, camera_data.sensor_height)
+    else:
+        # Compute space is taller - width is constraining dimension  
+        # Need to calculate fovx and derive focal length from that
+        fovx = 2.0 * math.atan(math.tan(results.fovy / 2.0) * results.aspect)
+        focal_length = solver.focal_length_from_fov(fovx, camera_data.sensor_width)
+    
+    camera_data.lens = focal_length
+    
+    # Apply lens shift
+    camera_data.shift_x = results.shift_x / 2
+    camera_data.shift_y = -results.shift_y / 2 / results.aspect
+
+
+# Update the operator.py calls to pass the extra parameters:
+# apply_solver_results_to_blender_camera(
+#     results, 
+#     camera_object,
+#     self.get_compute_space(),
+#     self._output_space
+# )
 
 def closest_point_to_vp(points, vp)->glm.vec2:
     return sorted([points[0], points[1]], key=lambda P: glm.distance2(P, vp))[0]
@@ -978,7 +943,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                                 scale =                 scene_scale
                     )
 
-                    apply_solver_results_to_blender_camera(results, camera_object)
+                    apply_solver_results_to_blender_camera(results, camera_object, self.get_compute_space(), self._output_space)
                         
                 case "TWO_POINT":
                     first_vanishing_lines = self.get_first_vanishing_lines()
@@ -1006,7 +971,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                                 scale =                 scene_scale
                     )
 
-                    apply_solver_results_to_blender_camera(results, camera_object)
+                    apply_solver_results_to_blender_camera(results, camera_object, self.get_compute_space(), self._output_space)
 
                 case "THREE_POINT":
                     first_vanishing_lines = self.get_first_vanishing_lines()
@@ -1032,7 +997,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                                 scale =                 scene_scale
                     )
 
-                    apply_solver_results_to_blender_camera(results, camera_object)
+                    apply_solver_results_to_blender_camera(results, camera_object, self.get_compute_space(), self._output_space)
                     
         except Exception as e:
             self._solve_error = e

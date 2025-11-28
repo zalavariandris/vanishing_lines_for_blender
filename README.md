@@ -13,10 +13,12 @@ __work in progress__
 
 
 ## ChangeLog
-### **0.7.2 - 2025-11-24**
-- [...] FIX use _centered_, _square_ (fit to output rectangle) normalized coordinates.
+### **0.7.2 - 2025-11-28**
+- [x] refactor draw code to DrawLayer class
 - [x] FIX Active and HOVER control point color
 - [x] ADD draw vanishing lines extended to vanishing points
+
+### **0.7.2 - 2025-11-24**
 - [x] ADD support three-point perspective mode
 - [x] ADD manual principal point
 - [x] FIX quad mode
@@ -27,6 +29,7 @@ __work in progress__
 
 
 ## Todo
+- [...] FIX use _centered_, _square_ (fit to output rectangle) normalized coordinates.
 - [x] FIX quad mode
 - [ ] ADD reference distance
 - [ ] ADD axis assignment

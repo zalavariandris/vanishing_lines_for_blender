@@ -63,6 +63,7 @@ def pretty_matrix(value:np.array, separator:str='\t') -> str:
 
 @dataclass
 class SolverResults:
+    compute_space: Viewport
     transform: glm.mat4
     fovy: float
     aspect: float
@@ -279,13 +280,14 @@ def solve1vp(
         camera_transform = glm.mat4(axis_assignment_matrix)*camera_transform
 
         return SolverResults(
+            compute_space=viewport,
             transform=camera_transform,
             fovy=fov_from_focal_length(f, viewport.height),
             aspect=viewport.width/viewport.height,
             near_plane=0.1,
             far_plane=100.0,
             shift_x=shift_x,
-            shift_y=shift_y
+            shift_y=shift_y,  
         )
 
 def solve2vp(
@@ -366,6 +368,7 @@ def solve2vp(
     camera_transform= glm.mat4(axis_assignment_matrix)*camera_transform
 
     return SolverResults(
+        compute_space=viewport,
         transform=camera_transform,
         fovy=fovy,
         aspect=viewport.width/viewport.height,
@@ -457,7 +460,27 @@ def compute_orientation_from_two_vanishing_points(
 
     return view_orientation_matrix
 
-def compute_camera_position_old(
+def world_point_from_screen_center_by_distance(view_matrix, projection_matrix, viewport, distance):
+    # screen center in window coords
+    cx = viewport[0] + viewport[2] * 0.5
+    cy = viewport[1] + viewport[3] * 0.5
+
+    # unproject center at near and far to get a world-space ray
+    p_near = glm.unProject(glm.vec3(cx, cy, 0.0), view_matrix, projection_matrix, viewport)
+    p_far  = glm.unProject(glm.vec3(cx, cy, 1.0), view_matrix, projection_matrix, viewport)
+
+    # ray direction in world space
+    ray_dir = glm.normalize(p_far - p_near)
+
+    # camera world position = inverse(view) * origin
+    view_inv = glm.inverse(view_matrix)
+    camera_pos = glm.vec3(view_inv * glm.vec4(0.0, 0.0, 0.0, 1.0))
+
+    # final point at requested distance along the ray from camera
+    point_world = camera_pos + ray_dir * distance
+    return point_world
+
+def compute_camera_position_old1(
         viewport: Viewport,
         f:float,
         view_matrix:glm.mat4,
@@ -481,17 +504,19 @@ def compute_camera_position_old(
         shift_y
     )
 
-    # convert to 4x4 matrix for transformations
-    origin_3D = glm.unProject(
-        glm.vec3(
-            O.x, 
-            O.y, 
-            _world_depth_to_ndc_z(scale, near, far)
-        ),
-        glm.mat4(view_matrix), 
-        projection_matrix, 
-        (viewport.x, viewport.y, viewport.width, viewport.height)
-    )
+    # # convert to 4x4 matrix for transformations
+    # origin_3D = glm.unProject(
+    #     glm.vec3(
+    #         O.x, 
+    #         O.y, 
+    #         _world_depth_to_ndc_z(scale, near, far)
+    #     ),
+    #     glm.mat4(view_matrix), 
+    #     projection_matrix, 
+    #     (viewport.x, viewport.y, viewport.width, viewport.height)
+    # )
+
+    origin_3D = world_point_from_screen_center_by_distance(view_matrix, projection_matrix, viewport, distance=scale)
 
     return -origin_3D
 
@@ -544,6 +569,54 @@ def compute_camera_position(
     # The camera position is such that origin_3D_world_space ends up at world origin (0,0,0)
     # So we need to position the camera at -origin_3D_world_space
     return -origin_3D_world_space
+
+def compute_camera_position_old2(
+        viewport: Viewport,
+        f:float,
+        view_matrix:glm.mat4,
+        O:glm.vec2,
+        shift_x,
+        shift_y,
+        scale:float=1.0,
+    )-> glm.vec3:
+    """
+    Computes the camera position in 3D space from 2D image coordinates and camera parameters.
+    
+    FIX: Transform viewport and O to standard [0, 0, W, H] space for glm.unProject,
+    then transform back.
+    """
+    near = 0.1
+    far = 100
+
+    projection_matrix = perspective_tiltshift(
+        fov_from_focal_length(f, viewport.height), 
+        viewport.width/viewport.height, 
+        near,
+        far, 
+        shift_x, 
+        shift_y
+    )
+
+    # Transform to standard OpenGL viewport coordinates [0, 0, width, height]
+    # glm.unProject expects this format
+    standard_viewport = glm.vec4(0, 0, viewport.width, viewport.height)
+    
+    # Transform O from viewport space to standard space
+    O_standard_x = O.x - viewport.x
+    O_standard_y = O.y - viewport.y
+    
+    origin_3D = glm.unProject(
+        glm.vec3(
+            O_standard_x, 
+            O_standard_y, 
+            _world_depth_to_ndc_z(scale, near, far)
+        ),
+        view_matrix, 
+        projection_matrix, 
+        standard_viewport
+    )
+
+    return -origin_3D
 
 def compute_roll_matrix(
         viewport: Viewport,
