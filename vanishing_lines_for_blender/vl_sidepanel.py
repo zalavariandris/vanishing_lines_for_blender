@@ -55,6 +55,8 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
         if not is_operator_running("VIEW_OT_vanishing_lines_operator"):
             self.layout.operator("view.vanishing_lines_operator", text="Start Vanishing Lines")
             return
+        
+
 
         ##########
         # SOLVER #
@@ -62,6 +64,10 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
         header, panel = self.layout.panel("solver", default_closed=False)
         header.label(text="Solver")
         if panel:
+            panel.prop(camera.data.vl_settings, "solver_is_paused", text="Pause Solver")
+            panel.separator()
+            panel.prop(camera.data.vl_settings, "compute_space", text="Compute Space")
+            panel.separator()
             panel.prop(camera.data.vl_settings, "scene_scale", text="Scene Scale")
             panel.prop(camera.data.vl_settings, "mode", text="Mode")
 

@@ -14,13 +14,14 @@ __work in progress__
 
 ## ChangeLog
 ### **0.7.2 - 2025-11-24**
+- [...] FIX use _centered_, _square_ (fit to output rectangle) normalized coordinates.
+- [x] FIX Active and HOVER control point color
 - [x] ADD draw vanishing lines extended to vanishing points
 - [x] ADD support three-point perspective mode
 - [x] ADD manual principal point
 - [x] FIX quad mode
 
 ### **0.7.1 - 2025-11-24**
-
 **Added**
 - [x] ADD quad mode for two-point perspective mode.
 
@@ -29,6 +30,10 @@ __work in progress__
 - [x] FIX quad mode
 - [ ] ADD reference distance
 - [ ] ADD axis assignment
+
+- [ ] when a line is zero length, there is an unhandled error
+
+- [ ] show errors in the UI, and phrase them to be helpful.
 
 - [ ] FIX while dragging controlpoint, move them with mouse instead of setting the coords to the mousepos
 - [ ] ADD slow point drag with SHIFT

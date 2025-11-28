@@ -18,15 +18,49 @@ class VLSettings(bpy.types.PropertyGroup):
     name="VL Settings"
 
     initialized: bpy.props.BoolProperty(name="Initialized", default=False, options={'HIDDEN'})
+    solver_is_paused: bpy.props.BoolProperty(name="Paused", default=False)
 
-    origin: bpy.props.PointerProperty(name="origin", type=Point)
+    compute_space: bpy.props.FloatVectorProperty(
+        name="Compute Space",
+        description="Compute space rectangle (x, y, width, height)",
+        size=4,
+        default=(0.0, 0.0, 1920.0, 1080.0),
+        # options={'HIDDEN'}
+    )
+
+    mode: bpy.props.EnumProperty(
+        name="Perspective Mode",
+        description="Perspective Mode",
+        items=[
+            ('ONE_POINT',   "1-Point", "Use 1-point perspective"),
+            ('TWO_POINT',   "2-Point", "Use 2-point perspective"),
+            ('THREE_POINT', "3-Point", "Use 3-point perspective")
+        ],
+        default='THREE_POINT'
+    )
+
+    scene_scale: bpy.props.FloatProperty(
+        name="Scene Scale",
+        description="Scale of the scene for vanishing lines",
+        default=10.0,
+        min=0.01,
+        max=100.0
+    )
 
     enable_manual_principal: bpy.props.BoolProperty(
         name="Manual Principal Point",
         description="Set principal point manually",
         default=False
     )
-    
+
+    quad_mode: bpy.props.BoolProperty(
+        name="Quad Mode",
+        description="Enable quad mode for 2-point perspective",
+        default=False
+    )
+
+    # control points
+    origin: bpy.props.PointerProperty(name="origin", type=Point)
     principal: bpy.props.PointerProperty(name="principal", type=Point)
 
     first_vanishing_lines: bpy.props.CollectionProperty(
@@ -43,31 +77,7 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Third Vanishing Lines", 
         type=Line
     )
-    
-    mode: bpy.props.EnumProperty(
-        name="Perspective Mode",
-        description="Perspective Mode",
-        items=[
-            ('ONE_POINT',   "1-Point", "Use 1-point perspective"),
-            ('TWO_POINT',   "2-Point", "Use 2-point perspective"),
-            ('THREE_POINT', "3-Point", "Use 3-point perspective")
-        ],
-        default='THREE_POINT'
-    )
 
-    quad_mode: bpy.props.BoolProperty(
-        name="Quad Mode",
-        description="Enable quad mode for 2-point perspective",
-        default=False
-    )
-
-    scene_scale: bpy.props.FloatProperty(
-        name="Scene Scale",
-        description="Scale of the scene for vanishing lines",
-        default=10.0,
-        min=0.01,
-        max=100.0
-    )
 
 ######################
 # REGISTER FUNCTIONS #

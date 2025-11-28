@@ -1,4 +1,5 @@
 # standard library
+from collections import namedtuple
 from typing import List, Tuple, Literal
 from enum import IntEnum
 import math
@@ -30,6 +31,16 @@ class EulerOrder(IntEnum):
     YXZ = 3
     ZXY = 4
     ZYX = 5
+
+"""
+Viewport named tuple
+    x: the lower-left corner of the viewport rectangle in window coordinates
+    y: the lower-left corner of the viewport rectangle
+    width: width of the viewport
+    height: height of the viewport
+"""
+
+Viewport = namedtuple('Viewport', ['x', 'y', 'width', 'height'])
 
 
 def pretty_matrix(value:np.array, separator:str='\t') -> str:
@@ -173,13 +184,12 @@ shift_y: {self.shift_y}\n
 # MAIN SOLVER FUNCTIONS #
 #########################
 def solve1vp(
-        width:int,
-        height:int,
+        viewport: Viewport,
         Fu: glm.vec2,
         second_vanishing_line: Tuple[glm.vec2, glm.vec2],
-        f:float|None=None, # focal length (in width and height units)
-        P:glm.vec2|None=None,
-        O:glm.vec2|None=None,
+        f:float, # focal length (in width and height units)
+        P:glm.vec2,
+        O:glm.vec2,
         first_axis = Axis.PositiveZ,
         second_axis = Axis.PositiveX,
         scale:float=1.0
@@ -203,12 +213,7 @@ def solve1vp(
         returns:
             the camera transformation matrix.
         """
-        if f is None:
-            f = height / 4  # assume a reasonable focal length
-        if P is None:
-            P = glm.vec2(width/2, height/2)
-        if O is None:
-            O = glm.vec2(width/2, height/2)
+
         #################################
         # 3. COMPUTE Camera Orientation #
         #################################
@@ -221,16 +226,24 @@ def solve1vp(
         # convert to 4x4 matrix for transformations
         view_matrix:glm.mat4 = glm.mat4(view_orientation_matrix)
 
+        
+
         ##############################
         # 4. COMPUTE Camera Position #
         ##############################
+        # compute lens shift from principal point
+        center_x = viewport.x + viewport.width / 2
+        center_y = viewport.y + viewport.height / 2
+        shift_x = -(P.x - center_x) / (viewport.width / 2)
+        shift_y = (P.y - center_y) / (viewport.height / 2)
+
         camera_position = compute_camera_position(
-            width, 
-            height, 
+            viewport,
             f, 
             view_matrix, 
             O,
-            glm.vec2(P.x, height-P.y), # Pass TL P so compute_camera_position uses the same shift logic
+            shift_x,
+            shift_y,
             scale
         )
 
@@ -241,15 +254,15 @@ def solve1vp(
         # 3. Adjust Camera Roll #
         #########################
         # Roll the camera based on the horizon line projected to 3D
-        shift_x = (P.x - width / 2) / (width / 2)
-        shift_y = (P.y - height / 2) / (height / 2)
+
+
+        # Updated Shift Logic: Negate X to align with OpenGL frustum projection
         if second_vanishing_line:
-            fovy = fov_from_focal_length(f, height)
+            fovy = fov_from_focal_length(f, viewport.height)
             roll_matrix = compute_roll_matrix(
-                width, 
-                height, 
+                viewport,
                 second_vanishing_line,
-                projection_matrix=perspective_tiltshift(fovy, width/height, 0.1, 100.0, shift_x, shift_y),
+                projection_matrix=perspective_tiltshift(fovy, viewport.width/viewport.height, 0.1, 100.0, shift_x, shift_y),
                 view_matrix=view_matrix
             )
 
@@ -267,17 +280,16 @@ def solve1vp(
 
         return SolverResults(
             transform=camera_transform,
-            fovy=fov_from_focal_length(f, height),
-            aspect=width/height,
+            fovy=fov_from_focal_length(f, viewport.height),
+            aspect=viewport.width/viewport.height,
             near_plane=0.1,
             far_plane=100.0,
-            shift_x = -(P.x - width / 2) / (width / 2),
-            shift_y = (P.y - height / 2) / (height / 2)
+            shift_x=shift_x,
+            shift_y=shift_y
         )
 
 def solve2vp(
-        width:int,
-        height:int,
+        viewport: Viewport,
         Fu: glm.vec2,
         Fv: glm.vec2,
         P: glm.vec2,
@@ -298,7 +310,12 @@ def solve2vp(
         Fv=Fv,
         P=P
     )
-    fovy = fov_from_focal_length(f, height)
+    fovy = fov_from_focal_length(f, viewport.height)
+
+    # Sanity check the resul
+    if fovy < math.radians(1) or fovy > math.radians(179):
+        logger.warning(f"Warning: Computed fovy {math.degrees(fovy):.1f}° is outside reasonable range [1°, 179°]")
+    
 
     #################################
     # 3. COMPUTE Camera Orientation #
@@ -321,16 +338,18 @@ def solve2vp(
     # Standard OpenGL: +ShiftY moves window UP. (0,0,0) projects to -Y_ndc.
     # If P is Top (y=0), we want projection Top (y=+1). We need -ShiftY.
     # (P_tl.y - H/2) for P=0 is Negative. So this formula is correct for Y.
-    shift_x = -(P.x - width / 2) / (width / 2)
-    shift_y = (P.y - height / 2) / (height / 2)
+    # compute lens shift from principal point
+    center_x = viewport.x + viewport.width / 2
+    center_y = viewport.y + viewport.height / 2
+    shift_x = -(P.x - center_x) / (viewport.width / 2)
+    shift_y = (P.y - center_y) / (viewport.height / 2)
 
     camera_position = compute_camera_position(
-        width, 
-        height, 
+        viewport, 
         f, 
         view_matrix, 
         O,
-        glm.vec2(P.x, height-P.y), # Pass TL P so compute_camera_position uses the same shift logic
+        shift_x, shift_y,
         scale
     )
 
@@ -349,7 +368,7 @@ def solve2vp(
     return SolverResults(
         transform=camera_transform,
         fovy=fovy,
-        aspect=width/height,
+        aspect=viewport.width/viewport.height,
         near_plane=0.1,
         far_plane=100.0,
         shift_x=shift_x,
@@ -438,29 +457,24 @@ def compute_orientation_from_two_vanishing_points(
 
     return view_orientation_matrix
 
-def compute_camera_position(
-        width:int,
-        height:int,
+def compute_camera_position_old(
+        viewport: Viewport,
         f:float,
         view_matrix:glm.mat4,
         O:glm.vec2,
-        P:glm.vec2,
+        shift_x,
+        shift_y,
         scale:float=1.0,
     )-> glm.vec3:
     """
     Computes the camera position in 3D space from 2D image coordinates and camera parameters.
     """
-    fovy = fov_from_focal_length(f, height)
     near = 0.1
     far = 100
 
-    # Updated Shift Logic: Negate X to align with OpenGL frustum projection
-    shift_x = -(P.x - width / 2) / (width / 2)
-    shift_y = (P.y - height / 2) / (height / 2)
-
     projection_matrix = perspective_tiltshift(
-        fovy, 
-        width/height, 
+        fov_from_focal_length(f, viewport.height), 
+        viewport.width/viewport.height, 
         near,
         far, 
         shift_x, 
@@ -476,14 +490,63 @@ def compute_camera_position(
         ),
         glm.mat4(view_matrix), 
         projection_matrix, 
-        glm.vec4(0,0,width,height)
+        (viewport.x, viewport.y, viewport.width, viewport.height)
     )
 
     return -origin_3D
 
+def compute_camera_position(
+        viewport: Viewport,
+        f:float,
+        view_matrix:glm.mat4,
+        O:glm.vec2,
+        shift_x,
+        shift_y,
+        scale:float=1.0,
+    )-> glm.vec3:
+    """
+    Computes the camera position in 3D space from 2D image coordinates and camera parameters.
+    
+    The key insight: When the principal point is not at the center, the origin point O
+    is not directly in front of the camera. We need to account for the lens shift when
+    computing the camera position.
+    """
+    near = 0.1
+    far = 100
+
+    projection_matrix = perspective_tiltshift(
+        fov_from_focal_length(f, viewport.height), 
+        viewport.width/viewport.height, 
+        near,
+        far, 
+        shift_x, 
+        shift_y
+    )
+
+    # We need to find the camera position such that the 3D origin (0,0,0)
+    # projects to the 2D origin point O in the image.
+    # 
+    # To do this, we unproject O with the view_matrix containing only orientation
+    # (no translation yet) to find where in camera space the origin should be.
+    origin_3D_world_space = glm.unProject(
+        glm.vec3(
+            O.x, 
+            O.y, 
+            _world_depth_to_ndc_z(scale, near, far)
+        ),
+        glm.mat4(view_matrix),  # Identity matrix - no transformation yet
+        projection_matrix, 
+        (viewport.x, viewport.y, viewport.width, viewport.height)
+    )
+
+    # Transform this point from camera space to world space using the orientation
+
+    # The camera position is such that origin_3D_world_space ends up at world origin (0,0,0)
+    # So we need to position the camera at -origin_3D_world_space
+    return -origin_3D_world_space
+
 def compute_roll_matrix(
-        width:int,
-        height:int,
+        viewport: Viewport,
         second_vanishing_line:Tuple[glm.vec2, glm.vec2],
         projection_matrix:glm.mat4,
         view_matrix:glm.mat4,
@@ -497,8 +560,7 @@ def compute_roll_matrix(
     # Project the second vanishing line the forward plane in 3D world space
     P, Q = second_vanishing_line
 
-    # Unproject pixel coordinates to world space rays
-    viewport = glm.vec4(0, 0, width, height)    
+    # Unproject pixel coordinates to world space rays 
     P_ray_origin, P_ray_dir = cast_ray(P, view_matrix, projection_matrix, viewport)
     Q_ray_origin, Q_ray_dir = cast_ray(Q, view_matrix, projection_matrix, viewport)
 
@@ -591,14 +653,6 @@ def compute_focal_length_from_vanishing_points(
         )
     
     focal_length = math.sqrt(focal_length_squared)
-    
-    # Sanity check the result
-    min_focal = 10.0   # Minimum reasonable focal length
-    max_focal = 10000.0 # Maximum reasonable focal length
-    
-    if focal_length < min_focal or focal_length > max_focal:
-        logger.warning(f"Warning: Computed focal length {focal_length:.1f} is outside reasonable range [{min_focal}, {max_focal}]")
-    
     return focal_length
 
 def triangle_ortho_center(k: glm.vec2, l: glm.vec2, m: glm.vec2)-> glm.vec2:
@@ -863,7 +917,7 @@ def cast_ray(
     pos: glm.vec2, 
     view_matrix: glm.mat4, 
     projection_matrix: glm.mat4, 
-    viewport: glm.vec4
+    viewport: Viewport
 ) -> Tuple[glm.vec3, glm.vec3]:
     """
     Cast a ray from the camera through a pixel in screen space.
@@ -1050,7 +1104,7 @@ def adjust_vanishing_lines_by_rotation(
 def vanishing_points_from_camera(
         view_matrix: glm.mat3, 
         projection_matrix: glm.mat4, 
-        viewport: glm.vec4
+        viewport: Viewport
     ) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
     # Project vanishing Points
     MAX_FLOAT32 = (2 - 2**-23) * 2**127
