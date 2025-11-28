@@ -102,9 +102,9 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
             row.prop(camera.data.vl_settings.principal, "y", text="Y")
 
             for label, lines in [
-                ("Y Axis", camera.data.vl_settings.first_vanishing_lines), 
-                ("X Axis", camera.data.vl_settings.second_vanishing_lines),
-                ("Z Axis", camera.data.vl_settings.second_vanishing_lines),
+                ("1st Axis", camera.data.vl_settings.first_vanishing_lines), 
+                ("2nd Axis", camera.data.vl_settings.second_vanishing_lines),
+                ("3rd Axis", camera.data.vl_settings.third_vanishing_lines),
             ]:
                 panel.separator()
                 panel.label(text=label)
