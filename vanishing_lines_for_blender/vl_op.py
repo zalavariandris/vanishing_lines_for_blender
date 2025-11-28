@@ -354,16 +354,28 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
 
             case "TWO_POINT":
-                for line in self.get_second_vanishing_lines():
-                    if not self._active_camera.data.vl_settings.quad_mode:
+                if not self._active_camera.data.vl_settings.quad_mode:
+                    for line in self.get_second_vanishing_lines():
+                        for cp in line:
+                            P = self._project(context, (cp.x, cp.y))
+                            add_point( P, RED )
+                    add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
+                else:
+                    for line in self.get_quad_mode_second_vanishing_lines():
                         for cp in line:
                             P = self._project(context, (cp.x, cp.y))
                             add_point( P, RED )
                     add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
 
             case "THREE_POINT":
-                for line in self.get_second_vanishing_lines():
-                    if not self._active_camera.data.vl_settings.quad_mode:
+                if not self._active_camera.data.vl_settings.quad_mode:
+                    for line in self.get_second_vanishing_lines():
+                        for cp in line:
+                            P = self._project(context, (cp.x, cp.y))
+                            add_point( P, RED )
+                    add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
+                else:
+                    for line in self.get_quad_mode_second_vanishing_lines():
                         for cp in line:
                             P = self._project(context, (cp.x, cp.y))
                             add_point( P, RED )
@@ -522,7 +534,18 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             lines.append((start, end))
         return lines
     
-    def set_second_vanishing_lines(self, lines:List[Tuple[glm.vec2, glm.vec2]]):
+    def get_quad_mode_second_vanishing_lines(self)->List[Tuple[glm.vec2, glm.vec2]]:
+        """Returns the second vanishing line in quad mode, computed from the first vanishing lines.
+        these lines are connecting the opposite corners of the rectangle defined by the first vanishing lines."""
+        vl1 = self.get_first_vanishing_lines()
+        line1 = vl1[0]
+        line2 = vl1[-1]
+        
+        return [
+            (glm.vec2(line1[0].x, line2[0].y), glm.vec2(line1[1].x, line2[1].y))
+        ]
+    
+    def set_second_vanishing_lines(self, lines:List[Tuple[glm.vec2, glm.vec2]]): 
         vl = self._active_camera.data.vl_settings.second_vanishing_lines
         if len(vl) < len(lines):
             while len(vl) < len(lines):
@@ -760,7 +783,10 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                         
                 case "TWO_POINT":
                     first_vanishing_lines = self.get_first_vanishing_lines()
-                    second_vanishing_lines = self.get_second_vanishing_lines()
+                    if not self._active_camera.data.vl_settings.quad_mode:
+                        second_vanishing_lines = self.get_second_vanishing_lines()
+                    else:
+                        second_vanishing_lines = self.get_quad_mode_second_vanishing_lines()
 
                     vp1 = solver.least_squares_intersection_of_lines(first_vanishing_lines)
                     vp2 = solver.least_squares_intersection_of_lines(second_vanishing_lines)
@@ -784,7 +810,10 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
                 case "THREE_POINT":
                     first_vanishing_lines = self.get_first_vanishing_lines()
-                    second_vanishing_lines = self.get_second_vanishing_lines()
+                    if not self._active_camera.data.vl_settings.quad_mode:
+                        second_vanishing_lines = self.get_second_vanishing_lines()
+                    else:
+                        second_vanishing_lines = self.get_quad_mode_second_vanishing_lines()
                     third_vanishing_lines = self.get_third_vanishing_lines()
 
                     vp1 = solver.least_squares_intersection_of_lines(first_vanishing_lines)
