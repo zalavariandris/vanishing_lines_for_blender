@@ -236,7 +236,7 @@ def solve1vp(
         center_x = viewport.x + viewport.width / 2
         center_y = viewport.y + viewport.height / 2
         shift_x = -(P.x - center_x) / (viewport.width / 2)
-        shift_y = (P.y - center_y) / (viewport.height / 2)
+        shift_y =  (P.y - center_y) / (viewport.height / 2)
 
         camera_position = compute_camera_position(
             viewport,
@@ -545,7 +545,7 @@ def compute_camera_position(
         near,
         far, 
         shift_x, 
-        shift_y
+        -shift_y # Note the negation here to match unProject convention TODO: double check why?
     )
 
     # We need to find the camera position such that the 3D origin (0,0,0)

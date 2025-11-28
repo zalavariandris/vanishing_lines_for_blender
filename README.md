@@ -13,7 +13,14 @@ __work in progress__
 
 
 ## ChangeLog
+
+### **0.7.3
+- [ ] ADD reference distance
+- [ ] ADD axis assignment
+
 ### **0.7.2 - 2025-11-28**
+- [x] FIX use _centered_, _square_ (fit to output rectangle) normalized coordinates.
+- [x] FIX quad mode
 - [x] refactor draw code to DrawLayer class
 - [x] FIX Active and HOVER control point color
 - [x] ADD draw vanishing lines extended to vanishing points
@@ -29,13 +36,7 @@ __work in progress__
 
 
 ## Todo
-- [...] FIX use _centered_, _square_ (fit to output rectangle) normalized coordinates.
-- [x] FIX quad mode
-- [ ] ADD reference distance
-- [ ] ADD axis assignment
-
 - [ ] when a line is zero length, there is an unhandled error
-
 - [ ] show errors in the UI, and phrase them to be helpful.
 
 - [ ] FIX while dragging controlpoint, move them with mouse instead of setting the coords to the mousepos
