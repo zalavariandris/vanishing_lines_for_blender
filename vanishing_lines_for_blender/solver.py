@@ -193,7 +193,8 @@ def solve1vp(
         O:glm.vec2,
         first_axis = Axis.PositiveZ,
         second_axis = Axis.PositiveX,
-        scale:float=1.0
+        scale:float=10.0, # referenmce worlds space size
+        reference_distance:float=0.5 # 2D distance from origin to camera
     )->SolverResults:
         """
         Solve camera orientation from a single vanishing point and focal length,
@@ -227,8 +228,6 @@ def solve1vp(
         # convert to 4x4 matrix for transformations
         view_matrix:glm.mat4 = glm.mat4(view_orientation_matrix)
 
-        
-
         ##############################
         # 4. COMPUTE Camera Position #
         ##############################
@@ -238,14 +237,24 @@ def solve1vp(
         shift_x = -(P.x - center_x) / (viewport.width / 2)
         shift_y =  (P.y - center_y) / (viewport.height / 2)
 
+        projection_matrix = perspective_tiltshift(
+            fov_from_focal_length(f, viewport.height), 
+            viewport.width/viewport.height, 
+            0.1,
+            100, 
+            shift_x, 
+            -shift_y # Note the negation here to match unProject convention TODO: double check why?
+        )
+
+        
+
         camera_position = compute_camera_position(
             viewport,
-            f, 
-            view_matrix, 
+            view_matrix,
+            projection_matrix,
             O,
-            shift_x,
-            shift_y,
-            scale
+            scale,
+            reference_distance
         )
 
         # apply translation
@@ -298,7 +307,8 @@ def solve2vp(
         O: glm.vec2,
         first_axis = Axis.PositiveZ,
         second_axis = Axis.PositiveX,
-        scale:float=1.0
+        scale:float=10.0, # referenmce worlds space size
+        reference_distance:float=0.5 # 2D distance from origin to camera
     )->SolverResults:
     """ Solve camera intrinsics and orientation from 3 orthogonal vanishing points.
     returns (fovy in radians, camera_orientation_matrix, camera_position)
@@ -346,13 +356,22 @@ def solve2vp(
     shift_x = -(P.x - center_x) / (viewport.width / 2)
     shift_y = (P.y - center_y) / (viewport.height / 2)
 
+    projection_matrix = perspective_tiltshift(
+        fov_from_focal_length(f, viewport.height), 
+        viewport.width/viewport.height, 
+        0.1,
+        100, 
+        shift_x, 
+        -shift_y # Note the negation here to match unProject convention TODO: double check why?
+    )
+
     camera_position = compute_camera_position(
         viewport, 
-        f, 
         view_matrix, 
+        projection_matrix,
         O,
-        shift_x, shift_y,
-        scale
+        scale,
+        reference_distance
     )
 
     # apply translation
@@ -480,143 +499,55 @@ def world_point_from_screen_center_by_distance(view_matrix, projection_matrix, v
     point_world = camera_pos + ray_dir * distance
     return point_world
 
-def compute_camera_position_old1(
-        viewport: Viewport,
-        f:float,
-        view_matrix:glm.mat4,
-        O:glm.vec2,
-        shift_x,
-        shift_y,
-        scale:float=1.0,
-    )-> glm.vec3:
-    """
-    Computes the camera position in 3D space from 2D image coordinates and camera parameters.
-    """
-    near = 0.1
-    far = 100
-
-    projection_matrix = perspective_tiltshift(
-        fov_from_focal_length(f, viewport.height), 
-        viewport.width/viewport.height, 
-        near,
-        far, 
-        shift_x, 
-        shift_y
-    )
-
-    # # convert to 4x4 matrix for transformations
-    # origin_3D = glm.unProject(
-    #     glm.vec3(
-    #         O.x, 
-    #         O.y, 
-    #         _world_depth_to_ndc_z(scale, near, far)
-    #     ),
-    #     glm.mat4(view_matrix), 
-    #     projection_matrix, 
-    #     (viewport.x, viewport.y, viewport.width, viewport.height)
-    # )
-
-    origin_3D = world_point_from_screen_center_by_distance(view_matrix, projection_matrix, viewport, distance=scale)
-
-    return -origin_3D
-
 def compute_camera_position(
         viewport: Viewport,
-        f:float,
         view_matrix:glm.mat4,
+        projection_matrix:glm.mat4,
         O:glm.vec2,
-        shift_x,
-        shift_y,
         scale:float=1.0,
+        reference_distance:float=0.5
     )-> glm.vec3:
     """
     Computes the camera position in 3D space from 2D image coordinates and camera parameters.
-    
-    The key insight: When the principal point is not at the center, the origin point O
-    is not directly in front of the camera. We need to account for the lens shift when
-    computing the camera position.
     """
-    near = 0.1
-    far = 100
-
-    projection_matrix = perspective_tiltshift(
-        fov_from_focal_length(f, viewport.height), 
-        viewport.width/viewport.height, 
-        near,
-        far, 
-        shift_x, 
-        -shift_y # Note the negation here to match unProject convention TODO: double check why?
-    )
 
     # We need to find the camera position such that the 3D origin (0,0,0)
     # projects to the 2D origin point O in the image.
     # 
     # To do this, we unproject O with the view_matrix containing only orientation
     # (no translation yet) to find where in camera space the origin should be.
+    
+    # get near and far from projection matrix
+    near = projection_matrix[3][2] / (projection_matrix[2][2] - 1)
+    far = projection_matrix[3][2] / (projection_matrix[2][2] + 1)
+
     origin_3D_world_space = glm.unProject(
         glm.vec3(
             O.x, 
             O.y, 
-            _world_depth_to_ndc_z(scale, near, far)
+            _world_depth_to_ndc_z(1.0, near, far)
         ),
-        glm.mat4(view_matrix),  # Identity matrix - no transformation yet
+        view_matrix,  # Identity matrix - no transformation yet
         projection_matrix, 
-        (viewport.x, viewport.y, viewport.width, viewport.height)
+        viewport
     )
 
-    # Transform this point from camera space to world space using the orientation
-
-    # The camera position is such that origin_3D_world_space ends up at world origin (0,0,0)
-    # So we need to position the camera at -origin_3D_world_space
-    return -origin_3D_world_space
-
-def compute_camera_position_old2(
-        viewport: Viewport,
-        f:float,
-        view_matrix:glm.mat4,
-        O:glm.vec2,
-        shift_x,
-        shift_y,
-        scale:float=1.0,
-    )-> glm.vec3:
-    """
-    Computes the camera position in 3D space from 2D image coordinates and camera parameters.
-    
-    FIX: Transform viewport and O to standard [0, 0, W, H] space for glm.unProject,
-    then transform back.
-    """
-    near = 0.1
-    far = 100
-
-    projection_matrix = perspective_tiltshift(
-        fov_from_focal_length(f, viewport.height), 
-        viewport.width/viewport.height, 
-        near,
-        far, 
-        shift_x, 
-        shift_y
-    )
-
-    # Transform to standard OpenGL viewport coordinates [0, 0, width, height]
-    # glm.unProject expects this format
-    standard_viewport = glm.vec4(0, 0, viewport.width, viewport.height)
-    
-    # Transform O from viewport space to standard space
-    O_standard_x = O.x - viewport.x
-    O_standard_y = O.y - viewport.y
-    
-    origin_3D = glm.unProject(
+    reference_distance_point_world_space = glm.unProject(
         glm.vec3(
-            O_standard_x, 
-            O_standard_y, 
-            _world_depth_to_ndc_z(scale, near, far)
+            O.x, 
+            O.y, 
+            _world_depth_to_ndc_z(1.0, near, far)
         ),
-        view_matrix, 
+        view_matrix,  # Identity matrix - no transformation yet
         projection_matrix, 
-        standard_viewport
+        viewport
     )
 
-    return -origin_3D
+    distance_to_origin = glm.length(reference_distance_point_world_space - origin_3D_world_space)
+
+    scale_factor = distance_to_origin / reference_distance
+
+    return -origin_3D_world_space * scale_factor
 
 def compute_roll_matrix(
         viewport: Viewport,

@@ -56,8 +56,6 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
             self.layout.operator("view.vanishing_lines_operator", text="Start Vanishing Lines")
             return
         
-
-
         ##########
         # SOLVER #
         ##########
@@ -68,7 +66,6 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
             panel.separator()
             panel.prop(camera.data.vl_settings, "compute_space", text="Compute Space")
             panel.separator()
-            panel.prop(camera.data.vl_settings, "scene_scale", text="Scene Scale")
             panel.prop(camera.data.vl_settings, "mode", text="Mode")
 
             mode = camera.data.vl_settings.mode
@@ -87,7 +84,32 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
                     panel.label(text="")
             
             panel.separator()
-                
+
+        ######################
+        # REFERENCE DISTANCE #
+        ######################
+        header, panel = self.layout.panel("reference_distance", default_closed=False)
+        header.label(text="Reference Distance")
+        if panel:
+            panel.prop(camera.data.vl_settings, "scene_scale_mode", text="Scale Mode")
+            panel.prop(camera.data.vl_settings, "scene_scale", text="Scene Scale")
+            panel.prop(camera.data.vl_settings, "reference_distance", text="Reference Distance")
+            panel.separator()
+
+        ###################
+        # AXIS ASSIGNMENT #
+        ###################
+        header, panel = self.layout.panel("axis_assignement", default_closed=True)
+        header.label(text="Axis Assignement")
+
+        if panel:
+            panel.label(text="Assign vanishing line axes by color:")
+            row = panel.row(align=False)
+            row.prop(camera.data.vl_settings, "first_axis_assignment", text="1st Axis", expand=True)
+            row.prop(camera.data.vl_settings, "first_axis_sign", text="1st Sign", expand=True)
+            row = panel.row(align=True)
+            row.prop(camera.data.vl_settings, "second_axis_assignment", text="2nd Axis", expand=True)
+            panel.separator()
 
         ##################
         # CONTROL POINTS #
@@ -149,7 +171,6 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
                     panel.prop(bg, "alpha", text="Opacity", slider=True)
 
             panel.separator()
-                
 
 
 ######################

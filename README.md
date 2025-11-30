@@ -15,8 +15,8 @@ __work in progress__
 ## ChangeLog
 
 ### **0.7.3
-- [ ] ADD reference distance
 - [ ] ADD axis assignment
+- [ ] ADD reference distance
 
 ### **0.7.2 - 2025-11-28**
 - [x] FIX use _centered_, _square_ (fit to output rectangle) normalized coordinates.

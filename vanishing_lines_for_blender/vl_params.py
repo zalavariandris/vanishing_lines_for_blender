@@ -39,14 +39,6 @@ class VLSettings(bpy.types.PropertyGroup):
         default='THREE_POINT'
     )
 
-    scene_scale: bpy.props.FloatProperty(
-        name="Scene Scale",
-        description="Scale of the scene for vanishing lines",
-        default=10.0,
-        min=0.01,
-        max=100.0
-    )
-
     enable_manual_principal: bpy.props.BoolProperty(
         name="Manual Principal Point",
         description="Set principal point manually",
@@ -57,6 +49,33 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Quad Mode",
         description="Enable quad mode for 2-point perspective",
         default=False
+    )
+
+    scene_scale_mode: bpy.props.EnumProperty(
+        name="Scene Scale Mode",
+        description="Scene Scale Mode",
+        items=[
+            ('ORIGIN', "Origin", "Set the origin distance from the camera"),
+            ('X_AXIS', "X Axis", "Use the X axis for reference distance"),
+            ('Y_AXIS', "Y Axis", "Use the Y axis for reference distance"),
+            ('Z_AXIS', "Z Axis", "Use the Z axis for reference distance")
+        ]
+    )
+
+    scene_scale: bpy.props.FloatProperty(
+        name="Scene Scale",
+        description="Scale of the scene for vanishing lines",
+        default=10.0,
+        min=0.01,
+        max=100.0
+    )
+
+    reference_distance: bpy.props.FloatProperty(
+        name="Reference distance",
+        description="Reference distance",
+        default=0.5,
+        min=0.001,
+        max=2.0
     )
 
     # control points
