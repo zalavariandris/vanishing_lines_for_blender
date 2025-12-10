@@ -1,6 +1,7 @@
 # standard library
 import math
 from typing import Any, Iterable, List, Tuple, Literal, cast
+import warnings
 
 # Blender
 import bpy
@@ -14,7 +15,9 @@ from bpy_extras import view3d_utils
 import glm
 
 # local
-from . import solver
+from . core import solver_functional as solver
+from . core import utils
+
 from . draw_layer import DrawLayer
 
 from typing import Protocol
@@ -108,10 +111,11 @@ def crop_space_to_aspect(
     return new_x, new_y, new_w, new_h
 
 def apply_solver_results_to_blender_camera(
-        results: solver.SolverResults, 
+        projection: glm.mat4,
+        view: glm.mat4, 
         camera_object: bpy.types.Object,
-        compute_space: solver.Viewport,
-        output_space: solver.Viewport
+        compute_space: solver.Rect,
+        output_space: solver.Rect
     ) -> None:
     """
     Apply solver results to Blender camera, accounting for aspect ratio differences
@@ -126,10 +130,17 @@ def apply_solver_results_to_blender_camera(
     if not isinstance(camera_object.data, bpy.types.Camera):
         raise TypeError("Expected a Camera data-block")
     
+    P, f, shift = solver.decompose_intrinsics(compute_space, projection)
+    fovy = solver.utils.fov_from_focal_length(f, compute_space.height)
+    position, orientation = solver.decompose_extrinsics(view)
+    aspect = compute_space.width / compute_space.height
+    transform = glm.inverse(view)
+
     camera_data: bpy.types.Camera = cast(bpy.types.Camera, camera_object.data)
 
     # Apply transform
-    transform_list = [[v for v in row] for row in glm.transpose(results.transform)]
+    
+    transform_list = [[v for v in row] for row in glm.transpose(transform)]
     camera_object.matrix_world = mathutils.Matrix(transform_list)
 
     # Calculate the aspect ratio correction factor
@@ -138,21 +149,26 @@ def apply_solver_results_to_blender_camera(
     
     # The focal length needs to be adjusted based on which dimension is constraining
     # When compute space is cropped to match output aspect, the effective sensor size changes
+    
     if compute_aspect > output_aspect:
         # Compute space is wider - height is constraining dimension
         # Use results.fovy directly, but adjust sensor width
-        focal_length = solver.focal_length_from_fov(results.fovy, camera_data.sensor_height)
+        focal_length = utils.focal_length_from_fov(fovy, camera_data.sensor_height)
     else:
         # Compute space is taller - width is constraining dimension  
         # Need to calculate fovx and derive focal length from that
-        fovx = 2.0 * math.atan(math.tan(results.fovy / 2.0) * results.aspect)
-        focal_length = solver.focal_length_from_fov(fovx, camera_data.sensor_width)
+        fovx = 2.0 * math.atan(math.tan(fovy / 2.0) * aspect)
+        focal_length = utils.focal_length_from_fov(fovx, camera_data.sensor_width)
     
     camera_data.lens = focal_length
     
     # Apply lens shift
-    camera_data.shift_x = results.shift_x / 2
-    camera_data.shift_y = -results.shift_y / 2 / results.aspect
+    center_x = compute_space.x + compute_space.width / 2
+    center_y = compute_space.y + compute_space.height / 2
+    shift_x =  (P.x - center_x) / (compute_space.width / 2)
+    shift_y = -(P.y - center_y) / (compute_space.height / 2)
+    camera_data.shift_x = shift_x/2 #  results.shift_x / 2
+    camera_data.shift_y = shift_y/2 # -results.shift_y / 2 / results.aspect
 
 def closest_point_to_vp(points, vp)->glm.vec2:
     return sorted([points[0], points[1]], key=lambda P: glm.distance2(P, vp))[0]
@@ -350,6 +366,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             cls._view_draw_screen_handler = None
 
     def invoke(self, context, event):
+        # validate context
         scene = context.scene
         if scene is None:
             self.report({'ERROR'}, "No active scene found")
@@ -381,12 +398,15 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 'WINDOW', 
                 'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
             )
-        self.set_compute_space(solver.Viewport(-1,-1,2,2))
+
+        # Setup Solver
+        self.set_compute_space(solver.Rect(-1,-1,2,2))
         
-        # Setup GUI
+        # Setup default props if not initialized
         if not self._active_camera.data.vl_settings.initialized:
             self.set_origin(glm.vec2(0, -0.25))
             self.set_principal(glm.vec2(0, 0))
+            self._active_camera.data.vl_settings.initialized = True
 
         if not self.get_first_vanishing_lines():
             self.set_first_vanishing_lines([
@@ -405,7 +425,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 (glm.vec2(-0.3, -0.52), glm.vec2(-0.4, 0.5)),
                 (glm.vec2(0.3, -0.52), glm.vec2(0.4, 0.5))
             ])
-        self._active_camera.data.vl_settings.initialized = True
         
         # deps update handler
         if not self._depsgraph_update_post_handler:
@@ -416,14 +435,14 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
            area.tag_redraw()
 
         # Initial Solve
-        self.solve_camera(context)
+        self.update_solve(context)
 
         # run as modal
         window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def _on_deps_graph_update(self, scene, depsgraph:bpy.types.Depsgraph):
-        # when the depsgraph updates, check for camera lens changes and update solve
+        """when the depsgraph changes, regarding the active camera, or the output resolution, we update the solve."""
         updates:bpy.types.bpy_prop_collection[bpy.types.DepsgraphUpdate] = depsgraph.updates
         for update in updates:
             print("Depsgraph update:", update)
@@ -435,11 +454,12 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             print("  is_updated_shading:", update.is_updated_shading)
             print("  is_updated_transform:", update.is_updated_transform)
             if isinstance(update.id, bpy.types.Camera):
-                self.solve_camera(bpy.context)
+                self.update_solve(bpy.context)
 
     def _on_view_draw(self, context):
-        """create batches for drawing points and lines"""
+        """draw the vanishing lines and control points in the 3D view"""
         if self._draw_layer is None:
+            warnings.warn("Draw layer not initialized. Skipping draw.")
             return
         
         GREEN = (0,1,0,1)
@@ -450,21 +470,16 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         self._draw_layer.clear()
 
         # Draw Origin and Principal Point
-        self._draw_layer.add_point(self._project(context, (self.get_origin().x, self.get_origin().y)), YELLOW)
-        self._draw_layer.add_text(self._project(context, (self.get_origin().x, self.get_origin().y)), "O", YELLOW)
-        self._draw_layer.add_point(self._project(context, (self.get_principal().x, self.get_principal().y)), YELLOW)
-        self._draw_layer.add_text(self._project(context, (self.get_principal().x, self.get_principal().y)), "P", YELLOW)
+        self._draw_layer.add_point(self._project(context, (self.get_origin().x,    self.get_origin().y)),         YELLOW)
+        self._draw_layer.add_text( self._project(context, (self.get_origin().x,    self.get_origin().y)),   "O",  YELLOW)
+        self._draw_layer.add_point(self._project(context, (self.get_principal().x, self.get_principal().y)),      YELLOW)
+        self._draw_layer.add_text( self._project(context, (self.get_principal().x, self.get_principal().y)), "P", YELLOW)
 
         # Draw Vanishing Lines
-        NumberOfVanishigPoints = {
-            "ONE_POINT": 1,
-            "TWO_POINT": 2,
-            "THREE_POINT": 3
-        }[self._active_camera.data.vl_settings.mode]
-
-        if NumberOfVanishigPoints >= 1:
-            # draw first vanishing lines
-            vp1 = tuple(solver.least_squares_intersection_of_lines(self.get_first_vanishing_lines()))
+        vl_settings = self._active_camera.data.vl_settings
+        if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
+            # Draw first vanishing lines
+            vp1 = tuple(solver.utils.least_squares_intersection_of_lines(self.get_first_vanishing_lines()))
             for line in self.get_first_vanishing_lines():
                 for cp in line:
                     P = self._project(context, (cp.x, cp.y))
@@ -472,22 +487,22 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), GREEN)
                 self._draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp1)), self._project(context, vp1), dim_color(GREEN))
 
-            # draw second vanishing line (first line only)
-            if not self._active_camera.data.vl_settings.quad_mode or NumberOfVanishigPoints == 1:
-                line = self.get_second_vanishing_lines()[0]
-                for cp in line:
-                    P = self._project(context, (cp.x, cp.y))
-                    self._draw_layer.add_point( P, RED )
-                self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
+        if vl_settings.mode in {'ONE_POINT'}:
+            # Draw the horizontal line for the vp1 mode:
+            line = self.get_second_vanishing_lines()[0]
+            for cp in line:
+                P = self._project(context, (cp.x, cp.y))
+                self._draw_layer.add_point( P, RED )
+            self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
 
-        if NumberOfVanishigPoints >= 2:
-            # draw second vanishing lines
-            if self._active_camera.data.vl_settings.quad_mode:
+        if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
+            # Draw second vanishing lines
+            if vl_settings.quad_mode:
                 second_vl = self.get_quad_mode_second_vanishing_lines()
             else:
                 second_vl = self.get_second_vanishing_lines()
 
-            vp2 = tuple(solver.least_squares_intersection_of_lines(second_vl))
+            vp2 = tuple(solver.utils.least_squares_intersection_of_lines(second_vl))
             for line in second_vl:
                 for cp in line:
                     P = self._project(context, (cp.x, cp.y))
@@ -495,8 +510,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
                 self._draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp2)), self._project(context, vp2), dim_color(RED))
 
-        if NumberOfVanishigPoints >= 3:
-            vp3 = tuple(solver.least_squares_intersection_of_lines(self.get_third_vanishing_lines()))
+        if vl_settings.mode in {'THREE_POINT'}:
+            vp3 = tuple(solver.utils.least_squares_intersection_of_lines(self.get_third_vanishing_lines()))
             for line in self.get_third_vanishing_lines():
                 for cp in line:
                     P = self._project(context, (cp.x, cp.y))
@@ -504,7 +519,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), BLUE)
                 self._draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp3)), self._project(context, vp3), dim_color(BLUE))
 
-        # Draw control points
+        # Draw active / hovered control point info
         if self._active_name is not None:
             cp_name, cp_pos = self.get_control_point_by_name(self._active_name)  # ensure index is valid
             self._draw_layer.add_point(self._project(context, (cp_pos.x, cp_pos.y)), (1,1,1,1))
@@ -515,14 +530,14 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             self._draw_layer.add_point(self._project(context, (cp_pos.x, cp_pos.y)), (1,1,1,1))
             self._draw_layer.add_text( self._project(context, (cp_pos.x, cp_pos.y)), f"{cp_name}:{cp_pos.x:.2f},{cp_pos.y:.2f}", (1,1,1,0.5))
 
-        # draw reference distance
-        vl_settings = self._active_camera.data.vl_settings
+        # Draw reference distance
         match vl_settings.scene_scale_mode:
             case 'ORIGIN':
                 pass
 
             case 'X_AXIS':
                 pass
+
             case 'Y_AXIS':
                 ...
 
@@ -536,7 +551,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             color=(0,1,1,0.5)
         )
 
-        compute_min = (self.get_compute_space().x, self.get_compute_space().y)
+        compute_min = (self.get_compute_space().x,                                self.get_compute_space().y)
         compute_max = (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y+self.get_compute_space().height)
         self._draw_layer.add_text(
             self._project(context, (self.get_compute_space().x, self.get_compute_space().y)),
@@ -549,6 +564,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             (0,1,1,1)
         )
 
+        # Execute the draw calls
         self._draw_layer.draw()
 
         # Draw error messages
@@ -576,14 +592,9 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         # origin and principal
         yield 'origin', vl_settings.origin
         yield 'principal', vl_settings.principal
+        
         # vanishing lines
-        NumberOfVanishigPoints = {
-            "ONE_POINT": 1,
-            "TWO_POINT": 2,
-            "THREE_POINT": 3
-        }[vl_settings.mode]
-
-        if NumberOfVanishigPoints >= 1:
+        if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
             # yield all first vanishing lines
             for idx, line in enumerate(vl_settings.first_vanishing_lines):
                 yield f"vl1.{idx}.start", line.start
@@ -593,20 +604,19 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             yield f"vl2.{0}.start", vl_settings.second_vanishing_lines[0].start
             yield f"vl2.{0}.end",   vl_settings.second_vanishing_lines[0].end
 
-        if NumberOfVanishigPoints >= 2:
+        if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
             if not vl_settings.quad_mode:
                 # all (but first) second vanishing lines
                 for idx, line in enumerate(vl_settings.second_vanishing_lines[1:], start=1):
                     yield f"vl2.{idx}.start", line.start
                     yield f"vl2.{idx}.end", line.end
 
-        if NumberOfVanishigPoints >= 3:
+        if vl_settings.mode in {'THREE_POINT'}:
             # all third vanishing lines
             for idx, line in enumerate(vl_settings.third_vanishing_lines):
                 yield f"vl3.{idx}.start", line.start
                 yield f"vl3.{idx}.end", line.end
 
-    
     def set_control_point(self, name: str, pos: Tuple[float, float]):
         for cp in self.get_control_points():
             cp_name, cp_pos = cp
@@ -637,26 +647,27 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         return closest_name
   
     # GETTERS / SETTERS
-    def get_compute_space(self) -> solver.Viewport:
+    def get_compute_space(self) -> solver.Rect:
         if self._active_camera is None:
             raise RuntimeError("No active camera set")
         
         vl_settings = self._active_camera.data.vl_settings
         cs = list(vl_settings.compute_space)
-        return solver.Viewport(cs[0], cs[1], cs[2], cs[3])
+        return solver.Rect(cs[0], cs[1], cs[2], cs[3])
     
-    def set_compute_space(self, viewport: solver.Viewport)->None:
+    def set_compute_space(self, viewport: solver.Rect)->None:
         if self._active_camera is None:
             raise RuntimeError("No active camera set")
         
         vl_settings = self._active_camera.data.vl_settings
         vl_settings.compute_space = (viewport.x, viewport.y, viewport.width, viewport.height)
 
-    def get_output_space(self, context) -> solver.Viewport:
-        return solver.Viewport(
+    def get_output_space(self, context) -> solver.Rect:
+        return solver.Rect(
             0,
             0, 
-            context.scene.render.resolution_x, context.scene.render.resolution_y
+            context.scene.render.resolution_x, 
+            context.scene.render.resolution_y
         )
     
     def get_origin(self):
@@ -856,7 +867,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 # move active control point
                 mouse_x_unproj, mouse_y_unproj = self._unproject(context, (event.mouse_region_x, event.mouse_region_y))
                 self.set_control_point(self._active_name, (mouse_x_unproj, mouse_y_unproj))
-                self.solve_camera(context)
+                self.update_solve(context)
 
                 # trigger redraw
                 if area.type == 'VIEW_3D':
@@ -909,7 +920,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             self._active_camera = None
             self._is_left_mouse_down = False
 
-    def solve_camera(self, context):
+    def update_solve(self, context):
         # region = context.region
         # rv3d = context.space_data.region_3d
         if self._active_camera is None:
@@ -944,10 +955,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             self._solve_error = None
             match self._active_camera.data.vl_settings.mode:
                 case "ONE_POINT":
-                    first_vanishing_lines = self.get_first_vanishing_lines()
-                    second_vanishing_line = self.get_second_vanishing_lines()[0]
-                    vp1 =  solver.least_squares_intersection_of_lines(first_vanishing_lines)
-
                     if not camera_data.vl_settings.enable_manual_principal:
                         center_x = self.get_compute_space().width/2.0 + self.get_compute_space().x
                         center_y = self.get_compute_space().height/2.0 + self.get_compute_space().y
@@ -955,49 +962,97 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
                     focal_length_pixel = camera_data.lens / camera_data.sensor_width * self.get_compute_space().height
         
-                    results = solver.solve1vp(
-                                viewport=               self.get_compute_space(),
-                                Fu=                     vp1,
-                                second_vanishing_line = second_vanishing_line,
-                                f =                     focal_length_pixel,
-                                P =                     self.get_principal(),
-                                O =                     self.get_origin(),
-                                first_axis =            solver.Axis.PositiveY, # Blenders camera axes
-                                second_axis =           solver.Axis.NegativeX, # - " -
-                                scale =                 vl_settings.scene_scale,
-                                reference_distance =    vl_settings.reference_distance
+                    # results = solver.solve1vp(
+                    #             viewport=               self.get_compute_space(),
+                    #             Fu=                     vp1,
+                    #             second_vanishing_line = second_vanishing_line,
+                    #             f =                     focal_length_pixel,
+                    #             P =                     self.get_principal(),
+                    #             O =                     self.get_origin(),
+                    #             first_axis =            solver.Axis.PositiveY, # Blenders camera axes
+                    #             second_axis =           solver.Axis.NegativeX, # - " -
+                    #             scale =                 vl_settings.scene_scale,
+                    #             reference_distance =    vl_settings.reference_distance
+                    # )
+
+                    results:dict = solver.solve(
+                        mode = solver.SolverMode.OneVP,
+                        viewport =               self.get_compute_space(),
+
+                        first_vanishing_lines =  self.get_first_vanishing_lines(),
+                        second_vanishing_lines = self.get_second_vanishing_lines(),
+                        third_vanishing_lines =  [],
+
+                        f =                      focal_length_pixel,
+                        P =                      self.get_principal(),
+                        O =                      self.get_origin(),
+
+                        reference_axis=          solver.ReferenceAxis.X_Axis,
+                        reference_distance_segment=[0, 100],
+                        reference_world_size=vl_settings.scene_scale,
+
+                        first_axis =             solver.Axis.PositiveY, # Blenders camera axes
+                        second_axis =            solver.Axis.NegativeX, # - " -               
                     )
 
-                    apply_solver_results_to_blender_camera(results, camera_object, self.get_compute_space(), self.get_output_space(context))
+                    apply_solver_results_to_blender_camera(
+                        results['projection'], 
+                        results['view'], 
+                        camera_object, 
+                        self.get_compute_space(), 
+                        self.get_output_space(context)
+                    )
                         
                 case "TWO_POINT":
-                    first_vanishing_lines = self.get_first_vanishing_lines()
                     if not self._active_camera.data.vl_settings.quad_mode:
                         second_vanishing_lines = self.get_second_vanishing_lines()
                     else:
                         second_vanishing_lines = self.get_quad_mode_second_vanishing_lines()
-
-                    vp1 = solver.least_squares_intersection_of_lines(first_vanishing_lines)
-                    vp2 = solver.least_squares_intersection_of_lines(second_vanishing_lines)
 
                     if not camera_data.vl_settings.enable_manual_principal:
                         center_x = self.get_compute_space().width/2.0 + self.get_compute_space().x
                         center_y = self.get_compute_space().height/2.0 + self.get_compute_space().y
                         self.set_principal(glm.vec2(center_x, center_y))
 
-                    results = solver.solve2vp(
-                                viewport=               self.get_compute_space(),
-                                Fu=                     vp1,
-                                Fv=                     vp2,
-                                P =                     self.get_principal(),
-                                O =                     self.get_origin(),
-                                first_axis =            solver.Axis.PositiveY, # Blenders camera axes
-                                second_axis =           solver.Axis.NegativeX, # - " -
-                                scale =                 vl_settings.scene_scale,
-                                reference_distance =    vl_settings.reference_distance
+                    # results = solver.solve2vp(
+                    #             viewport=               self.get_compute_space(),
+                    #             Fu=                     vp1,
+                    #             Fv=                     vp2,
+                    #             P =                     self.get_principal(),
+                    #             O =                     self.get_origin(),
+                    #             first_axis =            solver.Axis.PositiveY, # Blenders camera axes
+                    #             second_axis =           solver.Axis.NegativeX, # - " -
+                    #             scale =                 vl_settings.scene_scale,
+                    #             reference_distance =    vl_settings.reference_distance
+                    # )
+
+                    results:dict = solver.solve(
+                        mode = solver.SolverMode.TwoVP,
+                        viewport =               self.get_compute_space(),
+
+                        first_vanishing_lines =  self.get_first_vanishing_lines(),
+                        second_vanishing_lines = second_vanishing_lines,
+                        third_vanishing_lines =  [],
+
+                        f =                      None,
+                        P =                      self.get_principal(),
+                        O =                      self.get_origin(),
+
+                        reference_axis=          solver.ReferenceAxis.X_Axis,
+                        reference_distance_segment=[0, 100],
+                        reference_world_size=vl_settings.scene_scale,
+
+                        first_axis =             solver.Axis.PositiveY, # Blenders camera axes
+                        second_axis =            solver.Axis.NegativeX, # - " -               
                     )
 
-                    apply_solver_results_to_blender_camera(results, camera_object, self.get_compute_space(), self.get_output_space(context))
+                    apply_solver_results_to_blender_camera(
+                        results['projection'], 
+                        results['view'], 
+                        camera_object, 
+                        self.get_compute_space(), 
+                        self.get_output_space(context)
+                    )
 
                 case "THREE_POINT":
                     first_vanishing_lines = self.get_first_vanishing_lines()
@@ -1007,24 +1062,47 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                         second_vanishing_lines = self.get_quad_mode_second_vanishing_lines()
                     third_vanishing_lines = self.get_third_vanishing_lines()
 
-                    vp1 = solver.least_squares_intersection_of_lines(first_vanishing_lines)
-                    vp2 = solver.least_squares_intersection_of_lines(second_vanishing_lines)
-                    vp3 = solver.least_squares_intersection_of_lines(third_vanishing_lines)
-                    self.set_principal(solver.triangle_ortho_center(vp1, vp2, vp3))
 
-                    results = solver.solve2vp(
-                                viewport=               self.get_compute_space(),
-                                Fu=                     vp1,
-                                Fv=                     vp2,
-                                P =                     self.get_principal(),
-                                O =                     self.get_origin(),
-                                first_axis =            solver.Axis.PositiveY, # Blenders camera axes
-                                second_axis =           solver.Axis.NegativeX, # - " -
-                                scale =                 vl_settings.scene_scale,
-                                reference_distance =    vl_settings.reference_distance
+
+                    # results = solver.solve2vp(
+                    #             viewport=               self.get_compute_space(),
+                    #             Fu=                     vp1,
+                    #             Fv=                     vp2,
+                    #             P =                     self.get_principal(),
+                    #             O =                     self.get_origin(),
+                    #             first_axis =            solver.Axis.PositiveY, # Blenders camera axes
+                    #             second_axis =           solver.Axis.NegativeX, # - " -
+                    #             scale =                 vl_settings.scene_scale,
+                    #             reference_distance =    vl_settings.reference_distance
+                    # )
+
+                    results:dict = solver.solve(
+                        mode = solver.SolverMode.ThreeVP,
+                        viewport =               self.get_compute_space(),
+
+                        first_vanishing_lines =  first_vanishing_lines,
+                        second_vanishing_lines = second_vanishing_lines,
+                        third_vanishing_lines =  third_vanishing_lines,
+
+                        f =                      None,
+                        P =                      self.get_principal(),
+                        O =                      self.get_origin(),
+
+                        reference_axis=          solver.ReferenceAxis.X_Axis,
+                        reference_distance_segment=[0, 100],
+                        reference_world_size=vl_settings.scene_scale,
+
+                        first_axis =             solver.Axis.PositiveY, # Blenders camera axes
+                        second_axis =            solver.Axis.NegativeX, # - " -               
                     )
 
-                    apply_solver_results_to_blender_camera(results, camera_object, self.get_compute_space(), self.get_output_space(context))
+                    apply_solver_results_to_blender_camera(
+                        results['projection'], 
+                        results['view'], 
+                        camera_object, 
+                        self.get_compute_space(), 
+                        self.get_output_space(context)
+                    )
                     
         except Exception as e:
             self._solve_error = e
