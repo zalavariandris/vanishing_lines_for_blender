@@ -45,6 +45,8 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
         #################
         # ACTIVE CAMERA #
         #################
+
+        # validate context
         camera = context.scene.camera
         if camera is None:
             self.layout.label(text="No active camera in the scene.")

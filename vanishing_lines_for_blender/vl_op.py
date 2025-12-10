@@ -171,7 +171,7 @@ def apply_solver_results_to_blender_camera(
     camera_data.shift_y = shift_y/2 # -results.shift_y / 2 / results.aspect
 
 def closest_point_to_vp(points, vp)->glm.vec2:
-    return sorted([points[0], points[1]], key=lambda P: glm.distance2(P, vp))[0]
+    return sorted(points, key=lambda P: glm.distance2(glm.vec2(P.x, P.y), glm.vec2(vp.x, vp.y)))[0]
 
 def dim_color(color:Tuple[float, float, float, float], factor:float=0.18)->Tuple[float, float, float, float]:
     return (color[0], color[1], color[2], color[3]*factor)
@@ -301,31 +301,72 @@ def flatten(xss):
 ###############
 from typing import Sequence
 
-class ControlPoint:
-    def __init__(self, name:str, pos:glm.vec2):
-        self.name = name
-        self.pos = pos
+# class ControlPoint:
+#     def __init__(self, name:str, pos:glm.vec2):
+#         self.name = name
+#         self.pos = pos
 
 class ControlPointProp():
-    def __init__(self, data:str, prop:str):
+    def __init__(self, data:str, prop:str, text:str=""):
         self._data = data
         self._prop = prop
+        self._text = text
+
+        self._draw_layer = DrawLayer()
 
     @property
-    def name(self) -> str:
-        return self._prop
+    def value(self):
+        return getattr(self._data, f"{self._prop}")
     
-    @property
-    def pos(self) -> glm.vec2:
-        x = getattr(self._data, f"{self._prop}_x")
-        y = getattr(self._data, f"{self._prop}_y")
-        return glm.vec2(x, y)
-    
-    @pos.setter
-    def pos(self, value: glm.vec2):
-        setattr(self._data, f"{self._prop}_x", value.x)
-        setattr(self._data, f"{self._prop}_y", value.y)
+    @value.setter
+    def value(self, value:glm.vec2): # todo: we should use the actual _bpy prop_ type here, but how?
+        point = getattr(self._data, f"{self._prop}")
+        point.x = value.x
+        point.y = value.y
 
+class ControlsLayer:
+    def __init__(self):
+        self._controls: dict[Tuple[bpy.types.ID, str], ControlPointProp] = dict()
+
+    def clear(self):
+        self._controls.clear()
+
+    def control_point_prop(self, data:bpy.types.ID, prop:str) -> ControlPointProp:
+        control_point = ControlPointProp(data, prop)
+        self[data, prop] = control_point
+        return control_point
+
+    def draw(self, context:bpy.types.Context):
+        """it is like the bpy.types.Panel.draw function, but for our control points"""
+        # validate context
+        camera = context.scene.camera
+        if camera is None:
+            self.layout.label(text="No active camera in the scene.")
+            return
+        
+        self.layout.label(text=f"Active Camera: '{camera.name}'")
+
+        # todo: move is_operator_running from vl_sidepanel, to utils, and import here
+        # if not is_operator_running("VIEW_OT_vanishing_lines_operator"):
+        #     self.layout.operator("view.vanishing_lines_operator", text="Start Vanishing Lines")
+        #     return
+
+        self.control_point_prop(camera.data.vl_settings, "origin", text="O")
+        self.control_point_prop(camera.data.vl_settings, "principal", text="principal")
+
+    def _execute_draw_calls(self, context:bpy.types.Context):
+        """draw all control points in this layer"""
+        for cp in self._controls.values():
+            pos = cp.pos
+            screen_pos = map_from_outputframe_to_region_space((pos.x, pos.y), context)
+            cp._draw_layer.add_point(screen_pos, (1,1,1,1))
+            cp._draw_layer.add_text(screen_pos, cp._text, (1,1,1,1))
+            
+        self._draw_layer.draw()
+
+    def event(self, event:bpy.types.Event, context:bpy.types.Context):
+        for cp in self._controls:
+            ...
 
 class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     """alignt the camer based on vanishing lines"""
@@ -337,6 +378,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     # interaction
     _active_name: str|None = None
     _hovered_name: str|None = None
+    _active_id: Tuple[bpy.types.ID, str]|None = None
+    _hovered_id: Tuple[bpy.types.ID, str]|None = None
 
     _is_left_mouse_down = False
     _mouse_tracking = False # set this True, to get mouse move events even when no buttons are held down
@@ -346,8 +389,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     # draw
     _view_draw_screen_handler: Any= None # keep our drawing handler
     _draw_layer: DrawLayer|None = None
-    _point_batch: gpu.types.GPUBatch|None = None
-    _lines_batch: gpu.types.GPUBatch|None = None
+    _controls: dict[Tuple[bpy.types.ID, str], ControlPointProp] = dict()
 
     # solver
     _active_camera: bpy.types.Object|None = None
@@ -364,6 +406,153 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         if cls._view_draw_screen_handler:
             bpy.types.SpaceView3D.draw_handler_remove(cls._view_draw_screen_handler, 'WINDOW')
             cls._view_draw_screen_handler = None
+
+    def init_controls(self):
+        self._controls = {}
+
+    def draw_controls(self, context:bpy.types.Context):
+        print("--draw_controls--")
+        vl_settings = self._active_camera.data.vl_settings
+
+        GREEN = (0,1,0,1)
+        RED = (1,0,0,1)
+        BLUE = (0,0.3, 1.0, 1.0)
+        YELLOW = (1,1,0,1)
+
+        # Draw Origin and Principal Point
+        _ = self.control_point(context, vl_settings, "origin",    text="Origin",    color=YELLOW)
+        _ = self.control_point(context, vl_settings, "principal", text="principal", color=YELLOW)
+
+        # Draw Vanishing Lines
+        vl_settings = self._active_camera.data.vl_settings
+
+        if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
+            # Draw first vanishing lines
+            # vp1 = tuple(solver.utils.least_squares_intersection_of_lines(self.get_first_vanishing_lines()))
+            for line in vl_settings.first_vanishing_lines:
+                _ = self.control_point(context, line, "start", text=f"VL1 start", color=GREEN)
+                _ = self.control_point(context, line, "end",   text=f"VL1 end",   color=GREEN)
+
+                self._draw_layer.add_line(
+                    self._project(context, glm.vec2(line.start.x, line.start.y)), 
+                    self._project(context, glm.vec2(line.end.x,   line.end.y)), 
+                    GREEN)
+                
+                # self._draw_layer.add_line(
+                #     self._project(context, closest_point_to_vp([line.start, line.end], vp1)), 
+                #     self._project(context, glm.vec2(vp1.x, vp1.y)), dim_color(GREEN))
+
+        if vl_settings.mode in {'ONE_POINT'}:
+            # Draw the horizontal line for the vp1 mode:
+            line = vl_settings.second_vanishing_lines[0]
+            _ = self.control_point(context, line, "start", text=f"VL1 start", color=RED)
+            _ = self.control_point(context, line, "end",   text=f"VL1 end",   color=RED)
+
+            self._draw_layer.add_line(
+                self._project(context, line.start), 
+                self._project(context, line.end), 
+                RED)
+
+        if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
+            # Draw second vanishing lines
+            # TODO: Quad Mode
+            # vp2 = tuple(solver.utils.least_squares_intersection_of_lines(second_vl))
+            for line in vl_settings.second_vanishing_lines:
+                _ = self.control_point(context, line, "start", text=f"VL2 start", color=RED)
+                _ = self.control_point(context, line, "end",   text=f"VL2 end",   color=RED)
+
+                self._draw_layer.add_line(
+                    self._project(context, glm.vec2(line.start.x, line.start.y)), 
+                    self._project(context, glm.vec2(line.end.x,   line.end.y)), 
+                    RED)
+                
+                # self._draw_layer.add_line(
+                #     self._project(context, closest_point_to_vp(line, vp2)), 
+                #     self._project(context, vp2), 
+                #     dim_color(RED))
+
+        if vl_settings.mode in {'THREE_POINT'}:
+            # vp3 = tuple(solver.utils.least_squares_intersection_of_lines(self.get_third_vanishing_lines()))
+            for line in vl_settings.third_vanishing_lines:
+                _ = self.control_point(context, line, "start", text=f"VL3 start", color=BLUE)
+                _ = self.control_point(context, line, "end",   text=f"VL3 end",   color=BLUE)
+
+                self._draw_layer.add_line(
+                    self._project(context, glm.vec2(line.start.x, line.start.y)), 
+                    self._project(context, glm.vec2(line.end.x,   line.end.y)), 
+                    BLUE)
+                
+                # self._draw_layer.add_line(
+                #     self._project(context, closest_point_to_vp(line, vp3)), 
+                #     self._project(context, vp3), 
+                #     dim_color(BLUE))
+
+        # # Draw active / hovered control point info
+        # if self._active_name is not None:
+        #     cp_name, cp_pos = self.get_control_point_by_name(self._active_name)  # ensure index is valid
+        #     self._draw_layer.add_point(self._project(context, (cp_pos.x, cp_pos.y)), (1,1,1,1))
+        #     self._draw_layer.add_text( self._project(context, (cp_pos.x, cp_pos.y)), f"■{cp_pos.x:.2f}{cp_pos.y:.2f}", (1,1,1,1))
+
+        # elif self._hovered_name is not None:
+        #     cp_name, cp_pos = self.get_control_point_by_name(self._hovered_name)  # ensure index is valid
+        #     self._draw_layer.add_point(self._project(context, (cp_pos.x, cp_pos.y)), (1,1,1,1))
+        #     self._draw_layer.add_text( self._project(context, (cp_pos.x, cp_pos.y)), f"{cp_name}:{cp_pos.x:.2f},{cp_pos.y:.2f}", (1,1,1,0.5))
+
+        # # Draw reference distance
+        # match vl_settings.scene_scale_mode:
+        #     case 'ORIGIN':
+        #         pass
+
+        #     case 'X_AXIS':
+        #         pass
+
+        #     case 'Y_AXIS':
+        #         ...
+
+        #     case 'Z_AXIS':
+        #         ...
+
+        # Draw compute space frame
+        self._draw_layer.add_rect(
+            top_left = self._project(context, (self.get_compute_space().x, self.get_compute_space().y)),
+            bottom_right = self._project(context, (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y+self.get_compute_space().height)),
+            color=(0,1,1,0.5)
+        )
+
+        compute_min = (self.get_compute_space().x,                                self.get_compute_space().y)
+        compute_max = (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y+self.get_compute_space().height)
+        self._draw_layer.add_text(
+            self._project(context, (self.get_compute_space().x, self.get_compute_space().y)),
+            f"Compute Space {compute_min[0]:.1f},{compute_min[1]:.1f}",
+            (0,1,1,1)
+        )
+        self._draw_layer.add_text(
+            self._project(context, (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y + self.get_compute_space().height)),
+            f"Compute Space {compute_max[0]:.1f},{compute_max[1]:.1f}",
+            (0,1,1,1)
+        )
+
+    def get_closest_id(self, context, mouse_region_x, mouse_region_y, threshold:float=22.0) -> Tuple[bpy.types.ID, str]|None:
+        closest_key:Tuple[bpy.types.ID, str]|None = None
+        closest_dist_sq = threshold * threshold
+
+        for control_id, control_point in self._controls.items():
+            P = glm.vec2(self._project(context, glm.vec2(control_point.value.x, control_point.value.y)))
+            dist_sq = (P.x - mouse_region_x) ** 2 + (P.y - mouse_region_y) ** 2
+            if dist_sq < closest_dist_sq:
+                closest_dist_sq = dist_sq
+                closest_key = control_id
+
+        return closest_key
+    
+    def control_point(self, context, data:bpy.types.ID, prop:str, text:str="", color=(1,1,1,1)) -> ControlPointProp:
+        key = (data, prop)
+        if key not in self._controls:
+            self._controls[key] = ControlPointProp(data, prop, text)
+        cp = self._controls[key]
+        self._draw_layer.add_point(self._project(context, (cp.value.x, cp.value.y)), color)
+        self._draw_layer.add_text( self._project(context, (cp.value.x, cp.value.y)), f"{text} ({cp.value.x:.2f}, {cp.value.y:.2f})", color)
+        return self._controls[key]
 
     def invoke(self, context, event):
         # validate context
@@ -389,8 +578,13 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             self.report({'ERROR'}, "Scene has no active camera set")
             return {'CANCELLED'}
         
+        # Setup controls layer
+        self.init_controls()
+
         # Setup Drawing
         self._draw_layer = DrawLayer()
+
+        # register draw handler
         if not self._view_draw_screen_handler:
             self._view_draw_screen_handler = bpy.types.SpaceView3D.draw_handler_add(
                 self._on_view_draw, 
@@ -445,14 +639,14 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         """when the depsgraph changes, regarding the active camera, or the output resolution, we update the solve."""
         updates:bpy.types.bpy_prop_collection[bpy.types.DepsgraphUpdate] = depsgraph.updates
         for update in updates:
-            print("Depsgraph update:", update)
-            print("  id:", update.id) # the actuak datablock that was updated
-            print("    - id_type", update.id.id_type)
-            print("    - name", update.id.name)
-            print("    - name_full", update.id.name_full)
-            print("  is_updated_geometry:", update.is_updated_geometry)
-            print("  is_updated_shading:", update.is_updated_shading)
-            print("  is_updated_transform:", update.is_updated_transform)
+            # print("Depsgraph update:", update)
+            # print("  id:", update.id) # the actual datablock that was updated
+            # print("    - id_type", update.id.id_type)
+            # print("    - name", update.id.name)
+            # print("    - name_full", update.id.name_full)
+            # print("  is_updated_geometry:", update.is_updated_geometry)
+            # print("  is_updated_shading:", update.is_updated_shading)
+            # print("  is_updated_transform:", update.is_updated_transform)
             if isinstance(update.id, bpy.types.Camera):
                 self.update_solve(bpy.context)
 
@@ -462,109 +656,110 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             warnings.warn("Draw layer not initialized. Skipping draw.")
             return
         
-        GREEN = (0,1,0,1)
-        RED = (1,0,0,1)
-        BLUE = (0,0.3, 1.0, 1.0)
-        YELLOW = (1,1,0,1)
-
+        # GREEN = (0,1,0,1)
+        # RED = (1,0,0,1)
+        # BLUE = (0,0.3, 1.0, 1.0)
+        # YELLOW = (1,1,0,1)
+        
         self._draw_layer.clear()
 
-        # Draw Origin and Principal Point
-        self._draw_layer.add_point(self._project(context, (self.get_origin().x,    self.get_origin().y)),         YELLOW)
-        self._draw_layer.add_text( self._project(context, (self.get_origin().x,    self.get_origin().y)),   "O",  YELLOW)
-        self._draw_layer.add_point(self._project(context, (self.get_principal().x, self.get_principal().y)),      YELLOW)
-        self._draw_layer.add_text( self._project(context, (self.get_principal().x, self.get_principal().y)), "P", YELLOW)
+        # # Draw Origin and Principal Point
+        # # self._draw_layer.add_point(self._project(context, (self.get_origin().x,    self.get_origin().y)),         YELLOW)
+        # # self._draw_layer.add_text( self._project(context, (self.get_origin().x,    self.get_origin().y)),   "O",  YELLOW)
+        # self._draw_layer.add_point(self._project(context, (self.get_principal().x, self.get_principal().y)),      YELLOW)
+        # self._draw_layer.add_text( self._project(context, (self.get_principal().x, self.get_principal().y)), "P", YELLOW)
 
-        # Draw Vanishing Lines
-        vl_settings = self._active_camera.data.vl_settings
-        if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
-            # Draw first vanishing lines
-            vp1 = tuple(solver.utils.least_squares_intersection_of_lines(self.get_first_vanishing_lines()))
-            for line in self.get_first_vanishing_lines():
-                for cp in line:
-                    P = self._project(context, (cp.x, cp.y))
-                    self._draw_layer.add_point( P, GREEN )
-                self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), GREEN)
-                self._draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp1)), self._project(context, vp1), dim_color(GREEN))
+        # # Draw Vanishing Lines
+        # vl_settings = self._active_camera.data.vl_settings
+        # if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
+        #     # Draw first vanishing lines
+        #     vp1 = tuple(solver.utils.least_squares_intersection_of_lines(self.get_first_vanishing_lines()))
+        #     for line in self.get_first_vanishing_lines():
+        #         for cp in line:
+        #             P = self._project(context, (cp.x, cp.y))
+        #             self._draw_layer.add_point( P, GREEN )
+        #         self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), GREEN)
+        #         self._draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp1)), self._project(context, vp1), dim_color(GREEN))
 
-        if vl_settings.mode in {'ONE_POINT'}:
-            # Draw the horizontal line for the vp1 mode:
-            line = self.get_second_vanishing_lines()[0]
-            for cp in line:
-                P = self._project(context, (cp.x, cp.y))
-                self._draw_layer.add_point( P, RED )
-            self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
+        # if vl_settings.mode in {'ONE_POINT'}:
+        #     # Draw the horizontal line for the vp1 mode:
+        #     line = self.get_second_vanishing_lines()[0]
+        #     for cp in line:
+        #         P = self._project(context, (cp.x, cp.y))
+        #         self._draw_layer.add_point( P, RED )
+        #     self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
 
-        if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
-            # Draw second vanishing lines
-            if vl_settings.quad_mode:
-                second_vl = self.get_quad_mode_second_vanishing_lines()
-            else:
-                second_vl = self.get_second_vanishing_lines()
+        # if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
+        #     # Draw second vanishing lines
+        #     if vl_settings.quad_mode:
+        #         second_vl = self.get_quad_mode_second_vanishing_lines()
+        #     else:
+        #         second_vl = self.get_second_vanishing_lines()
 
-            vp2 = tuple(solver.utils.least_squares_intersection_of_lines(second_vl))
-            for line in second_vl:
-                for cp in line:
-                    P = self._project(context, (cp.x, cp.y))
-                    self._draw_layer.add_point( P, RED )
-                self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
-                self._draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp2)), self._project(context, vp2), dim_color(RED))
+        #     vp2 = tuple(solver.utils.least_squares_intersection_of_lines(second_vl))
+        #     for line in second_vl:
+        #         for cp in line:
+        #             P = self._project(context, (cp.x, cp.y))
+        #             self._draw_layer.add_point( P, RED )
+        #         self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), RED)
+        #         self._draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp2)), self._project(context, vp2), dim_color(RED))
 
-        if vl_settings.mode in {'THREE_POINT'}:
-            vp3 = tuple(solver.utils.least_squares_intersection_of_lines(self.get_third_vanishing_lines()))
-            for line in self.get_third_vanishing_lines():
-                for cp in line:
-                    P = self._project(context, (cp.x, cp.y))
-                    self._draw_layer.add_point(P, BLUE)
-                self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), BLUE)
-                self._draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp3)), self._project(context, vp3), dim_color(BLUE))
+        # if vl_settings.mode in {'THREE_POINT'}:
+        #     vp3 = tuple(solver.utils.least_squares_intersection_of_lines(self.get_third_vanishing_lines()))
+        #     for line in self.get_third_vanishing_lines():
+        #         for cp in line:
+        #             P = self._project(context, (cp.x, cp.y))
+        #             self._draw_layer.add_point(P, BLUE)
+        #         self._draw_layer.add_line(self._project(context, line[0]), self._project(context, line[1]), BLUE)
+        #         self._draw_layer.add_line(self._project(context, closest_point_to_vp(line, vp3)), self._project(context, vp3), dim_color(BLUE))
 
-        # Draw active / hovered control point info
-        if self._active_name is not None:
-            cp_name, cp_pos = self.get_control_point_by_name(self._active_name)  # ensure index is valid
-            self._draw_layer.add_point(self._project(context, (cp_pos.x, cp_pos.y)), (1,1,1,1))
-            self._draw_layer.add_text( self._project(context, (cp_pos.x, cp_pos.y)), f"■{cp_pos.x:.2f}{cp_pos.y:.2f}", (1,1,1,1))
+        # # Draw active / hovered control point info
+        # if self._active_name is not None:
+        #     cp_name, cp_pos = self.get_control_point_by_name(self._active_name)  # ensure index is valid
+        #     self._draw_layer.add_point(self._project(context, (cp_pos.x, cp_pos.y)), (1,1,1,1))
+        #     self._draw_layer.add_text( self._project(context, (cp_pos.x, cp_pos.y)), f"■{cp_pos.x:.2f}{cp_pos.y:.2f}", (1,1,1,1))
 
-        elif self._hovered_name is not None:
-            cp_name, cp_pos = self.get_control_point_by_name(self._hovered_name)  # ensure index is valid
-            self._draw_layer.add_point(self._project(context, (cp_pos.x, cp_pos.y)), (1,1,1,1))
-            self._draw_layer.add_text( self._project(context, (cp_pos.x, cp_pos.y)), f"{cp_name}:{cp_pos.x:.2f},{cp_pos.y:.2f}", (1,1,1,0.5))
+        # elif self._hovered_name is not None:
+        #     cp_name, cp_pos = self.get_control_point_by_name(self._hovered_name)  # ensure index is valid
+        #     self._draw_layer.add_point(self._project(context, (cp_pos.x, cp_pos.y)), (1,1,1,1))
+        #     self._draw_layer.add_text( self._project(context, (cp_pos.x, cp_pos.y)), f"{cp_name}:{cp_pos.x:.2f},{cp_pos.y:.2f}", (1,1,1,0.5))
 
-        # Draw reference distance
-        match vl_settings.scene_scale_mode:
-            case 'ORIGIN':
-                pass
+        # # Draw reference distance
+        # match vl_settings.scene_scale_mode:
+        #     case 'ORIGIN':
+        #         pass
 
-            case 'X_AXIS':
-                pass
+        #     case 'X_AXIS':
+        #         pass
 
-            case 'Y_AXIS':
-                ...
+        #     case 'Y_AXIS':
+        #         ...
 
-            case 'Z_AXIS':
-                ...
+        #     case 'Z_AXIS':
+        #         ...
 
-        # Draw compute space frame
-        self._draw_layer.add_rect(
-            top_left = self._project(context, (self.get_compute_space().x, self.get_compute_space().y)),
-            bottom_right = self._project(context, (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y+self.get_compute_space().height)),
-            color=(0,1,1,0.5)
-        )
+        # # Draw compute space frame
+        # self._draw_layer.add_rect(
+        #     top_left = self._project(context, (self.get_compute_space().x, self.get_compute_space().y)),
+        #     bottom_right = self._project(context, (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y+self.get_compute_space().height)),
+        #     color=(0,1,1,0.5)
+        # )
 
-        compute_min = (self.get_compute_space().x,                                self.get_compute_space().y)
-        compute_max = (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y+self.get_compute_space().height)
-        self._draw_layer.add_text(
-            self._project(context, (self.get_compute_space().x, self.get_compute_space().y)),
-            f"Compute Space {compute_min[0]:.1f},{compute_min[1]:.1f}",
-            (0,1,1,1)
-        )
-        self._draw_layer.add_text(
-            self._project(context, (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y + self.get_compute_space().height)),
-            f"Compute Space {compute_max[0]:.1f},{compute_max[1]:.1f}",
-            (0,1,1,1)
-        )
+        # compute_min = (self.get_compute_space().x,                                self.get_compute_space().y)
+        # compute_max = (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y+self.get_compute_space().height)
+        # self._draw_layer.add_text(
+        #     self._project(context, (self.get_compute_space().x, self.get_compute_space().y)),
+        #     f"Compute Space {compute_min[0]:.1f},{compute_min[1]:.1f}",
+        #     (0,1,1,1)
+        # )
+        # self._draw_layer.add_text(
+        #     self._project(context, (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y + self.get_compute_space().height)),
+        #     f"Compute Space {compute_max[0]:.1f},{compute_max[1]:.1f}",
+        #     (0,1,1,1)
+        # )
 
         # Execute the draw calls
+        self.draw_controls(context)
         self._draw_layer.draw()
 
         # Draw error messages
@@ -579,8 +774,9 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             for i, line in enumerate(lines):
                 blf.position(font_id, 20, text_height-line_height*i+40, 0)
                 blf.draw(font_id, f"{line}")
+
         
-    # CONTROL POINT ACCESSORS
+    # CONTROL POINT ACCESSORS OLD
     def get_control_points(self)->Iterable[Tuple[str, PointLike]]:
         """Returns references to the actual point objects (not copies).
         note: control points are in compute space coordinates."""
@@ -590,9 +786,9 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         vl_settings = self._active_camera.data.vl_settings
         
         # origin and principal
-        yield 'origin', vl_settings.origin
+        # yield 'origin', vl_settings.origin
         yield 'principal', vl_settings.principal
-        
+
         # vanishing lines
         if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
             # yield all first vanishing lines
@@ -632,6 +828,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 return cp_name, glm.vec2(cp_pos.x, cp_pos.y)
         return None
 
+    # @warnings.deprecated("Use get_closest_control_point instead")
     def get_closest_point_name(self, context, mouse_region_x, mouse_region_y, threshold:float=22.0) -> str|None:
         closest_name = None
         closest_dist_sq = threshold * threshold
@@ -831,15 +1028,14 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
         if MouseIsInRegion and event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             self._is_left_mouse_down = True
-            mouse_x_unproj, mouse_y_unproj = self._unproject(context, (event.mouse_region_x, event.mouse_region_y))
 
             # activate cp under mouse
-            self._active_name = self.get_closest_point_name(context, event.mouse_region_x, event.mouse_region_y)    
+            self._active_id = self.get_closest_id(context, event.mouse_region_x, event.mouse_region_y)    
             # trigger redraw
             if area.type == 'VIEW_3D':
                 area.tag_redraw()
 
-            if self._active_name is not None:
+            if self._active_id is not None:
                 return {'RUNNING_MODAL'}
             else:
                 return {'PASS_THROUGH'}
@@ -849,10 +1045,10 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 """Mouse Move"""
                 # update hover
 
-                new_hovered_name = self.get_closest_point_name(context, event.mouse_region_x, event.mouse_region_y)
+                new_hovered_id = self.get_closest_id(context, event.mouse_region_x, event.mouse_region_y)
 
-                if new_hovered_name != self._hovered_name:
-                    self._hovered_name = new_hovered_name
+                if new_hovered_id != self._hovered_id:
+                    self._hovered_id = new_hovered_id
 
                     if area.type == 'VIEW_3D':
                         area.tag_redraw()
@@ -862,11 +1058,25 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 else:
                     return {'PASS_THROUGH'}
 
-            elif self._active_name is not None:
+                # new_hovered_name = self.get_closest_point_name(context, event.mouse_region_x, event.mouse_region_y)
+                # if new_hovered_name != self._hovered_name:
+                #     self._hovered_name = new_hovered_name
+
+                #     if area.type == 'VIEW_3D':
+                #         area.tag_redraw()
+
+                # if self._hovered_name is not None:
+                #     return {'RUNNING_MODAL'}
+                # else:
+                #     return {'PASS_THROUGH'}
+
+            elif self._active_id is not None:
                 """Mouse Drag"""
                 # move active control point
                 mouse_x_unproj, mouse_y_unproj = self._unproject(context, (event.mouse_region_x, event.mouse_region_y))
-                self.set_control_point(self._active_name, (mouse_x_unproj, mouse_y_unproj))
+
+                self._controls[self._active_id].value = glm.vec2(mouse_x_unproj, mouse_y_unproj)
+                # self.set_control_point(self._active_name, (mouse_x_unproj, mouse_y_unproj))
                 self.update_solve(context)
 
                 # trigger redraw
