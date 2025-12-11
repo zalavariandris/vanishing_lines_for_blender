@@ -73,11 +73,10 @@ class DrawLayer:
 
         self.lines_batch.draw(self.shader)
 
-
         # render annotations
         for pos, text, color in self._annotations:
             font_id = 0
-            blf.position(font_id, pos[0]+10, pos[1]+10, 0)
+            blf.position(font_id, pos[0]+3, pos[1]+3, 0)
             blf.size(font_id, 12)
             blf.color(font_id, *color)
             blf.draw(font_id, f"{text}")

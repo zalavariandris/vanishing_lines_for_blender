@@ -1,17 +1,24 @@
 # type: ignore
 import bpy
 
-class Point(bpy.types.PropertyGroup):
-    name="Point"
-    x: bpy.props.FloatProperty(name="x", default=0.0)# is_animatable=False, subtype='PIXEL')
-    y: bpy.props.FloatProperty(name="y", default=0.0)
+# class Point(bpy.types.PropertyGroup):
+#     name="Point"
+#     x: bpy.props.FloatProperty(name="x", default=0.0)# is_animatable=False, subtype='PIXEL')
+#     y: bpy.props.FloatProperty(name="y", default=0.0)
 
 
 class Line(bpy.types.PropertyGroup):
     name="Line"
-    start: bpy.props.PointerProperty(name="start", type=Point)
-    end: bpy.props.PointerProperty(name="end", type=Point)
-
+    start: bpy.props.FloatVectorProperty(
+        name="start",
+        size=2,
+        default=(0.0, 0.0)
+    )
+    end: bpy.props.FloatVectorProperty(
+        name="end",
+        size=2,
+        default=(0.0, 0.0)
+    )
 
 class VLSettings(bpy.types.PropertyGroup):
     name="VL Settings"
@@ -78,13 +85,17 @@ class VLSettings(bpy.types.PropertyGroup):
     )
 
     # control points
-    origin:    bpy.props.PointerProperty(name="origin", type=Point)
-    # origin: bpy.props.FloatVectorProperty(
-    #     name="Origin",
-    #     size=2,
-    #     default=(0.0, 0.0)
-    # )
-    principal: bpy.props.PointerProperty(name="principal", type=Point)
+    origin: bpy.props.FloatVectorProperty(
+        name="Origin",
+        size=2,
+        default=(0.0, 0.0)
+    )
+    
+    principal: bpy.props.FloatVectorProperty(
+        name="Principal",
+        size=2,
+        default=(0.0, 0.0)
+    )
 
     first_vanishing_lines: bpy.props.CollectionProperty(
         name="First Vanishing Lines",
@@ -106,7 +117,6 @@ class VLSettings(bpy.types.PropertyGroup):
 # REGISTER FUNCTIONS #
 ######################
 def register():
-    bpy.utils.register_class(Point)
     bpy.utils.register_class(Line)
     bpy.utils.register_class(VLSettings)
     bpy.types.Camera.vl_settings = bpy.props.PointerProperty(type=VLSettings, name="VL Settings")
@@ -114,6 +124,5 @@ def register():
 def unregister():
     if hasattr(bpy.types.Camera, 'vl_settings'):
         del bpy.types.Camera.vl_settings
-    bpy.utils.unregister_class(Point)
     bpy.utils.unregister_class(Line)
     bpy.utils.unregister_class(VLSettings)

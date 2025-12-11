@@ -10,14 +10,16 @@ from . constants import EPSILON
 # 2D-3D GOMETRY FUNCTIONS #
 ###########################
 
-Line2 = Tuple[glm.vec2, glm.vec2] # two endpoints
-Line3 = Tuple[glm.vec3, glm.vec3] # two endpoints
-Ray2 = Tuple[glm.vec2, glm.vec2] # origin, direction
-Ray3 = Tuple[glm.vec3, glm.vec3] # origin, direction
-Plane3 = Tuple[glm.vec3, glm.vec3]  # point, normal
+Point2 = Tuple[float, float]
+Point3 = Tuple[float, float, float]
+Line2 = Tuple[Point2, Point2] # two endpoints
+Line3 = Tuple[Point3, Point3] # two endpoints
+Ray2 = Tuple[Point2, Point2] # origin, direction
+Ray3 = Tuple[Point3, Point3] # origin, direction
+Plane3 = Tuple[Point3, Point3]  # point, normal
 
 
-def least_squares_intersection_of_lines(lines: List[Line2]) -> glm.vec2:
+def least_squares_intersection_of_lines(lines: List[Line2]) -> Point2:
     """
     Compute the least-squares intersection (vanishing point) of a set of 2D lines
     defined by their endpoints. Uses pure PyGLM math, no numpy.
@@ -34,11 +36,11 @@ def least_squares_intersection_of_lines(lines: List[Line2]) -> glm.vec2:
     # Accumulate normal equation components
     S_aa = S_ab = S_bb = S_ac = S_bc = 0.0
 
-    for P, Q in lines:
+    for (Px, Py), (Qx, Qy) in lines:
         # Line equation coefficients: a*x + b*y + c = 0
-        a = P.y - Q.y
-        b = Q.x - P.x
-        c = P.x * Q.y - Q.x * P.y
+        a = Py - Qy
+        b = Qx - Px
+        c = Px * Qy - Qx * Py
 
         S_aa += a * a
         S_ab += a * b
