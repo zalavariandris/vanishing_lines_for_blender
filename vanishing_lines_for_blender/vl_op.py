@@ -409,6 +409,14 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         self._draw_layer.add_point(pos, color)
         
         return self._controls[key]
+    
+    def is_item_hovered(self):
+        last_id = list(self._controls.keys())[-1]
+        return self._hovered_id == last_id
+    
+    def is_item_active(self):
+        last_id = list(self._controls.keys())[-1]
+        return self._active_id == last_id
 
     def invoke(self, context, event):
         # validate context
@@ -547,6 +555,18 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         runs modally, but you never call invoke_props_dialog() or similar, 
         so the draw method is never called."""
 
+    def get_reference_distance_point(self, vl_settings) -> Tuple[float, float]:
+        """Get the reference distance point based on origin and reference distance."""
+        ox, oy = vl_settings.origin
+        rd = vl_settings.reference_distance
+        return (ox + rd, oy)
+    
+    def set_reference_distance_point(self, vl_settings, point:Tuple[float, float]) -> None:
+        """Set the reference distance based on a point and the origin."""
+        ox, oy = vl_settings.origin
+        px, py = point
+        vl_settings.reference_distance = math.sqrt((px - ox) ** 2 + (py - oy) ** 2)
+
     def draw_view(self, context):
         """draw the vanishing lines and control points in the 3D view"""
         if self._draw_layer is None:
@@ -555,8 +575,9 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         
         # Update viewport state for drawing
         self._update_viewport_state(context)
-                
+        
         self._draw_layer.clear()
+        self._controls.clear()
 
         # Execute the draw calls
         vl_settings = self._active_camera.data.vl_settings # type: ignore
@@ -582,10 +603,17 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         _ = self.control_point(vl_settings, "reference_distance", 
             text="R",
             color=ORANGE,
-            setter=lambda data, prop, value: 
-                setattr(data, prop, distance(vl_settings.origin, value)),
+            setter=lambda data, prop, value: self.set_reference_distance_point(vl_settings, value),
             getter=lambda data, prop: 
-                (vl_settings.origin[0]+ getattr(data, prop), vl_settings.origin[1] ))
+                self.get_reference_distance_point(vl_settings))
+            
+        self._draw_layer.add_line(
+            self.map_region_to_compute_space(vl_settings.origin), 
+            self.map_region_to_compute_space(
+                self.get_reference_distance_point(vl_settings)),
+            dim_color(ORANGE, factor=0.7 if self.is_item_hovered() else 0.1))
+        
+
 
         # Draw Vanishing Lines
         vl_settings = self._active_camera.data.vl_settings # type: ignore
@@ -1058,8 +1086,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                         P =                      glm.vec2(*vl_settings.principal),
                         O =                      glm.vec2(*vl_settings.origin),
 
-                        reference_axis=          solver.ReferenceAxis.X_Axis,
-                        reference_distance_segment=(0, 100),
+                        reference_axis=          solver.ReferenceAxis.Screen,
+                        reference_distance_segment=(0, vl_settings.reference_distance),
                         reference_world_size=vl_settings.scene_scale,
 
                         first_axis =             solver.Axis.PositiveY, # Blenders camera axes
@@ -1113,8 +1141,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                         P =                      glm.vec2(*vl_settings.principal),
                         O =                      glm.vec2(*vl_settings.origin),
 
-                        reference_axis=          solver.ReferenceAxis.X_Axis,
-                        reference_distance_segment=(0, 100),
+                        reference_axis=          solver.ReferenceAxis.Screen,
+                        reference_distance_segment=(0, vl_settings.reference_distance),
                         reference_world_size=vl_settings.scene_scale,
 
                         first_axis =             solver.Axis.PositiveY, # Blenders camera axes
@@ -1167,8 +1195,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                         P =                      glm.vec2(*vl_settings.principal),
                         O =                      glm.vec2(*vl_settings.origin),
 
-                        reference_axis=          solver.ReferenceAxis.X_Axis,
-                        reference_distance_segment=(0, 100),
+                        reference_axis=          solver.ReferenceAxis.Screen,
+                        reference_distance_segment=(0, vl_settings.reference_distance),
                         reference_world_size=vl_settings.scene_scale,
 
                         first_axis =             solver.Axis.PositiveY, # Blenders camera axes
