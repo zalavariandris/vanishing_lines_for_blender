@@ -22,15 +22,15 @@ class DrawLayer:
         self._annotations = []
 
     def clear(self):
-        self._point_attributes = {
+        self._point_attributes: dict[str, List[Tuple[float, ...]]] = {
             "pos":   [],
             "color": [],
         }
-        self._line_attributes = {
+        self._line_attributes: dict[str, List[Tuple[float, ...]]] = {
             "pos":   [],
             "color": [],
         }
-        self._annotations = []
+        self._annotations: List[Tuple[Tuple[float, float], str, Tuple[float, float, float, float]]] = []
 
     def add_line(self, start, end, color):
         self._line_attributes['pos'].append( start )

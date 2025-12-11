@@ -30,9 +30,9 @@ from . types import *
 def solve(
         mode:SolverMode, 
         viewport: Rect,
-        first_vanishing_lines: List[Tuple[glm.vec2, glm.vec2]],
+        first_vanishing_lines:  List[Tuple[glm.vec2, glm.vec2]],
         second_vanishing_lines: List[Tuple[glm.vec2, glm.vec2]],
-        third_vanishing_lines: List[Tuple[glm.vec2, glm.vec2]],
+        third_vanishing_lines:  List[Tuple[glm.vec2, glm.vec2]],
 
         f:float, # focal length (in height units)
         P:glm.vec2,
@@ -101,9 +101,9 @@ def solve(
 def _solve_functional_impl_v1(
         mode:SolverMode, 
         viewport: Rect,
-        first_vanishing_lines: List[Tuple[glm.vec2, glm.vec2]],
+        first_vanishing_lines:  List[Tuple[glm.vec2, glm.vec2]],
         second_vanishing_lines: List[Tuple[glm.vec2, glm.vec2]],
-        third_vanishing_lines: List[Tuple[glm.vec2, glm.vec2]],
+        third_vanishing_lines:  List[Tuple[glm.vec2, glm.vec2]],
 
         f:float, # focal length (in height units)
         P:glm.vec2,

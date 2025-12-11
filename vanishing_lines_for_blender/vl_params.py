@@ -1,7 +1,6 @@
 # type: ignore
 import bpy
 
-
 class Point(bpy.types.PropertyGroup):
     name="Point"
     x: bpy.props.FloatProperty(name="x", default=0.0)# is_animatable=False, subtype='PIXEL')
@@ -79,7 +78,12 @@ class VLSettings(bpy.types.PropertyGroup):
     )
 
     # control points
-    origin: bpy.props.PointerProperty(name="origin", type=Point)
+    origin:    bpy.props.PointerProperty(name="origin", type=Point)
+    # origin: bpy.props.FloatVectorProperty(
+    #     name="Origin",
+    #     size=2,
+    #     default=(0.0, 0.0)
+    # )
     principal: bpy.props.PointerProperty(name="principal", type=Point)
 
     first_vanishing_lines: bpy.props.CollectionProperty(
