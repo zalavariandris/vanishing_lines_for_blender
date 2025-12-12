@@ -61,11 +61,13 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Scene Scale Mode",
         description="Scene Scale Mode",
         items=[
+            ('SCREEN', "Screen", "Use the screen plane for reference distance"),
             ('ORIGIN', "Origin", "Set the origin distance from the camera"),
             ('X_AXIS', "X Axis", "Use the X axis for reference distance"),
             ('Y_AXIS', "Y Axis", "Use the Y axis for reference distance"),
             ('Z_AXIS', "Z Axis", "Use the Z axis for reference distance")
-        ]
+        ],
+        default='X_AXIS'
     )
 
     scene_scale: bpy.props.FloatProperty(

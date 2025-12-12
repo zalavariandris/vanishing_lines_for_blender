@@ -376,13 +376,15 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         self._region_height = context.region.height
         self._view_camera_zoom = context.space_data.region_3d.view_camera_zoom
         self._view_camera_offset = context.space_data.region_3d.view_camera_offset
+        self._region = context.region
+        self._region_data = context.region_data       # The RegionView3D for this region # TODO: context.space_data.region_3d might be more accurate?
 
     def get_closest_id(self, mouse_region_x: float, mouse_region_y: float, threshold:float=22.0) -> Tuple[bpy.types.ID, str]|None:
         closest_key:Tuple[bpy.types.ID, str]|None = None
         closest_dist_sq = threshold * threshold
 
         for control_id, control_point in self._controls.items():
-            P = (self.map_region_to_compute_space(control_point.value))
+            P = (self.map_from_compute_to_region_space(control_point.value))
             dist_sq = (P[0] - mouse_region_x) ** 2 + (P[1] - mouse_region_y) ** 2
             if dist_sq < closest_dist_sq:
                 closest_dist_sq = dist_sq
@@ -404,7 +406,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         if self._active_id == key:
             color = (1.0, 1.0, 1.0, 1.0)
 
-        pos = self.map_region_to_compute_space(cp.value)
+        pos = self.map_from_compute_to_region_space(cp.value)
         self._draw_layer.add_text( pos, text, color)
         self._draw_layer.add_point(pos, color)
         
@@ -558,14 +560,49 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     def get_reference_distance_point(self, vl_settings) -> Tuple[float, float]:
         """Get the reference distance point based on origin and reference distance."""
         ox, oy = vl_settings.origin
-        rd = vl_settings.reference_distance
-        return (ox + rd, oy)
+        match vl_settings.scene_scale_mode:
+            case 'ORIGIN':
+                ...
+            case 'SCREEN':
+                rd = vl_settings.reference_distance
+                return (ox + rd, oy)
+            case 'X_AXIS':
+
+                # ref_point_2d = view3d_utils.location_3d_to_region_2d(self._region, self._region_data, (1,0,0))
+                # ref_point_2d = self.map_compute_to_region_space((ref_point_2d.x, ref_point_2d.y))
+                # length = math.sqrt( (ref_point_2d[0]-ox)**2 + (ref_point_2d[1]-oy)**2 )
+                # ref_point_2d = ref_point_2d[0]/length * vl_settings.reference_distance, ref_point_2d[1]/length * vl_settings.reference_distance # normalize
+                
+
+                # return ref_point_2d[0], ref_point_2d[1]
+                
+                rd = vl_settings.reference_distance
+                return (ox + rd, oy)
+            case 'Y_AXIS':
+                ...
+            case 'Z_AXIS':
+                ...
+        
+        
     
     def set_reference_distance_point(self, vl_settings, point:Tuple[float, float]) -> None:
         """Set the reference distance based on a point and the origin."""
         ox, oy = vl_settings.origin
-        px, py = point
-        vl_settings.reference_distance = math.sqrt((px - ox) ** 2 + (py - oy) ** 2)
+
+        match vl_settings.scene_scale_mode:
+            case 'ORIGIN':
+                ...
+            case 'SCREEN':
+                px, py = point
+                vl_settings.reference_distance = math.sqrt((px - ox) ** 2 + (py - oy) ** 2)
+            case 'X_AXIS':
+                px, py = point
+                vl_settings.reference_distance = math.sqrt((px - ox) ** 2 + (py - oy) ** 2)
+            case 'Y_AXIS':
+                ...
+            case 'Z_AXIS':
+                ...
+        
 
     def draw_view(self, context):
         """draw the vanishing lines and control points in the 3D view"""
@@ -582,11 +619,19 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         # Execute the draw calls
         vl_settings = self._active_camera.data.vl_settings # type: ignore
 
+
+
         GREEN = (0,1,0,1)
         RED = (1,0,0,1)
         BLUE = (0,0.3, 1.0, 1.0)
         YELLOW = (1,1,0,1)
         ORANGE = (1.0, 0.5, 0.0, 1.0)
+
+        # draw reference grid
+        ref_point = view3d_utils.location_3d_to_region_2d(self._region, self._region_data, (1,0,0))
+        ref_point = self.map_from_region_to_compute_space((ref_point.x, ref_point.y))
+        self._draw_layer.add_point( self.map_from_compute_to_region_space(ref_point), (1.0, 1.0, 1.0, 1.0))
+        # self.map_compute_to_region_space((ref_point_2d.x, ref_point_2d.y))
 
         # Draw Origin and Principal Point
         _ = self.control_point(vl_settings, "origin",    
@@ -596,9 +641,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         _ = self.control_point(vl_settings, "principal", 
             text="P",
             color=YELLOW)
-
-        def distance(P1:Tuple[float, float], P2:Tuple[float, float]) -> float:
-            return math.sqrt( (P1[0]-P2[0])**2 + (P1[1]-P2[1])**2)
         
         _ = self.control_point(vl_settings, "reference_distance", 
             text="R",
@@ -608,11 +650,10 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 self.get_reference_distance_point(vl_settings))
             
         self._draw_layer.add_line(
-            self.map_region_to_compute_space(vl_settings.origin), 
-            self.map_region_to_compute_space(
+            self.map_from_compute_to_region_space(vl_settings.origin), 
+            self.map_from_compute_to_region_space(
                 self.get_reference_distance_point(vl_settings)),
             dim_color(ORANGE, factor=0.7 if self.is_item_hovered() else 0.1))
-        
 
 
         # Draw Vanishing Lines
@@ -629,13 +670,13 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 _ = self.control_point(line, "end",   text=f"",   color=GREEN)
 
                 self._draw_layer.add_line(
-                    self.map_region_to_compute_space(line.start), 
-                    self.map_region_to_compute_space(line.end), 
+                    self.map_from_compute_to_region_space(line.start), 
+                    self.map_from_compute_to_region_space(line.end), 
                     GREEN)
                 
                 self._draw_layer.add_line(
-                    self.map_region_to_compute_space(closest_point_to_vp([line.start, line.end], vp1)), 
-                    self.map_region_to_compute_space(vp1), dim_color(GREEN))
+                    self.map_from_compute_to_region_space(closest_point_to_vp([line.start, line.end], vp1)), 
+                    self.map_from_compute_to_region_space(vp1), dim_color(GREEN))
 
         if vl_settings.mode in {'ONE_POINT'}:
             # Draw the horizontal line for the vp1 mode:
@@ -644,8 +685,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             _ = self.control_point(line, "end",   text=f"",   color=RED)
 
             self._draw_layer.add_line(
-                self.map_region_to_compute_space(line.start), 
-                self.map_region_to_compute_space(line.end), 
+                self.map_from_compute_to_region_space(line.start), 
+                self.map_from_compute_to_region_space(line.end), 
                 RED)
 
         if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
@@ -664,13 +705,13 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 
                 for line_start, line_end in [(first_line.start, last_line.start), (first_line.end, last_line.end)]:
                     self._draw_layer.add_line(
-                        self.map_region_to_compute_space(line_start), 
-                        self.map_region_to_compute_space(line_end), 
+                        self.map_from_compute_to_region_space(line_start), 
+                        self.map_from_compute_to_region_space(line_end), 
                         RED)
                     
                     self._draw_layer.add_line(
-                        self.map_region_to_compute_space(closest_point_to_vp([line_start, line_end], vp2)), 
-                        self.map_region_to_compute_space(vp2), 
+                        self.map_from_compute_to_region_space(closest_point_to_vp([line_start, line_end], vp2)), 
+                        self.map_from_compute_to_region_space(vp2), 
                         dim_color(RED))
                 
        
@@ -684,13 +725,13 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                     _ = self.control_point(line, "end",   text="",   color=RED)
 
                     self._draw_layer.add_line(
-                        self.map_region_to_compute_space(line.start), 
-                        self.map_region_to_compute_space(line.end), 
+                        self.map_from_compute_to_region_space(line.start), 
+                        self.map_from_compute_to_region_space(line.end), 
                         RED)
                     
                     self._draw_layer.add_line(
-                        self.map_region_to_compute_space(closest_point_to_vp([line.start, line.end], vp2)), 
-                        self.map_region_to_compute_space(vp2), 
+                        self.map_from_compute_to_region_space(closest_point_to_vp([line.start, line.end], vp2)), 
+                        self.map_from_compute_to_region_space(vp2), 
                         dim_color(RED))
 
         if vl_settings.mode in {'THREE_POINT'}:
@@ -703,13 +744,13 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 _ = self.control_point(line, "end",   text="",   color=BLUE)
 
                 self._draw_layer.add_line(
-                    self.map_region_to_compute_space(line.start), 
-                    self.map_region_to_compute_space(line.end), 
+                    self.map_from_compute_to_region_space(line.start), 
+                    self.map_from_compute_to_region_space(line.end), 
                     BLUE)
                 
                 self._draw_layer.add_line(
-                    self.map_region_to_compute_space(closest_point_to_vp([line.start, line.end], vp3)), 
-                    self.map_region_to_compute_space(vp3), 
+                    self.map_from_compute_to_region_space(closest_point_to_vp([line.start, line.end], vp3)), 
+                    self.map_from_compute_to_region_space(vp3), 
                     dim_color(BLUE))
 
         # # Draw active / hovered control point info
@@ -739,20 +780,20 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
         # Draw compute space frame
         self._draw_layer.add_rect(
-            top_left = self.map_region_to_compute_space((self.get_compute_space().x, self.get_compute_space().y)),
-            bottom_right = self.map_region_to_compute_space((self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y+self.get_compute_space().height)),
+            top_left = self.map_from_compute_to_region_space((self.get_compute_space().x, self.get_compute_space().y)),
+            bottom_right = self.map_from_compute_to_region_space((self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y+self.get_compute_space().height)),
             color=(0,1,1,0.5)
         )
 
         compute_min = (self.get_compute_space().x,                                self.get_compute_space().y)
         compute_max = (self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y+self.get_compute_space().height)
         self._draw_layer.add_text(
-            self.map_region_to_compute_space((self.get_compute_space().x, self.get_compute_space().y)),
+            self.map_from_compute_to_region_space((self.get_compute_space().x, self.get_compute_space().y)),
             f"Compute Space {compute_min[0]:.1f},{compute_min[1]:.1f}",
             (0,1,1,1)
         )
         self._draw_layer.add_text(
-            self.map_region_to_compute_space((self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y + self.get_compute_space().height)),
+            self.map_from_compute_to_region_space((self.get_compute_space().x+self.get_compute_space().width, self.get_compute_space().y + self.get_compute_space().height)),
             f"Compute Space {compute_max[0]:.1f},{compute_max[1]:.1f}",
             (0,1,1,1)
         )
@@ -887,7 +928,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             elif self._active_id is not None:
                 """Mouse Drag"""
                 # move active control point
-                mouse_x_unproj, mouse_y_unproj = self.map_compute_to_region_space((event.mouse_region_x, event.mouse_region_y))
+                mouse_x_unproj, mouse_y_unproj = self.map_from_region_to_compute_space((event.mouse_region_x, event.mouse_region_y))
 
                 self._controls[self._active_id].value = (mouse_x_unproj, mouse_y_unproj)
                 # self.set_control_point(self._active_name, (mouse_x_unproj, mouse_y_unproj))
@@ -995,7 +1036,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         
         return x, y
 
-    def map_region_to_compute_space(self, coord:Tuple[float, float]) -> Tuple[float, float]:
+    def map_from_compute_to_region_space(self, coord:Tuple[float, float]) -> Tuple[float, float]:
         """Project from computation viewport to region space (uses cached viewport state)"""
         assert self._output_space is not None, "Viewport state not initialized"
         # map from computation viewport to output space
@@ -1006,7 +1047,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         coord = self._map_from_outputframe_to_region_space(coord)
         return coord
 
-    def map_compute_to_region_space(self, coord: Tuple[float, float]) -> Tuple[float, float]:
+    def map_from_region_to_compute_space(self, coord: Tuple[float, float]) -> Tuple[float, float]:
         """Map from region space to computation viewport (uses cached viewport state)"""
         assert self._output_space is not None, "Viewport state not initialized"
         coord = self._map_from_region_to_output_space(coord)
@@ -1049,7 +1090,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
         # compute scene scale fromr eference distance
         region = context.region            # The active region (usually VIEW_3D window)
-        rv3d   = context.region_data       # The RegionView3D for this region
+        rv3d   = context.region_data       # The RegionView3D for this region # TODO: context.space_data.region_3d might be more accurate?
 
         print("Solving camera...", region, rv3d)
 
@@ -1074,32 +1115,35 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
                     focal_length_pixel = camera_object.data.lens / camera_object.data.sensor_width * self.get_compute_space().height
         
-                    results:dict = solver.solve(
-                        mode = solver.SolverMode.OneVP,
-                        viewport =               self.get_compute_space(),
+                    # results:dict = solver.solve(
+                    #     mode = solver.SolverMode.OneVP,
+                    #     viewport =               self.get_compute_space(),
 
-                        first_vanishing_lines =  first_vanishing_lines,
-                        second_vanishing_lines = second_vanishing_lines,
-                        third_vanishing_lines =  [],
+                    #     first_vanishing_lines =  first_vanishing_lines,
+                    #     second_vanishing_lines = second_vanishing_lines,
+                    #     third_vanishing_lines =  [],
 
-                        f =                      focal_length_pixel,
-                        P =                      glm.vec2(*vl_settings.principal),
-                        O =                      glm.vec2(*vl_settings.origin),
+                    #     f =                      focal_length_pixel,
+                    #     P =                      glm.vec2(*vl_settings.principal),
+                    #     O =                      glm.vec2(*vl_settings.origin),
 
-                        reference_axis=          solver.ReferenceAxis.Screen,
-                        reference_distance_segment=(0, vl_settings.reference_distance),
-                        reference_world_size=vl_settings.scene_scale,
+                    #     reference_axis=          solver.ReferenceAxis.Screen,
+                    #     reference_distance_segment=(0, vl_settings.reference_distance),
+                    #     reference_world_size=vl_settings.scene_scale,
 
-                        first_axis =             solver.Axis.PositiveY, # Blenders camera axes
-                        second_axis =            solver.Axis.NegativeX, # - " -               
-                    )
+                    #     first_axis =             solver.Axis.PositiveY, # Blenders camera axes
+                    #     second_axis =            solver.Axis.NegativeX, # - " -               
+                    # )
 
-                    apply_solver_results_to_blender_camera(
-                        results['projection'], 
-                        results['view'], 
-                        camera_object, 
-                        self.get_compute_space(), 
-                        self.get_output_space(context)
+                    vp1 = utils.least_squares_intersection_of_lines(first_vanishing_lines)
+                    vp2 = None
+                    vp3 = None
+                    projection, view = solver.orientation_from_one_vanishing_point(
+                        self.get_compute_space(),
+                        vp1=vp1,
+                        second_line=second_vanishing_lines[0],
+                        f=focal_length_pixel,
+                        P=glm.vec2(*vl_settings.principal)
                     )
                         
                 case "TWO_POINT":
@@ -1126,37 +1170,17 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                             (glm.vec2(*line.start), 
                                 glm.vec2(*line.end)) 
                             for line in vl_settings.second_vanishing_lines]
+                        
+                    vp1 = utils.least_squares_intersection_of_lines(first_vanishing_lines)
+                    vp2 = utils.least_squares_intersection_of_lines(second_vanishing_lines)
+                    vp3 = None
+                    projection, view = solver.orientation_from_two_vanishing_points(
+                        self.get_compute_space(),
+                        vp1=vp1,
+                        vp2=vp2,
+                        P=glm.vec2(*vl_settings.principal)
+                    )
                     
-                    #TODO: Quad Mode
-
-                    results:dict = solver.solve(
-                        mode = solver.SolverMode.TwoVP,
-                        viewport =               self.get_compute_space(),
-
-                        first_vanishing_lines =  first_vanishing_lines,
-                        second_vanishing_lines = second_vanishing_lines,
-                        third_vanishing_lines =  [],
-
-                        f =                      None,
-                        P =                      glm.vec2(*vl_settings.principal),
-                        O =                      glm.vec2(*vl_settings.origin),
-
-                        reference_axis=          solver.ReferenceAxis.Screen,
-                        reference_distance_segment=(0, vl_settings.reference_distance),
-                        reference_world_size=vl_settings.scene_scale,
-
-                        first_axis =             solver.Axis.PositiveY, # Blenders camera axes
-                        second_axis =            solver.Axis.NegativeX, # - " -               
-                    )
-
-                    apply_solver_results_to_blender_camera(
-                        results['projection'], 
-                        results['view'], 
-                        camera_object, 
-                        self.get_compute_space(), 
-                        self.get_output_space(context)
-                    )
-
                 case "THREE_POINT":
                     first_vanishing_lines = [
                         (glm.vec2(*line.start), 
@@ -1183,33 +1207,51 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                         for line in vl_settings.third_vanishing_lines]
 
 
-                    results:dict = solver.solve(
-                        mode = solver.SolverMode.ThreeVP,
-                        viewport =               self.get_compute_space(),
+                    vp1 = utils.least_squares_intersection_of_lines(first_vanishing_lines)
+                    vp2 = utils.least_squares_intersection_of_lines(second_vanishing_lines)
+                    vp3 = utils.least_squares_intersection_of_lines(third_vanishing_lines)
 
-                        first_vanishing_lines =  first_vanishing_lines,
-                        second_vanishing_lines = second_vanishing_lines,
-                        third_vanishing_lines =  third_vanishing_lines,
-
-                        f =                      None,
-                        P =                      glm.vec2(*vl_settings.principal),
-                        O =                      glm.vec2(*vl_settings.origin),
-
-                        reference_axis=          solver.ReferenceAxis.Screen,
-                        reference_distance_segment=(0, vl_settings.reference_distance),
-                        reference_world_size=vl_settings.scene_scale,
-
-                        first_axis =             solver.Axis.PositiveY, # Blenders camera axes
-                        second_axis =            solver.Axis.NegativeX, # - " -               
+                    projection, view = solver.orientation_from_three_vanishing_points(
+                        self.get_compute_space(),
+                        vp1=vp1,
+                        vp2=vp2,
+                        vp3=vp3
                     )
 
-                    apply_solver_results_to_blender_camera(
-                        results['projection'], 
-                        results['view'], 
-                        camera_object, 
-                        self.get_compute_space(), 
-                        self.get_output_space(context)
-                    )
+            # validate if matrix is a purely rotational matrix
+            if solver.validate_orthogonality(glm.mat3(view)) is False:
+                view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
+                warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
+            
+            view = solver.adjust_position_to_origin(
+                self.get_compute_space(), 
+                projection, 
+                glm.vec2(*vl_settings.origin), 
+                view
+            )
+
+            view = solver.adjust_scale_to_reference_distance(
+                self.get_compute_space(), 
+                projection, 
+                vl_settings.scene_scale, 
+                solver.ReferenceAxis.Screen, 
+                (0, vl_settings.reference_distance), 
+                view
+            )
+
+            view = solver.adjust_axis_assignment(
+                solver.Axis.PositiveY,
+                solver.Axis.NegativeX,
+                view
+            )
+
+            apply_solver_results_to_blender_camera(
+                projection, 
+                view, 
+                camera_object, 
+                self.get_compute_space(), 
+                self.get_output_space(context)
+            )
                     
         except Exception as e:
             self._solve_error = e
