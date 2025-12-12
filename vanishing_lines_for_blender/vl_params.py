@@ -1,11 +1,6 @@
 # type: ignore
 import bpy
 
-# class Point(bpy.types.PropertyGroup):
-#     name="Point"
-#     x: bpy.props.FloatProperty(name="x", default=0.0)# is_animatable=False, subtype='PIXEL')
-#     y: bpy.props.FloatProperty(name="y", default=0.0)
-
 
 class Line(bpy.types.PropertyGroup):
     name="Line"
@@ -19,6 +14,7 @@ class Line(bpy.types.PropertyGroup):
         size=2,
         default=(0.0, 0.0)
     )
+
 
 class VLSettings(bpy.types.PropertyGroup):
     name="VL Settings"
@@ -81,9 +77,7 @@ class VLSettings(bpy.types.PropertyGroup):
     reference_distance: bpy.props.FloatProperty(
         name="Reference distance",
         description="Reference distance",
-        default=0.5,
-        min=0.001,
-        max=2.0
+        default=0.5
     )
 
     # control points

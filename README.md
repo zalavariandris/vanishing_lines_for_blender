@@ -15,6 +15,7 @@ __work in progress__
 ## TODO, ChangeLog
 ### **0.7.*
 - [ ] REFACTOR coordinate space conversion
+- [ ] FIX Portrait aspect
 - [ ] ADD axis assignment
 
 ### **0.7.*
@@ -31,9 +32,10 @@ __work in progress__
 - [ ] ADD slow point drag with SHIFT
 - [ ] ADD Loupe
 
-### **0.7.*
-- [ ] FIX reference distance mouse handling.
-- [ ] add arbitrary axis to measure distance
+### **0.7.4
+- [ ] Add arbitrary axis to measure distance.
+- [X] ADD set scale by camera to origin distance.
+- [X] FIX reference distance mouse handling.
 
 ### **0.7.3
 - [x] ADD reference distance controls to the viewport

@@ -1,5 +1,5 @@
 from enum import IntEnum
-import glm
+from pyglm import glm
 from dataclasses import dataclass
 
 #########

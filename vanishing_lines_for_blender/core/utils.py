@@ -1,6 +1,6 @@
 from typing import Tuple, List
 
-import glm
+from pyglm import glm
 import math
 import warnings
 
@@ -18,6 +18,11 @@ Ray2 = Tuple[Point2, Point2] # origin, direction
 Ray3 = Tuple[Point3, Point3] # origin, direction
 Plane3 = Tuple[Point3, Point3]  # point, normal
 
+
+def dot2d(u: Point2, v: Point2) -> float:
+    Ux, Uy = u
+    Vx, Vy = v
+    return Ux * Vx + Uy * Vy
 
 def least_squares_intersection_of_lines(lines: List[Line2]) -> Point2:
     """

@@ -8,7 +8,7 @@ from textwrap import dedent
 from abc import ABC, abstractmethod
 
 # third party library
-import glm
+from pyglm import glm
 import numpy as np
 
 import warnings
@@ -22,6 +22,10 @@ from . constants import (
 
 from . import utils
 from . types import *
+
+from typing import TypedDict, NamedTuple
+
+
 
 
 #########################
@@ -300,11 +304,11 @@ def adjust_position_to_origin(
         viewport, 
         projection:glm.mat4, 
         O:glm.vec2, 
-        view:glm.mat4
+        view:glm.mat4,
+        distance:float=1.0
     )->glm.mat4:
     
     # Convert world distance 1.0 to NDC z-coordinate
-    distance = 1.0
     near = DEFAULT_NEAR_PLANE
     far = DEFAULT_FAR_PLANE
     
@@ -319,6 +323,7 @@ def adjust_position_to_origin(
         viewport.width, 
         viewport.height
     )
+
     origin_3d = glm.unProject(
         glm.vec3(O.x, O.y, ndc_z),
         view,

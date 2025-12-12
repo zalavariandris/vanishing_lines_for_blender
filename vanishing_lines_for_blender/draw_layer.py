@@ -38,9 +38,14 @@ class DrawLayer:
         self._line_attributes['pos'].append( end )
         self._line_attributes['color'].append( color )
 
-    def add_rect(self, top_left, bottom_right, color):
-        x0, y0 = top_left
-        x1, y1 = bottom_right
+    def add_rect(self, 
+            pos:Tuple[float, float], 
+            size:Tuple[float, float], 
+            color:Tuple[float, float, float, float]):
+        
+        x0, y0 = pos
+        w, h = size
+        x1, y1 = x0 + w, y0 + h
 
         self.add_line( (x0, y0), (x1, y0), color ) # top
         self.add_line( (x1, y0), (x1, y1), color ) # right
