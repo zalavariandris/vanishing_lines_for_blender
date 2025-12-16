@@ -85,3 +85,4 @@ class DrawLayer:
             blf.size(font_id, 12)
             blf.color(font_id, *color)
             blf.draw(font_id, f"{text}")
+

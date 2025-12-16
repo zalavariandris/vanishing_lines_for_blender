@@ -12,6 +12,15 @@ import mathutils
 from bpy_extras import view3d_utils
 
 from . import vl_utils
+from .vl_coord_utils import (
+    get_view3d_zoom_to_fac,
+    project_output_to_region,
+    unproject_output_from_region,
+    fit_space_to_aspect,
+    map_space,
+    crop_space_to_aspect
+)
+
 # third party
 import glm
 
@@ -30,9 +39,12 @@ from typing import Protocol
 from typing import Callable
 
 class ControlPoint():
-    def __init__(self, data:bpy.types.ID, prop:str, setter:Callable|None=None, getter:Callable|None=None):
+    def __init__(self, data:bpy.types.ID, prop:str, *, 
+            setter:Callable|None=None, 
+            getter:Callable|None=None):
         self._data = data
         self._prop = prop
+
 
         if setter is None:
             self._setter = lambda data, prop, value: setattr(self._data, self._prop, value)
@@ -120,15 +132,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         # Setup Drawing
         self._draw_layer = DrawLayer()
 
-        # register draw handler
-        if not self._view_draw_screen_handler:
-            self._view_draw_screen_handler = bpy.types.SpaceView3D.draw_handler_add(
-                self.draw_view, 
-                (context, ), 
-                'WINDOW', 
-                'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
-            )
-
         # Setup Solver
         self.set_compute_space(solver.Rect(-1,-1,2,2))
         
@@ -153,7 +156,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             item.start = -0.9, 0.0
             item.end = 0.4, 0.5
 
-
         if len(vl_settings.second_vanishing_lines) == 0:
             item = vl_settings.second_vanishing_lines.add()
             item.start = -0.3, -0.52
@@ -175,6 +177,12 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         # deps update handler
         # if not self._depsgraph_update_post_handler:
         #     bpy.app.handlers.depsgraph_update_post.append(self._on_deps_graph_update)
+
+        self._view_draw_screen_handler = bpy.types.SpaceView3D.draw_handler_add(
+            self.draw_view, 
+            (context, ), 
+            'WINDOW',
+            'POST_PIXEL')
 
         # trigger redraw
         if area.type == 'VIEW_3D':
@@ -285,7 +293,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             elif self._active_id is not None:
                 """Mouse Drag"""
                 # move active control point
-                mouse_x_unproj, mouse_y_unproj = self.map_from_region_to_compute_space((event.mouse_region_x, event.mouse_region_y))
+                mouse_x_unproj, mouse_y_unproj = self.unproject_compute_from_region((event.mouse_region_x, event.mouse_region_y))
 
                 self._controls[self._active_id].value = (mouse_x_unproj, mouse_y_unproj)
                 # self.set_control_point(self._active_name, (mouse_x_unproj, mouse_y_unproj))
@@ -350,7 +358,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                     'WINDOW')
                 
             except RuntimeError as e:
-                warnings.warn("Tried to remove view handler, that has already been removed:", e)
+                warnings.warn(f"Tried to remove view handler, that has already been removed: {e}")
 
             self._view_draw_screen_handler = None
             
@@ -563,7 +571,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 view, 
                 camera_object, 
                 self.get_compute_space(), 
-                self._output_space
+                self._output_space,
+                self._active_camera.data.sensor_fit
             )
                     
         except Exception as e:
@@ -580,7 +589,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         closest_dist_sq = threshold * threshold
 
         for control_id, control_point in self._controls.items():
-            P = (self.map_from_compute_to_region_space(control_point.value))
+            P = (self.project_compute_to_region(control_point.value))
             dist_sq = (P[0] - mouse_region_x) ** 2 + (P[1] - mouse_region_y) ** 2
             if dist_sq < closest_dist_sq:
                 closest_dist_sq = dist_sq
@@ -588,25 +597,38 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
         return closest_key
     
-    def control_point(self, data:bpy.types.ID, prop:str, text:str="", color=(1.0,0.5,0.0,1.0), setter:Callable|None=None, getter:Callable|None=None) -> ControlPoint:
+    def control_point(self, data:bpy.types.ID, prop:str, *,
+        text:str="",
+        color=(1.0,0.5,0.0,1.0),
+        setter:Callable|None=None, 
+        getter:Callable|None=None
+    ) -> ControlPoint:
         assert self._draw_layer is not None, "Draw layer not initialized"
-        key = (data, prop)
-        if key not in self._controls:
-            self._controls[key] = ControlPoint(data, prop, setter=setter, getter=getter)
-        cp = self._controls[key]
+        control_id = (data, prop)
+        if control_id not in self._controls:
+            self._controls[control_id] = ControlPoint(data, prop, setter=setter, getter=getter)
 
-        if self._hovered_id == key:
-            color = (1.0, 1.0, 1.0, 1.0)
-            text = f"{text} ({cp.value[0]:.2f}, {cp.value[1]:.2f})"
-            
-        if self._active_id == key:
-            color = (1.0, 1.0, 1.0, 1.0)
+        cp = self._controls[control_id]
+        P = self.project_compute_to_region(cp.value)
+        is_active = (self._active_id == control_id)
+        is_hovered = (self._hovered_id == control_id)
 
-        pos = self.map_from_compute_to_region_space(cp.value)
-        self._draw_layer.add_text( pos, text, color)
-        self._draw_layer.add_point(pos, color)
+        point_color = color
+        if is_active:
+            point_color = (1.0, 1.0, 1.0, 1.0)
+        elif is_hovered:
+            point_color = (1.0, 1.0, 1.0, 1.0)
+
+        self._draw_layer.add_point(
+            P,
+            point_color)
+
+        self._draw_layer.add_text(
+            (P[0]+5, P[1]+5),
+            text,
+            color=(1,1,1,1))
         
-        return self._controls[key]
+        return self._controls[control_id]
     
     def is_item_hovered(self):
         last_id = list(self._controls.keys())[-1]
@@ -617,7 +639,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         return self._active_id == last_id
 
     def draw_view(self, context):
-        print("draw_view called")
         try:
             if self._draw_layer is None:
                 warnings.warn("Draw layer not initialized. Skipping draw.")
@@ -644,7 +665,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         # draw reference line
         
         self._draw_layer.add_point(
-            self.map_from_compute_to_region_space(
+            self.project_compute_to_region(
                 self.get_reference_distance_point(vl_settings)), 
                 (1.0, 1.0, 1.0, 1.0))
         # self.map_compute_to_region_space((ref_point_2d.x, ref_point_2d.y))
@@ -667,8 +688,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                     self.get_reference_distance_point(vl_settings))
                 
             self._draw_layer.add_line(
-                self.map_from_compute_to_region_space(vl_settings.origin), 
-                self.map_from_compute_to_region_space(
+                self.project_compute_to_region(vl_settings.origin), 
+                self.project_compute_to_region(
                     self.get_reference_distance_point(vl_settings)),
                 vl_utils.dim_color(ORANGE, factor=0.7 if self.is_item_hovered() else 0.1))
 
@@ -682,8 +703,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 _ = self.control_point(line, "end",   text=f"",   color=GREEN)
 
                 self._draw_layer.add_line(
-                    self.map_from_compute_to_region_space(line.start), 
-                    self.map_from_compute_to_region_space(line.end), 
+                    self.project_compute_to_region(line.start), 
+                    self.project_compute_to_region(line.end), 
                     GREEN)
 
         try:
@@ -694,8 +715,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
             for line in vl_settings.first_vanishing_lines:
                 self._draw_layer.add_line(
-                    self.map_from_compute_to_region_space(vl_utils.closest_point_to_target([line.start, line.end], vp1)), 
-                    self.map_from_compute_to_region_space(vp1), vl_utils.dim_color(GREEN))
+                    self.project_compute_to_region(vl_utils.closest_point_to_target([line.start, line.end], vp1)), 
+                    self.project_compute_to_region(vp1), vl_utils.dim_color(GREEN))
         except ValueError as e:
             warnings.warn(f"Could not compute VP1: {e}")
 
@@ -706,8 +727,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             _ = self.control_point(line, "end",   text=f"",   color=RED)
 
             self._draw_layer.add_line(
-                self.map_from_compute_to_region_space(line.start), 
-                self.map_from_compute_to_region_space(line.end), 
+                self.project_compute_to_region(line.start), 
+                self.project_compute_to_region(line.end), 
                 RED)
 
         if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
@@ -717,8 +738,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 
                 for line_start, line_end in [(first_line.start, last_line.start), (first_line.end, last_line.end)]:
                     self._draw_layer.add_line(
-                        self.map_from_compute_to_region_space(line_start), 
-                        self.map_from_compute_to_region_space(line_end), 
+                        self.project_compute_to_region(line_start), 
+                        self.project_compute_to_region(line_end), 
                         RED)
                     
             else:
@@ -727,8 +748,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                     _ = self.control_point(line, "end",   text="",   color=RED)
 
                     self._draw_layer.add_line(
-                        self.map_from_compute_to_region_space(line.start), 
-                        self.map_from_compute_to_region_space(line.end), 
+                        self.project_compute_to_region(line.start), 
+                        self.project_compute_to_region(line.end), 
                         RED)
 
         try:
@@ -742,8 +763,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 
                 for line in [first_line, last_line]:
                     self._draw_layer.add_line(
-                        self.map_from_compute_to_region_space(vl_utils.closest_point_to_target([line_start, line_end], vp2)), 
-                        self.map_from_compute_to_region_space(vp2), 
+                        self.project_compute_to_region(vl_utils.closest_point_to_target([line_start, line_end], vp2)), 
+                        self.project_compute_to_region(vp2), 
                         vl_utils.dim_color(RED))
             else:
                 vp2 = solver.utils.least_squares_intersection_of_lines([
@@ -752,8 +773,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 
                 for line in vl_settings.second_vanishing_lines:
                     self._draw_layer.add_line(
-                        self.map_from_compute_to_region_space(vl_utils.closest_point_to_target([line.start, line.end], vp2)), 
-                        self.map_from_compute_to_region_space(vp2), 
+                        self.project_compute_to_region(vl_utils.closest_point_to_target([line.start, line.end], vp2)), 
+                        self.project_compute_to_region(vp2), 
                         vl_utils.dim_color(RED))
 
         except ValueError as e:
@@ -765,8 +786,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 _ = self.control_point(line, "end",   text="",   color=BLUE)
 
                 self._draw_layer.add_line(
-                    self.map_from_compute_to_region_space(line.start), 
-                    self.map_from_compute_to_region_space(line.end), 
+                    self.project_compute_to_region(line.start), 
+                    self.project_compute_to_region(line.end), 
                     BLUE)
                 
         try:
@@ -775,16 +796,17 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 for line in vl_settings.third_vanishing_lines])
             for line in vl_settings.third_vanishing_lines:
                 self._draw_layer.add_line(
-                    self.map_from_compute_to_region_space(vl_utils.closest_point_to_target([line.start, line.end], vp3)), 
-                    self.map_from_compute_to_region_space(vp3), 
+                    self.project_compute_to_region(vl_utils.closest_point_to_target([line.start, line.end], vp3)), 
+                    self.project_compute_to_region(vp3), 
                     vl_utils.dim_color(BLUE))
         except ValueError as e:
             warnings.warn(f"Could not compute VP3: {e}")
 
+
         # Draw Output Frame
         def draw_camera_output_frame():
-            bottom_left = self._impl_map_from_outputframe_to_region_space((0,0))
-            top_right =   self._impl_map_from_outputframe_to_region_space((self._output_space.width, self._output_space.height))
+            bottom_left = self._project_output_to_region((0,0))
+            top_right =   self._project_output_to_region((self._output_space.width, self._output_space.height))
             w = top_right[0]-bottom_left[0]
             h = top_right[1]-bottom_left[1]
 
@@ -801,22 +823,22 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         draw_camera_output_frame()
 
         # # Draw compute space frame
-        # def draw_space_frame(space):
-        #     x, y =         self.map_from_compute_to_region_space((space.x, space.y))
-        #     bottom_right = self.map_from_compute_to_region_space((space.x + space.width, space.y + space.height))
-        #     w, h = bottom_right[0]-x, bottom_right[1]-y
+        def draw_space_frame(space):
+            x, y =         self.project_compute_to_region((space.x, space.y))
+            bottom_right = self.project_compute_to_region((space.x + space.width, space.y + space.height))
+            w, h = bottom_right[0]-x, bottom_right[1]-y
 
-        #     self._draw_layer.add_rect(
-        #         (x, y),
-        #         (w, h),
-        #         color=(0,1,1,0.5))
+            self._draw_layer.add_rect(
+                (x, y),
+                (w, h),
+                color=(0,1,1,0.5))
 
-        #     self._draw_layer.add_text(
-        #         (x, y),
-        #         f"Compute Space",
-        #         color=(0,1,1,1))
+            self._draw_layer.add_text(
+                (x, y),
+                f"Compute Space",
+                color=(0,1,1,1))
         
-        # draw_space_frame(self.get_compute_space())
+        draw_space_frame(self.get_compute_space())
 
         # Execute the draw calls
         self._draw_layer.draw()
@@ -857,7 +879,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         R = view3d_utils.location_3d_to_region_2d(
             self._region, self._region_data, axis_vector)
         
-        R = self.map_from_region_to_compute_space((R.x, R.y))
+        R = self.unproject_compute_from_region((R.x, R.y))
 
         R = mathutils.Vector((R[0], R[1]))
         
@@ -887,7 +909,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 axis_vector = (0,0,1)
 
         R = view3d_utils.location_3d_to_region_2d(self._region, self._region_data, axis_vector)
-        R = self.map_from_region_to_compute_space((R.x, R.y))
+        R = self.unproject_compute_from_region((R.x, R.y))
         R = mathutils.Vector((R[0], R[1]))
         l = (R - O).magnitude
         n = (R - O) / l
@@ -911,146 +933,54 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         vl_settings.compute_space = (viewport.x, viewport.y, viewport.width, viewport.height)
 
     # Coordinate Mapping
-    def _impl_map_from_outputframe_to_region_space(self, coord: Tuple[float, float]) -> Tuple[float, float]:
+    def _project_output_to_region(self, output_coords: Tuple[float, float]) -> Tuple[float, float]:
         """Convert output frame coordinates to region space using cached viewport state"""
-        x, y = coord
-        assert isinstance(x, (int, float)), f"got: {x}"
-        assert isinstance(y, (int, float)), f"got: {y}"
         assert self._output_space is not None, "Viewport state not initialized"
 
-        resolution_x = self._output_space.width
-        resolution_y = self._output_space.height
-        
-        # Convert image pixels to centered NDC (-1..1)
-        x = (x / resolution_x - 0.5) * 2.0
-        y = (y / resolution_y - 0.5) * 2.0
-        
-        # Apply zoom
-        zoom_fac = vl_utils.get_view3d_zoom_to_fac(self._view_camera_zoom)
-        x *= zoom_fac
-        y *= zoom_fac
-        
-        # Correct aspect ratio mismatch between region and render
-        region_aspect = self._region_width / self._region_height
-        render_aspect = resolution_x / resolution_y
-        sensor_aspect = self._active_camera.data.sensor_height / self._active_camera.data.sensor_width
+        return project_output_to_region(
+            sensor_fit=self._active_camera.data.sensor_fit,
+            output_size = (self._output_space.width, self._output_space.height),
+            region_size = (self._region_width, self._region_height),
+            view_camera_zoom = self._view_camera_zoom,
+            view_camera_offset = self._view_camera_offset,
+            output_coords=output_coords)
 
-        if render_aspect < 1.0:
-            scale = 1/render_aspect
-            x /= scale
-            y /= scale
-
-        y *= region_aspect / render_aspect
-
-        match self._active_camera.data.sensor_fit:
-            case 'HORIZONTAL':
-                if region_aspect < 1.0:
-                    x /= render_aspect
-                    y /= render_aspect
-                else:
-                    pass
-                    # x *= render_aspect
-                    # y *= render_aspect
-
-            case 'VERTICAL':
-                if region_aspect < 1.0:
-                    x /= render_aspect
-                    y /= render_aspect
-            
-            case 'AUTO':
-                if region_aspect < 1.0:
-                    scale = 1/region_aspect
-                    x *= scale
-                    y *= scale
-        
-        # Apply camera pan
-        offset_x, offset_y = self._view_camera_offset
-        x -= offset_x * 4.0 * zoom_fac
-        y -= offset_y * 4.0 * zoom_fac
-        
-        # Convert NDC to region pixels
-        x = (x / 2.0 + 0.5) * self._region_width
-        y = (y / 2.0 + 0.5) * self._region_height
-        
-        return x, y
-
-    def _impl_map_from_region_to_output_space(self, coord: Tuple[float, float]) -> Tuple[float, float]:
+    def _unproject_output_from_region(self, region_coords: Tuple[float, float]) -> Tuple[float, float]:
         """Convert region coordinates to output frame space using cached viewport state"""
-        x, y = coord
-        assert isinstance(x, (int, float)), f"got: {x}"
-        assert isinstance(y, (int, float)), f"got: {y}"
         assert self._output_space is not None, "Viewport state not initialized"
 
-        resolution_x = self._output_space.width
-        resolution_y = self._output_space.height
-        
-        # Convert region pixels to NDC (-1..1)
-        x = (x / self._region_width - 0.5) * 2.0
-        y = (y / self._region_height - 0.5) * 2.0
-        
-        # Unapply camera pan
-        zoom_fac = vl_utils.get_view3d_zoom_to_fac(self._view_camera_zoom)
-        offset_x, offset_y = self._view_camera_offset
-        x += offset_x * 4.0 * zoom_fac
-        y += offset_y * 4.0 * zoom_fac
-        
-        # Unapply aspect ratio correction and sensor fit
-        region_aspect = self._region_width / self._region_height
-        render_aspect = resolution_x / resolution_y
-        
-        match self._active_camera.data.sensor_fit:
-            case 'HORIZONTAL':
-                pass
+        return unproject_output_from_region(
+            sensor_fit=self._active_camera.data.sensor_fit,
+            output_size = (self._output_space.width, self._output_space.height),
+            region_size = (self._region_width, self._region_height),
+            view_camera_zoom = self._view_camera_zoom,
+            view_camera_offset = self._view_camera_offset,
+            region_coords=region_coords)
 
-            case 'VERTICAL':
-                scale = render_aspect / region_aspect
-                x /= scale
-                y /= scale
-            
-            case 'AUTO':
-                if region_aspect < 1.0:
-                    scale = 1/region_aspect
-                    x /= scale
-                    y /= scale
-        
-        y /= region_aspect / render_aspect
-
-        if render_aspect < 1.0:
-            scale = 1/render_aspect
-            x *= scale
-            y *= scale
-        
-        # Unapply zoom
-        x /= zoom_fac
-        y /= zoom_fac
-        
-        # Convert NDC to image pixels
-        x = (x / 2.0 + 0.5) * resolution_x
-        y = (y / 2.0 + 0.5) * resolution_y
-        
-        return x, y
-
-    def map_from_compute_to_region_space(self, coord:Tuple[float, float]) -> Tuple[float, float]:
+    def project_compute_to_region(self, coord:Tuple[float, float]) -> Tuple[float, float]:
         """Project from computation viewport to region space (uses cached viewport state)"""
         x, y = coord
         assert isinstance(x, (int, float)), f"got: {x}"
         assert isinstance(y, (int, float)), f"got: {y}"
         assert self._output_space is not None, "Viewport state not initialized"
-        # map from computation viewport to output space
-        coord = vl_utils.map_space(coord, 
-            source=vl_utils.fit_space_to_aspect(self.get_compute_space(), self._output_space.aspect), 
+        
+        # project compute to output
+        coord = map_space(coord, 
+            source=fit_space_to_aspect(self.get_compute_space(), self._output_space.aspect), 
             target=self._output_space)
         
-        coord = self._impl_map_from_outputframe_to_region_space(coord)
+        coord = self._project_output_to_region(coord)
         return coord
 
-    def map_from_region_to_compute_space(self, coord: Tuple[float, float]) -> Tuple[float, float]:
+    def unproject_compute_from_region(self, coord: Tuple[float, float]) -> Tuple[float, float]:
         """Map from region space to computation viewport (uses cached viewport state)"""
         assert self._output_space is not None, "Viewport state not initialized"
-        coord = self._impl_map_from_region_to_output_space(coord)
-        coord = vl_utils.map_space(coord, 
+        coord = self._unproject_output_from_region(coord)
+
+        coord = map_space(coord, 
             source=self._output_space,
-            target=vl_utils.fit_space_to_aspect(self.get_compute_space(), self._output_space.width / self._output_space.height))
+            target=fit_space_to_aspect(self.get_compute_space(), self._output_space.width / self._output_space.height))
+        
         return coord
     
 
@@ -1060,11 +990,52 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 def view_menu_func(self, context):
     self.layout.operator(VIEW_OT_VanishingLinesOperator.bl_idname, text="Vanishing Lines Modal Operator")
 
+draw_handler = None
+draw_list = DrawLayer()
+
+def get_vl_instance(op_idname):
+    for op in bpy.context.window.modal_operators:
+        if op and op.bl_idname == 'VIEW_OT_vanishing_lines_operator':
+            return op
+    return None
+
+def view_draw_func():
+    # global draw_list
+    """Wrapper function to call the draw_view method of the operator instance."""
+    if op:=get_vl_instance("VIEW_OT_vanishing_lines_operator"):
+        op.draw_view(bpy.context)
+
+    # # get region and rv3d
+    # context = bpy.context
+    # rv3d = context.region_data
+    # for area in bpy.context.screen.areas:
+    #     if area.type == 'VIEW_3D':
+    #         space = area.spaces.active
+    #         rv3d = space.region_3d
+    #         if rv3d.view_perspective == 'CAMERA':
+    #             cam = space.camera
+
+    #             draw_list.clear()
+    #             # get the operator instance
+    #             op = 
+
 def register():
+    global draw_handler
     bpy.utils.register_class(VIEW_OT_VanishingLinesOperator)
+    draw_handler = bpy.types.SpaceView3D.draw_handler_add(
+            view_draw_func, 
+            (), 
+            'WINDOW', 
+            'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
+        )
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
 def unregister():
+    global draw_handler
+    if draw_handler is not None:
+        bpy.types.SpaceView3D.draw_handler_remove(draw_handler, 'WINDOW')
+        draw_handler = None
+
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
     # VIEW_OT_VanishingLinesOperator.cleanup()
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesOperator)

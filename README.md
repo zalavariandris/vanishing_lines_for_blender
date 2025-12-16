@@ -13,9 +13,11 @@ __work in progress__
 
 
 ## TODO, ChangeLog
+- [ ] test with blender's python.
+  add to 'settings.json': "python.defaultInterpreterPath": "C:\\Program Files\\Blender Foundation\\Blender 4.5\\4.5\\python\\bin\\python.exe"
+
 ### **0.7.*
 - [ ] REFACTOR coordinate space conversion
-- [ ] FIX Portrait aspect
 - [ ] ADD axis assignment
 
 ### **0.7.*
@@ -33,7 +35,9 @@ __work in progress__
 - [ ] ADD Loupe
 
 ### **0.7.*
-- [ ] fix draw handler unregister
+- [ ] REFACTOR project/unproject between region and compute space to work with the new functions
+- [x] FIX camera view frame
+- [x] fix draw handler unregister
 
 ### **0.7.4
 - [x] Add arbitrary axis to measure distance.
