@@ -47,6 +47,10 @@ class Rect:
     def center(self) -> glm.vec2:
         return glm.vec2(self.x + self.width / 2, self.y + self.height / 2)
     
+    @property
+    def aspect(self) -> float:
+        return self.width / self.height
+    
     def __iter__(self):
         yield self.x
         yield self.y

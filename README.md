@@ -3,7 +3,7 @@
 A Blender add-on for aligning your camera’s perspective using vanishing lines.
 __work in progress__
 
-![capture](docs/rome_lake_vanishing_lines.gif)
+![capture](docs/assets/rome_lake_vanishing_lines.gif)
 
 ## Usage
 - when the addon is installed, open the VL sidepanel and click on Start Vanishing Lines Button.
@@ -32,8 +32,11 @@ __work in progress__
 - [ ] ADD slow point drag with SHIFT
 - [ ] ADD Loupe
 
+### **0.7.*
+- [ ] fix draw handler unregister
+
 ### **0.7.4
-- [ ] Add arbitrary axis to measure distance.
+- [x] Add arbitrary axis to measure distance.
 - [X] ADD set scale by camera to origin distance.
 - [X] FIX reference distance mouse handling.
 
