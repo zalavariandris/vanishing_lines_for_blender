@@ -821,6 +821,9 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 color=(1,1,1,1))
             
         draw_camera_output_frame()
+        print(" Drew output frame ")
+        print("zoom", self._view_camera_zoom)
+        print("offset", self._view_camera_offset[0], self._view_camera_offset[1])
 
         # # Draw compute space frame
         def draw_space_frame(space):
