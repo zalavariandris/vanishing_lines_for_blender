@@ -61,7 +61,9 @@ def apply_solver_results_to_blender_camera(
 
     # Apply focal length
     P, f, shift = solver.decompose_intrinsics(compute_space, projection)
-    fovy = solver.utils.fov_from_focal_length(f, compute_space.height)
+    # fovy = solver.utils.fov_from_focal_length(f, compute_space.height)
+    # fovx = solver.utils.fov_from_focal_length(f, compute_space.width)
+    # fovx = 2.0 * math.atan(math.tan(fovy / 2.0) / compute_aspect)
     camera_data: bpy.types.Camera = cast(bpy.types.Camera, camera_object.data)
 
     # Calculate the aspect ratio correction factor
@@ -75,10 +77,29 @@ def apply_solver_results_to_blender_camera(
     # camera_data.angle_y = fovy/2
 
     # Need to calculate fovx and derive focal length from that
-    fovx = 2.0 * math.atan(math.tan(fovy / 2.0) / compute_aspect)
+
+    match sensor_fit:
+        case 'AUTO':
+            if compute_aspect >= output_aspect:
+                effective_sensor_size = max(camera_data.sensor_width, camera_data.sensor_height)
+                focal_length = f / compute_space.width * effective_sensor_size
+                camera_data.lens = focal_length
+            else:
+                effective_sensor_size = max(camera_data.sensor_width, camera_data.sensor_height)
+                focal_length = f / compute_space.height * effective_sensor_size
+                camera_data.lens = focal_length
+
+        case 'HORIZONTAL':
+            focal_length = f / compute_space.width * camera_data.sensor_width
+            camera_data.lens = focal_length
+            
+        case 'VERTICAL':
+            effective_sensor_size  = max(camera_data.sensor_width, camera_data.sensor_height)
+            focal_length = f / compute_space.height * effective_sensor_size
+            camera_data.lens = focal_length
+
     # camera_data.angle_x = fovx
-    focal_length = solver.utils.focal_length_from_fov(fovx, camera_data.sensor_width)
-    camera_data.lens = focal_length
+
 
     # fovx = 2.0 * math.atan(math.tan(fovy / 2.0) * output_aspect)
     # match sensor_fit:

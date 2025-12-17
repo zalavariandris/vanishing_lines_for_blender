@@ -216,3 +216,31 @@ def crop_space_to_aspect(
         new_y = sy
 
     return new_x, new_y, new_w, new_h
+
+def project_compute_to_region(
+        sensor_fit: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+        output_size: Tuple[float, float],
+        region_size: Tuple[float, float],
+        view_camera_zoom: float,
+        view_camera_offset: Tuple[float, float],
+        compute_coords: Tuple[float, float]) -> Tuple[float, float]:
+    """Project from computation viewport to region space (uses cached viewport state)"""
+    x, y = compute_coords
+    assert isinstance(x, (int, float)), f"got: {x}"
+    assert isinstance(y, (int, float)), f"got: {y}"
+    assert self._output_space is not None, "Viewport state not initialized"
+    
+    # project compute to output
+    coord = map_space(coord, 
+        source=fit_space_to_aspect(self.get_compute_space(), self._output_space.aspect), 
+        target=self._output_space)
+    
+    coord = project_output_to_region(
+        sensor_fit=self._sensor_fit,
+        output_size=(self._output_space.width, self._output_space.height),
+        region_size=(self._region_width, self._region_height),
+        view_camera_zoom=self._view_camera_zoom,
+        view_camera_offset=self._view_camera_offset,
+        output_coords=coord)
+
+    return coord
