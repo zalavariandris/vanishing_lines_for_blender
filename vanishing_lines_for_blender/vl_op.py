@@ -16,6 +16,11 @@ from .vl_coord_utils import (
     get_view3d_zoom_to_fac,
     project_output_to_region,
     unproject_output_from_region,
+    get_sensor_size,
+    project_sensor_to_region,
+    unproject_sensor_from_region,
+    project_compute_to_region,
+    unproject_compute_from_region,
     fit_space_to_aspect,
     map_space,
     crop_space_to_aspect
@@ -27,11 +32,8 @@ import glm
 # local
 from . core import solver_functional as solver
 from . core import utils
-
 from . draw_layer import DrawLayer
-
 from typing import Protocol
-
 
 ###############
 # VL OPERATOR #
@@ -834,20 +836,21 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             self._draw_layer.add_rect(
                 (x, y),
                 (w, h),
-                color=(0,1,1,0.5))
+                color=(1,0,1,0.5))
 
             self._draw_layer.add_text(
-                (x, y),
+                (x+w, y),
                 f"Compute Space",
-                color=(0,1,1,1))
+                color=(1,0,1,1))
             
-        # draw_compute_frame(self.get_compute_space())
+        draw_compute_frame(self.get_compute_space())
 
         # draw sensor frame
         def draw_sensor_frame():
+            sensor_size = self.get_sensor_size()
             bottom_left = self.project_sensor_to_region((0,0))
             top_right = self.project_sensor_to_region(
-                (self._active_camera.data.sensor_width, self._active_camera.data.sensor_height))
+                (sensor_size[0], sensor_size[1]))
 
             self._draw_layer.add_rect(
                 bottom_left,
@@ -953,8 +956,20 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         vl_settings = self._active_camera.data.vl_settings #type: ignore
         vl_settings.compute_space = (viewport.x, viewport.y, viewport.width, viewport.height)
 
-    def get_effective_sensor_size(self) -> Tuple[float, float]:
-        ...
+    def get_sensor_size(self) -> Tuple[float, float]:
+        return get_sensor_size(
+            self._active_camera.data.sensor_fit,
+            (self._active_camera.data.sensor_width, self._active_camera.data.sensor_height))
+        # match self._active_camera.data.sensor_fit:
+        #     case 'AUTO':
+        #         # on auto mode, in blender, the sensor becomes a square.
+        #         # the square size, therefore the field of view is driven by the
+        #         # sensor_width property
+        #         return (self._active_camera.data.sensor_width, self._active_camera.data.sensor_width)
+        #     case 'HORIZONTAL':
+        #         return (self._active_camera.data.sensor_width, self._active_camera.data.sensor_height)
+        #     case 'VERTICAL':
+        #         return (self._active_camera.data.sensor_width, self._active_camera.data.sensor_height)
 
     # Coordinate Mapping
     def _project_output_to_region(self, output_coords: Tuple[float, float]) -> Tuple[float, float]:
@@ -981,62 +996,54 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             view_camera_offset = self._view_camera_offset,
             region_coords=region_coords)
 
-    def project_sensor_to_region(self, coord:Tuple[float, float]) -> Tuple[float, float]:
+    def project_sensor_to_region(self, sensor_coord:Tuple[float, float]) -> Tuple[float, float]:
         """Project from sensor space to region space (uses cached viewport state)"""
         assert self._output_space is not None, "Viewport state not initialized"
 
-
-        match self._active_camera.data.sensor_fit:
-            case 'AUTO':
-                sensor_rect = solver.Rect(
-                    x=0,
-                    y=0,
-                    width=self._active_camera.data.sensor_width,
-                    height=self._active_camera.data.sensor_height)
-                size = max(sensor_rect.width, sensor_rect.height)
-                sensor_rect.width, sensor_rect.height = size, size
-                # fit_space_to_aspect(sensor_rect, self._output_space.aspect)
-                coord = map_space(coord, 
-                    source=fit_space_to_aspect(sensor_rect, self._output_space.aspect),
-                    target=self._output_space)
-                coord = self._project_output_to_region(coord) 
-                return coord
-            
-            case 'HORIZONTAL':
-                scale = self._output_space.width / sensor_rect.width
-                new_height = sensor_rect.height * scale
-                fitted_space = solver.Rect(
-                    x=self._output_space.x,
-                    y=self._output_space.y + (self._output_space.height - new_height)/2,
-                    width=self._output_space.width,
-                    height=new_height)
-                coord = map_space(coord,  
-                    source=fitted_space,
-                    target=self._output_space)
-                coord = self._project_output_to_region(coord)
-                return coord
-
-            case 'VERTICAL':
-                scale = self._output_space.height / sensor_rect.height
-                new_width = sensor_rect.width * scale
-                fitted_space = solver.Rect(
-                    x=self._output_space.x + (self._output_space.width - new_width)/2,
-                    y=self._output_space.y,
-                    width=new_width,
-                    height=self._output_space.height)
-                coord = map_space(coord, 
-                    source=fitted_space,
-                    target=self._output_space)
-                coord = self._project_output_to_region(coord)
-                return coord
+        sensor_size = self.get_sensor_size()
+        sensor_rect = solver.Rect(
+            x=0,
+            y=0,
+            width=sensor_size[0],
+            height=sensor_size[1])
         
-        return coord
+        return project_sensor_to_region(
+            fit_mode=self._active_camera.data.sensor_fit,
+            sensor_size = (sensor_rect.width, sensor_rect.height),
+            output_size = (self._output_space.width, self._output_space.height),
+            region_size = (self._region_width, self._region_height),
+            view_camera_zoom = self._view_camera_zoom,
+            view_camera_offset = self._view_camera_offset,
+            sensor_coord=sensor_coord)
+        
+        # # fit_space_to_aspect(sensor_rect, self._output_space.aspect)
+        # match self._active_camera.data.sensor_fit:
+        #     case 'AUTO':
+        #         output_coord = map_space(sensor_coord, 
+        #             source=fit_space_to_aspect(sensor_rect, self._output_space.aspect),
+        #             target=self._output_space)
+                
+        #     case 'HORIZONTAL':
+        #         scale = self._output_space.width / sensor_rect.width
+        #         offset_x = (self._output_space.width - sensor_rect.width * scale) / 2.0
+        #         offset_y = (self._output_space.height - sensor_rect.height * scale) / 2.0
+        #         output_coord = (
+        #             sensor_coord[0] * scale + offset_x,
+        #             sensor_coord[1] * scale + offset_y)
+                
+        #     case 'VERTICAL':
+        #         scale = self._output_space.height / sensor_rect.height
+        #         offset_x = (self._output_space.width - sensor_rect.width * scale) / 2.0
+        #         offset_y = (self._output_space.height - sensor_rect.height * scale) / 2.0
+        #         output_coord = (
+        #             sensor_coord[0] * scale + offset_x,
+        #             sensor_coord[1] * scale + offset_y)
+        
+        # region_coord = self._project_output_to_region(output_coord) 
+        # return region_coord
     
     def unproject_sensor_from_region(self, coord: Tuple[float, float]) -> Tuple[float, float]:
-        """Map from region space to sensor space (uses cached viewport state)"""
-        assert self._output_space is not None, "Viewport state not initialized"
-        coord = self._unproject_output_from_region(coord)
-        return coord
+        raise NotImplementedError("unproject_sensor_from_region not implemented yet")
 
     def project_compute_to_region(self, coord:Tuple[float, float]) -> Tuple[float, float]:
         """Project from computation viewport to region space (uses cached viewport state)"""
@@ -1044,14 +1051,25 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         assert isinstance(x, (int, float)), f"got: {x}"
         assert isinstance(y, (int, float)), f"got: {y}"
         assert self._output_space is not None, "Viewport state not initialized"
+
+        x, y, w, h = self.get_compute_space()
+        return project_compute_to_region(
+            fit_mode=self._active_camera.data.sensor_fit,
+            compute_rect = (x, y, w, h),
+            output_size = (self._output_space.width, self._output_space.height),
+            region_size = (self._region_width, self._region_height),
+            view_camera_zoom = self._view_camera_zoom,
+            view_camera_offset = self._view_camera_offset,
+            compute_coord=coord
+        )
         
-        # project compute to output
-        coord = map_space(coord, 
-            source=fit_space_to_aspect(self.get_compute_space(), self._output_space.aspect), 
-            target=self._output_space)
+        # # project compute to output
+        # coord = map_space(coord, 
+        #     source=fit_space_to_aspect(self.get_compute_space(), self._output_space.aspect), 
+        #     target=self._output_space)
         
-        coord = self._project_output_to_region(coord)
-        return coord
+        # coord = self._project_output_to_region(coord)
+        # return coord
 
     def unproject_compute_from_region(self, coord: Tuple[float, float]) -> Tuple[float, float]:
         """Map from region space to computation viewport (uses cached viewport state)"""

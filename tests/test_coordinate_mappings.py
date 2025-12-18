@@ -52,12 +52,14 @@ wide_output = (1920, 1080)
 tall_output = (1080, 1920)
 wide_region = (2020, 1500)
 tall_region = (1500, 2020)
+wide_sensor = (36, 24)
+tall_sensor = (24, 36)
 sensor_options = ["AUTO", "HORIZONTAL", "VERTICAL"]
 output_options = [wide_output, tall_output]
 region_options = [wide_region, tall_region]
 
-combinations = list(product(sensor_options, output_options, region_options))
-combinations = [
+output_combinations = list(product(sensor_options, output_options, region_options))
+output_combinations = [
   ['AUTO',       wide_region, wide_output, (1268.5267824794296, 866.5937147899116)],
   ['AUTO',       tall_region, wide_output, (978.1445992607966, 1139.61465045504)],
   ['AUTO',       wide_region, tall_output, (1207.0564197974998, 928.0640774718411)],
@@ -73,7 +75,7 @@ combinations = [
 ]
 
 @pytest.mark.parametrize("sensor_fit, region_size, output_size, expected",
-  combinations)
+  output_combinations)
 def test_output_frame(
     sensor_fit:Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
     region_size, 
@@ -93,41 +95,55 @@ def test_output_frame(
     assert pytest.approx(result[0], rel=1e-3) == expected[0]
     assert pytest.approx(result[1], rel=1e-3) == expected[1]
 
-
-combinations = [
-  ['AUTO',       wide_region, wide_output, (1205.728426911141, 666.2128318431751)],
-  ['AUTO',       tall_region, wide_output, (1171.349718884399, 700.5915398699168)],
-  ['AUTO',       wide_region, tall_output, (736.6495155579646, 1107.2466509945364)],
-  ['AUTO',       tall_region, tall_output, (702.2708075312229, 1141.625359021278)],
-  ['HORIZONTAL', wide_region, wide_output, (1205.728426911141, 666.2128318431751)],
-  ['HORIZONTAL', tall_region, wide_output, (1205.728426911141, 746.8882000125956)],
-  ['HORIZONTAL', wide_region, tall_output, (678.2222401375168, 1063.860060335788)],
-  ['HORIZONTAL', tall_region, tall_output, (678.2222401375168, 1109.239954931087)],
-  ['VERTICAL',   wide_region, wide_output, (1173.3430228209497, 642.1642644494689)],
-  ['VERTICAL',   tall_region, wide_output, (1127.9631282256507, 642.1642644494689)],
-  ['VERTICAL',   wide_region, tall_output, (782.9461757006433, 1141.625359021278)],
-  ['VERTICAL',   tall_region, tall_output, (702.2708075312229, 1141.625359021278)]
+sensor_combinations = [
+  ['AUTO',       wide_region, wide_output, wide_sensor, (1268.5267824794296, 740.7258292983416)],
+  ['AUTO',       tall_region, wide_output, wide_sensor, (978.1445992607966, 1013.74676496347)],
+  ['AUTO',       wide_region, tall_output, wide_sensor, (1268.5267824794296, 740.7258292983416)],
+  ['AUTO',       tall_region, tall_output, wide_sensor, (978.1445992607966, 1013.74676496347)],
+  ['HORIZONTAL', wide_region, wide_output, wide_sensor, (1268.5267824794296, 881.2295154284661)],
+  ['HORIZONTAL', tall_region, wide_output, wide_sensor, (941.9753335243288, 1130.1376072692829)],
+  ['HORIZONTAL', wide_region, tall_output, wide_sensor, (1268.5267824794296, 881.2295154284664)],
+  ['HORIZONTAL', tall_region, tall_output, wide_sensor, (941.9753335243288, 1130.1376072692829)],
+  ['VERTICAL',   wide_region, wide_output, wide_sensor, (1284.52472693979, 891.8948117353734)],
+  ['VERTICAL',   tall_region, wide_output, wide_sensor, (1048.3964423258587, 1201.0850131369696)],
+  ['VERTICAL',   wide_region, tall_output, wide_sensor, (1284.52472693979, 891.8948117353734)],
+  ['VERTICAL',   tall_region, tall_output, wide_sensor, (1048.3964423258587, 1201.0850131369696)],
+  ['AUTO',       wide_region, wide_output, wide_sensor, (1268.5267824794296, 740.7258292983416)],
+  ['AUTO',       tall_region, wide_output, tall_sensor, (978.1445992607966, 1482.092385397219)],
+  ['AUTO',       wide_region, tall_output, tall_sensor, (1268.5267824794296, 1209.0714497320905)],
+  ['AUTO',       tall_region, tall_output, tall_sensor, (978.1445992607966, 1482.092385397219)],
+  ['HORIZONTAL', wide_region, wide_output, tall_sensor, (1268.5267824794296, 998.3159205369034)],
+  ['HORIZONTAL', tall_region, wide_output, tall_sensor, (941.9753335243288, 1217.0829575973303)],
+  ['HORIZONTAL', wide_region, tall_output, tall_sensor, (1268.5267824794296, 998.3159205369034)],
+  ['HORIZONTAL', tall_region, tall_output, tall_sensor, (941.9753335243288, 1217.0829575973303)],
+  ['VERTICAL',   wide_region, wide_output, tall_sensor, (1197.5793766117426, 891.8948117353734)],
+  ['VERTICAL',   tall_region, wide_output, tall_sensor, (931.3100372174216, 1201.0850131369696)],
+  ['VERTICAL',   wide_region, tall_output, tall_sensor, (1197.5793766117426, 891.8948117353734)],
+  ['VERTICAL',   tall_region, tall_output, tall_sensor, (931.3100372174216, 1201.0850131369696)]
 ]
-@pytest.mark.parametrize("sensor_fit, region_size, output_size, expected",
-  combinations)
-def test_compute_frame(
+@pytest.mark.parametrize("sensor_fit, region_size, output_size, sensor_size, expected",
+  sensor_combinations)
+def test_sensor_frame(
     sensor_fit:Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
     region_size, 
     output_size,
+    sensor_size,
     expected):
     
-    result = vl_coord_utils.project_compute_to_region(
+    result = vl_coord_utils.project_sensor_to_region(
         sensor_fit=sensor_fit,
         output_size=output_size,
         region_size=region_size,
+        sensor_size=sensor_size,
         view_camera_zoom=-6.109,
         view_camera_offset=(-0.07, -0.03),
-        output_coords=(output_size[0]*2/3, output_size[1]*2/3))
+        sensor_coord=(sensor_size[0]*2/3, sensor_size[1]*2/3))
     
-    print(f"{sensor_fit}, {region_size}, {output_size}, {result}")
+    # print(f"{sensor_fit:10s}, {region_size}, {output_size}, {sensor_size} {result}")
 
     assert pytest.approx(result[0], rel=1e-3) == expected[0]
     assert pytest.approx(result[1], rel=1e-3) == expected[1]
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

@@ -139,6 +139,136 @@ def unproject_output_from_region(
     
     return x, y
 
+def get_sensor_size(
+        sensor_fit: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'],
+        sensor_size: Tuple[float, float]
+    ) -> Tuple[float, float]:
+    """Get sensor size based on sensor fit mode"""
+    w, h = sensor_size
+    match sensor_fit:
+        case 'AUTO':
+            # on auto mode, in blender, the sensor becomes a square.
+            # the square size, therefore the field of view is driven by the
+            # sensor_width property
+            return (w, w)
+        case 'HORIZONTAL':
+            return (w, h)
+        case 'VERTICAL':
+            return (w, h)
+
+def project_sensor_to_region(
+        fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+        sensor_size: Tuple[float, float],
+        output_size: Tuple[float, float],
+        region_size: Tuple[float, float],
+        view_camera_zoom: float,
+        view_camera_offset: Tuple[float, float],
+        sensor_coord: Tuple[float, float]
+    ) -> Tuple[float, float]:
+        
+        sensor_size = get_sensor_size(fit_mode, sensor_size)        
+        output_aspect = output_size[0] / output_size[1]
+        match fit_mode:
+            case 'AUTO':
+                output_coord = map_space(sensor_coord, 
+                    source=fit_space_to_aspect((0,0,sensor_size[0], sensor_size[1]), output_aspect),
+                    target=(0, 0, output_size[0], output_size[1]))
+                
+            case 'HORIZONTAL':
+                scale = output_size[0] / sensor_size[0]
+                offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
+                offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
+                output_coord = (
+                    sensor_coord[0] * scale + offset_x,
+                    sensor_coord[1] * scale + offset_y)
+                
+            case 'VERTICAL':
+                scale = output_size[1] / sensor_size[1]
+                offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
+                offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
+                output_coord = (
+                    sensor_coord[0] * scale + offset_x,
+                    sensor_coord[1] * scale + offset_y)
+        
+        region_coord = project_output_to_region(
+            sensor_fit=fit_mode,
+            output_size=output_size,
+            region_size=region_size,
+            view_camera_zoom=view_camera_zoom,
+            view_camera_offset=view_camera_offset,
+            output_coords=output_coord)
+        
+        return region_coord
+
+def unproject_sensor_from_region(
+        sensor_fit: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+        output_size: Tuple[float, float],
+        region_size: Tuple[float, float],
+        view_camera_zoom: float,
+        view_camera_offset: Tuple[float, float],
+        region_coords: Tuple[float, float]) -> Tuple[float, float]:
+    """Map from region space to sensor space (uses cached viewport state)"""
+    raise NotImplementedError("unproject_sensor_from_region not implemented yet")
+
+def project_compute_to_region(
+        fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+        compute_rect: Tuple[float, float, float, float],
+        output_size: Tuple[float, float],
+        region_size: Tuple[float, float],
+        view_camera_zoom: float,
+        view_camera_offset: Tuple[float, float],
+        compute_coord: Tuple[float, float]) -> Tuple[float, float]:
+    """Map from compute space to region space
+    fit_mode: how to fit the compute space to the output space
+    """
+    x, y, w, h = compute_rect
+    compute_size = get_sensor_size(fit_mode, (w, h))        
+    output_aspect = output_size[0] / output_size[1]
+    match fit_mode:
+        case 'AUTO':
+            output_coord = map_space(compute_coord, 
+                source=fit_space_to_aspect(compute_rect, output_aspect),
+                target=(0, 0, output_size[0], output_size[1]))
+            
+        case 'HORIZONTAL':
+            scale = output_size[0] / compute_size[0]
+            offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
+            offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
+            output_coord = (
+                (compute_coord[0] - x) * scale + offset_x,
+                (compute_coord[1] - y) * scale + offset_y)
+            
+        case 'VERTICAL':
+            scale = output_size[1] / compute_size[1]
+            offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
+            offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
+            output_coord = (
+                (compute_coord[0] - x) * scale + offset_x,
+                (compute_coord[1] - y) * scale + offset_y)
+    
+    region_coord = project_output_to_region(
+        sensor_fit=fit_mode,
+        output_size=output_size,
+        region_size=region_size,
+        view_camera_zoom=view_camera_zoom,
+        view_camera_offset=view_camera_offset,
+        output_coords=output_coord)
+    
+    return region_coord
+
+def unproject_compute_from_region(
+        fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+        compute_rect: Tuple[float, float, float, float],
+        output_size: Tuple[float, float],
+        region_size: Tuple[float, float],
+        view_camera_zoom: float,
+        view_camera_offset: Tuple[float, float],
+        compute_coord: Tuple[float, float]) -> Tuple[float, float]:
+    """Map from compute space to region space
+    fit_mode: how to fit the compute space to the output space
+    """
+    raise NotImplementedError("unproject_compute_to_region not implemented yet")
+
 def map_space(
         coord:  tuple[float, float],
         source: Tuple[float, float, float, float],
@@ -216,31 +346,3 @@ def crop_space_to_aspect(
         new_y = sy
 
     return new_x, new_y, new_w, new_h
-
-def project_compute_to_region(
-        sensor_fit: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
-        output_size: Tuple[float, float],
-        region_size: Tuple[float, float],
-        view_camera_zoom: float,
-        view_camera_offset: Tuple[float, float],
-        compute_coords: Tuple[float, float]) -> Tuple[float, float]:
-    """Project from computation viewport to region space (uses cached viewport state)"""
-    x, y = compute_coords
-    assert isinstance(x, (int, float)), f"got: {x}"
-    assert isinstance(y, (int, float)), f"got: {y}"
-    assert self._output_space is not None, "Viewport state not initialized"
-    
-    # project compute to output
-    coord = map_space(coord, 
-        source=fit_space_to_aspect(self.get_compute_space(), self._output_space.aspect), 
-        target=self._output_space)
-    
-    coord = project_output_to_region(
-        sensor_fit=self._sensor_fit,
-        output_size=(self._output_space.width, self._output_space.height),
-        region_size=(self._region_width, self._region_height),
-        view_camera_zoom=self._view_camera_zoom,
-        view_camera_offset=self._view_camera_offset,
-        output_coords=coord)
-
-    return coord

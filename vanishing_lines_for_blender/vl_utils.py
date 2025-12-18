@@ -39,7 +39,7 @@ def apply_solver_results_to_blender_camera(
         camera_object: bpy.types.Object,
         compute_space: solver.Rect,
         output_space: solver.Rect,
-        sensor_fit: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']='HORIZONTAL'
+        fit_mode: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']='HORIZONTAL'
     ) -> None:
     """
     Apply solver results to Blender camera, accounting for aspect ratio differences
@@ -50,6 +50,13 @@ def apply_solver_results_to_blender_camera(
         camera_object: Blender camera object to modify
         compute_space: The viewport used for computation (e.g., [-1,-1,2,2])
         output_space: The actual render output viewport
+
+    fit_mode: How to fit the compute space to the output space
+    Important: this has the same behavior as the 'sensor_fit' parameter in blender.
+        'HORIZONTAL': Fit based on horizontal dimension
+        'VERTICAL': Fit based on vertical dimension
+        'AUTO': Fit based on larger dimension
+
     """
     if not isinstance(camera_object.data, bpy.types.Camera):
         raise TypeError("Expected a Camera data-block")
@@ -61,24 +68,13 @@ def apply_solver_results_to_blender_camera(
 
     # Apply focal length
     P, f, shift = solver.decompose_intrinsics(compute_space, projection)
-    # fovy = solver.utils.fov_from_focal_length(f, compute_space.height)
-    # fovx = solver.utils.fov_from_focal_length(f, compute_space.width)
-    # fovx = 2.0 * math.atan(math.tan(fovy / 2.0) / compute_aspect)
     camera_data: bpy.types.Camera = cast(bpy.types.Camera, camera_object.data)
 
     # Calculate the aspect ratio correction factor
     compute_aspect = compute_space.width / compute_space.height
     output_aspect = output_space.width / output_space.height
-    sensor_aspect = camera_data.sensor_width / camera_data.sensor_height
-    
-    # The focal length needs to be adjusted based on which dimension is constraining
-    # When compute space is cropped to match output aspect, the effective sensor size changes
-    
-    # camera_data.angle_y = fovy/2
 
-    # Need to calculate fovx and derive focal length from that
-
-    match sensor_fit:
+    match fit_mode:
         case 'AUTO':
             if compute_aspect >= output_aspect:
                 effective_sensor_size = max(camera_data.sensor_width, camera_data.sensor_height)
@@ -94,27 +90,10 @@ def apply_solver_results_to_blender_camera(
             camera_data.lens = focal_length
             
         case 'VERTICAL':
-            effective_sensor_size  = max(camera_data.sensor_width, camera_data.sensor_height)
-            focal_length = f / compute_space.height * effective_sensor_size
+            focal_length = f / compute_space.height * camera_data.sensor_height
             camera_data.lens = focal_length
 
-    # camera_data.angle_x = fovx
-
-
-    # fovx = 2.0 * math.atan(math.tan(fovy / 2.0) * output_aspect)
-    # match sensor_fit:
-    #     case 'HORIZONTAL':
-    #         camera_data.angle_x = fovx
-    #         camera_data.lens = solver.utils.focal_length_from_fov(fovy, camera_data.sensor_width)
-    #     case 'VERTICAL':
-    #         camera_data.lens = solver.utils.focal_length_from_fov(fovy, camera_data.sensor_height)
-
-    #     case 'AUTO':
-    #         camera_data.lens = solver.utils.focal_length_from_fov(fovy, camera_data.sensor_width)
-    
-    
     # Apply lens shift
-    
     center_x = compute_space.x + compute_space.width / 2
     center_y = compute_space.y + compute_space.height / 2
     shift_x =  (P.x - center_x) / (compute_space.width / 2)
