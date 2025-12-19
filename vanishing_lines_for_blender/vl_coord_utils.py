@@ -202,13 +202,49 @@ def project_sensor_to_region(
 
 def unproject_sensor_from_region(
         sensor_fit: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+        sensor_size: Tuple[float, float],
         output_size: Tuple[float, float],
         region_size: Tuple[float, float],
         view_camera_zoom: float,
         view_camera_offset: Tuple[float, float],
         region_coords: Tuple[float, float]) -> Tuple[float, float]:
     """Map from region space to sensor space (uses cached viewport state)"""
-    raise NotImplementedError("unproject_sensor_from_region not implemented yet")
+    # First unproject from region to output space
+    output_coord = unproject_output_from_region(
+        sensor_fit=sensor_fit,
+        output_size=output_size,
+        region_size=region_size,
+        view_camera_zoom=view_camera_zoom,
+        view_camera_offset=view_camera_offset,
+        region_coords=region_coords)
+    
+    # Then convert from output space to sensor space
+    sensor_size = get_sensor_size(sensor_fit, sensor_size)
+    output_aspect = output_size[0] / output_size[1]
+    
+    match sensor_fit:
+        case 'AUTO':
+            sensor_coord = map_space(output_coord,
+                source=(0, 0, output_size[0], output_size[1]),
+                target=fit_space_to_aspect((0, 0, sensor_size[0], sensor_size[1]), output_aspect))
+        
+        case 'HORIZONTAL':
+            scale = output_size[0] / sensor_size[0]
+            offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
+            offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
+            sensor_coord = (
+                (output_coord[0] - offset_x) / scale,
+                (output_coord[1] - offset_y) / scale)
+        
+        case 'VERTICAL':
+            scale = output_size[1] / sensor_size[1]
+            offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
+            offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
+            sensor_coord = (
+                (output_coord[0] - offset_x) / scale,
+                (output_coord[1] - offset_y) / scale)
+    
+    return sensor_coord
 
 def project_compute_to_region(
         fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
@@ -263,11 +299,47 @@ def unproject_compute_from_region(
         region_size: Tuple[float, float],
         view_camera_zoom: float,
         view_camera_offset: Tuple[float, float],
-        compute_coord: Tuple[float, float]) -> Tuple[float, float]:
-    """Map from compute space to region space
+        region_coord: Tuple[float, float]) -> Tuple[float, float]:
+    """Map from region space to compute space
     fit_mode: how to fit the compute space to the output space
     """
-    raise NotImplementedError("unproject_compute_to_region not implemented yet")
+    # First unproject from region to output space
+    output_coord = unproject_output_from_region(
+        sensor_fit=fit_mode,
+        output_size=output_size,
+        region_size=region_size,
+        view_camera_zoom=view_camera_zoom,
+        view_camera_offset=view_camera_offset,
+        region_coords=region_coord)
+    
+    # Then convert from output space to compute space
+    x, y, w, h = compute_rect
+    compute_size = get_sensor_size(fit_mode, (w, h))
+    output_aspect = output_size[0] / output_size[1]
+    
+    match fit_mode:
+        case 'AUTO':
+            compute_coord = map_space(output_coord,
+                source=(0, 0, output_size[0], output_size[1]),
+                target=fit_space_to_aspect(compute_rect, output_aspect))
+        
+        case 'HORIZONTAL':
+            scale = output_size[0] / compute_size[0]
+            offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
+            offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
+            compute_coord = (
+                (output_coord[0] - offset_x) / scale + x,
+                (output_coord[1] - offset_y) / scale + y)
+        
+        case 'VERTICAL':
+            scale = output_size[1] / compute_size[1]
+            offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
+            offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
+            compute_coord = (
+                (output_coord[0] - offset_x) / scale + x,
+                (output_coord[1] - offset_y) / scale + y)
+    
+    return compute_coord
 
 def map_space(
         coord:  tuple[float, float],

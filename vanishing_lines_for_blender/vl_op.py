@@ -1062,25 +1062,25 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             view_camera_offset = self._view_camera_offset,
             compute_coord=coord
         )
-        
-        # # project compute to output
-        # coord = map_space(coord, 
-        #     source=fit_space_to_aspect(self.get_compute_space(), self._output_space.aspect), 
-        #     target=self._output_space)
-        
-        # coord = self._project_output_to_region(coord)
-        # return coord
+
 
     def unproject_compute_from_region(self, coord: Tuple[float, float]) -> Tuple[float, float]:
         """Map from region space to computation viewport (uses cached viewport state)"""
+        x, y = coord
+        assert isinstance(x, (int, float)), f"got: {x}"
+        assert isinstance(y, (int, float)), f"got: {y}"
         assert self._output_space is not None, "Viewport state not initialized"
-        coord = self._unproject_output_from_region(coord)
 
-        coord = map_space(coord, 
-            source=self._output_space,
-            target=fit_space_to_aspect(self.get_compute_space(), self._output_space.width / self._output_space.height))
-        
-        return coord
+        x, y, w, h = self.get_compute_space()
+        return unproject_compute_from_region(
+            fit_mode=self._active_camera.data.sensor_fit,
+            compute_rect = (x, y, w, h),
+            output_size = (self._output_space.width, self._output_space.height),
+            region_size = (self._region_width, self._region_height),
+            view_camera_zoom = self._view_camera_zoom,
+            view_camera_offset = self._view_camera_offset,
+            region_coord=coord
+        )
     
 
 ######################
