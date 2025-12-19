@@ -49,6 +49,7 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
         # validate context
         camera = context.scene.camera
         if camera is None:
+            
             self.layout.label(text="No active camera in the scene.")
             return
         
@@ -66,8 +67,8 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
         if panel:
             panel.prop(camera.data.vl_settings, "solver_is_paused", text="Pause Solver")
             panel.separator()
-            panel.prop(camera.data.vl_settings, "compute_space", text="Compute Space")
-            panel.separator()
+            # panel.prop(camera.data.vl_settings, "compute_space", text="Compute Space")
+            # panel.separator()
             panel.prop(camera.data.vl_settings, "mode", text="Mode")
 
             mode = camera.data.vl_settings.mode

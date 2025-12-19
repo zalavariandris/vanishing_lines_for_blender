@@ -22,13 +22,13 @@ class VLSettings(bpy.types.PropertyGroup):
     initialized: bpy.props.BoolProperty(name="Initialized", default=False, options={'HIDDEN'})
     solver_is_paused: bpy.props.BoolProperty(name="Paused", default=False)
 
-    compute_space: bpy.props.FloatVectorProperty(
-        name="Compute Space",
-        description="Compute space rectangle (x, y, width, height)",
-        size=4,
-        default=(0.0, 0.0, 1920.0, 1080.0),
-        # options={'HIDDEN'}
-    )
+    # compute_space: bpy.props.FloatVectorProperty(
+    #     name="Compute Space",
+    #     description="Compute space rectangle (x, y, width, height)",
+    #     size=4,
+    #     default=(0.0, 0.0, 1920.0, 1080.0),
+    #     # options={'HIDDEN'}
+    # )
 
     mode: bpy.props.EnumProperty(
         name="Perspective Mode",

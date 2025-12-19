@@ -135,7 +135,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         self._draw_layer = DrawLayer()
 
         # Setup Solver
-        self.set_compute_space(solver.Rect(-1,-1,2,2))
+        # self.set_compute_space(solver.Rect(-1,-1,2,2))
         
         # Initialize viewport state cache
         self._update_viewport_state(context)
@@ -377,8 +377,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         self.cleanup(context)
         return {'FINISHED'}
 
-    def _on_deps_graph_update(self, 
-        scene, depsgraph:bpy.types.Depsgraph):
+    def _on_deps_graph_update(self, scene, depsgraph:bpy.types.Depsgraph):
         """when the depsgraph changes, regarding the active camera, 
         or the output resolution, we update the solve."""
         
@@ -415,7 +414,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         region = context.region            # The active region (usually VIEW_3D window)
         rv3d   = context.region_data       # The RegionView3D for this region # TODO: context.space_data.region_3d might be more accurate?
 
-        print("Solving camera...", region, rv3d)
+        # print("Solving camera...", region, rv3d)
 
         try:
             self._solve_error = None
@@ -823,9 +822,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 color=(1,1,1,1))
             
         draw_camera_output_frame()
-        print(" Drew output frame ")
-        print("zoom", self._view_camera_zoom)
-        print("offset", self._view_camera_offset[0], self._view_camera_offset[1])
+
 
         # Draw compute space frame
         def draw_compute_frame(space):
@@ -942,34 +939,14 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         vl_settings.reference_distance = d
         
     def get_compute_space(self) -> solver.Rect:
-        if self._active_camera is None:
-            raise RuntimeError("No active camera set")
-        
-        vl_settings = self._active_camera.data.vl_settings #type: ignore
-        cs = list(vl_settings.compute_space)
-        return solver.Rect(cs[0], cs[1], cs[2], cs[3])
-    
-    def set_compute_space(self, viewport: solver.Rect)->None:
-        if self._active_camera is None:
-            raise RuntimeError("No active camera set")
-        
-        vl_settings = self._active_camera.data.vl_settings #type: ignore
-        vl_settings.compute_space = (viewport.x, viewport.y, viewport.width, viewport.height)
+        """compute space is a normalized square"""
+        # for now this is hardcoded. TODO: make this user definable
+        return solver.Rect(-1,-1,2,2)
 
     def get_sensor_size(self) -> Tuple[float, float]:
         return get_sensor_size(
             self._active_camera.data.sensor_fit,
             (self._active_camera.data.sensor_width, self._active_camera.data.sensor_height))
-        # match self._active_camera.data.sensor_fit:
-        #     case 'AUTO':
-        #         # on auto mode, in blender, the sensor becomes a square.
-        #         # the square size, therefore the field of view is driven by the
-        #         # sensor_width property
-        #         return (self._active_camera.data.sensor_width, self._active_camera.data.sensor_width)
-        #     case 'HORIZONTAL':
-        #         return (self._active_camera.data.sensor_width, self._active_camera.data.sensor_height)
-        #     case 'VERTICAL':
-        #         return (self._active_camera.data.sensor_width, self._active_camera.data.sensor_height)
 
     # Coordinate Mapping
     def _project_output_to_region(self, output_coords: Tuple[float, float]) -> Tuple[float, float]:
@@ -1015,32 +992,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             view_camera_zoom = self._view_camera_zoom,
             view_camera_offset = self._view_camera_offset,
             sensor_coord=sensor_coord)
-        
-        # # fit_space_to_aspect(sensor_rect, self._output_space.aspect)
-        # match self._active_camera.data.sensor_fit:
-        #     case 'AUTO':
-        #         output_coord = map_space(sensor_coord, 
-        #             source=fit_space_to_aspect(sensor_rect, self._output_space.aspect),
-        #             target=self._output_space)
-                
-        #     case 'HORIZONTAL':
-        #         scale = self._output_space.width / sensor_rect.width
-        #         offset_x = (self._output_space.width - sensor_rect.width * scale) / 2.0
-        #         offset_y = (self._output_space.height - sensor_rect.height * scale) / 2.0
-        #         output_coord = (
-        #             sensor_coord[0] * scale + offset_x,
-        #             sensor_coord[1] * scale + offset_y)
-                
-        #     case 'VERTICAL':
-        #         scale = self._output_space.height / sensor_rect.height
-        #         offset_x = (self._output_space.width - sensor_rect.width * scale) / 2.0
-        #         offset_y = (self._output_space.height - sensor_rect.height * scale) / 2.0
-        #         output_coord = (
-        #             sensor_coord[0] * scale + offset_x,
-        #             sensor_coord[1] * scale + offset_y)
-        
-        # region_coord = self._project_output_to_region(output_coord) 
-        # return region_coord
     
     def unproject_sensor_from_region(self, coord: Tuple[float, float]) -> Tuple[float, float]:
         raise NotImplementedError("unproject_sensor_from_region not implemented yet")
@@ -1062,7 +1013,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             view_camera_offset = self._view_camera_offset,
             compute_coord=coord
         )
-
 
     def unproject_compute_from_region(self, coord: Tuple[float, float]) -> Tuple[float, float]:
         """Map from region space to computation viewport (uses cached viewport state)"""
@@ -1104,22 +1054,13 @@ def view_draw_func():
     if op:=get_vl_instance("VIEW_OT_vanishing_lines_operator"):
         op.draw_view(bpy.context)
 
-    # # get region and rv3d
-    # context = bpy.context
-    # rv3d = context.region_data
-    # for area in bpy.context.screen.areas:
-    #     if area.type == 'VIEW_3D':
-    #         space = area.spaces.active
-    #         rv3d = space.region_3d
-    #         if rv3d.view_perspective == 'CAMERA':
-    #             cam = space.camera
-
-    #             draw_list.clear()
-    #             # get the operator instance
-    #             op = 
+def on_depsgraph_update(scene, depsgraph):
+    if op:=get_vl_instance("VIEW_OT_vanishing_lines_operator"):
+        op._on_deps_graph_update(scene, depsgraph)
 
 def register():
     global draw_handler
+    global deps_update_handler
     bpy.utils.register_class(VIEW_OT_VanishingLinesOperator)
     draw_handler = bpy.types.SpaceView3D.draw_handler_add(
             view_draw_func, 
@@ -1127,10 +1068,13 @@ def register():
             'WINDOW', 
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
         )
+    bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update)
+
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
 def unregister():
     global draw_handler
+    bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
     if draw_handler is not None:
         bpy.types.SpaceView3D.draw_handler_remove(draw_handler, 'WINDOW')
         draw_handler = None
