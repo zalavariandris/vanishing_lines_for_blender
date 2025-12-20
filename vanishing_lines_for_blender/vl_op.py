@@ -30,7 +30,7 @@ from .vl_coord_utils import (
 import glm
 
 # local
-from . core import solver_functional as solver
+from . core import solver
 from . core import utils
 from . draw_layer import DrawLayer
 from typing import Protocol
@@ -437,26 +437,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
                     focal_length_pixel = camera_object.data.lens / camera_object.data.sensor_width * self.get_compute_space().height
         
-                    # results:dict = solver.solve(
-                    #     mode = solver.SolverMode.OneVP,
-                    #     viewport =               self.get_compute_space(),
-
-                    #     first_vanishing_lines =  first_vanishing_lines,
-                    #     second_vanishing_lines = second_vanishing_lines,
-                    #     third_vanishing_lines =  [],
-
-                    #     f =                      focal_length_pixel,
-                    #     P =                      glm.vec2(*vl_settings.principal),
-                    #     O =                      glm.vec2(*vl_settings.origin),
-
-                    #     reference_axis=          solver.ReferenceAxis.Screen,
-                    #     reference_distance_segment=(0, vl_settings.reference_distance),
-                    #     reference_world_size=vl_settings.scene_scale,
-
-                    #     first_axis =             solver.Axis.PositiveY, # Blenders camera axes
-                    #     second_axis =            solver.Axis.NegativeX, # - " -               
-                    # )
-
                     vp1 = solver.utils.least_squares_intersection_of_lines(first_vanishing_lines)
                     vp2 = None
                     vp3 = None
@@ -664,12 +644,10 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         ORANGE = (1.0, 0.5, 0.0, 1.0)
 
         # draw reference line
-        
         self._draw_layer.add_point(
             self.project_compute_to_region(
                 self.get_reference_distance_point(vl_settings)), 
                 (1.0, 1.0, 1.0, 1.0))
-        # self.map_compute_to_region_space((ref_point_2d.x, ref_point_2d.y))
 
         # Draw Origin and Principal Point
         _ = self.control_point(vl_settings, "origin",    

@@ -99,20 +99,20 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
             panel.prop(camera.data.vl_settings, "reference_distance", text="Reference Distance")
             panel.separator()
 
-        ###################
-        # AXIS ASSIGNMENT #
-        ###################
-        header, panel = self.layout.panel("axis_assignement", default_closed=True)
-        header.label(text="Axis Assignement")
+        # ###################
+        # # AXIS ASSIGNMENT #
+        # ###################
+        # header, panel = self.layout.panel("axis_assignement", default_closed=True)
+        # header.label(text="Axis Assignement")
 
-        if panel:
-            panel.label(text="Assign vanishing line axes by color:")
-            row = panel.row(align=False)
-            row.prop(camera.data.vl_settings, "first_axis_assignment", text="1st Axis", expand=True)
-            row.prop(camera.data.vl_settings, "first_axis_sign", text="1st Sign", expand=True)
-            row = panel.row(align=True)
-            row.prop(camera.data.vl_settings, "second_axis_assignment", text="2nd Axis", expand=True)
-            panel.separator()
+        # if panel:
+        #     panel.label(text="Assign vanishing line axes by color:")
+        #     row = panel.row(align=False)
+        #     row.prop(camera.data.vl_settings, "first_axis_assignment", text="1st Axis", expand=True)
+        #     row.prop(camera.data.vl_settings, "first_axis_sign", text="1st Sign", expand=True)
+        #     row = panel.row(align=True)
+        #     row.prop(camera.data.vl_settings, "second_axis_assignment", text="2nd Axis", expand=True)
+        #     panel.separator()
 
         ##################
         # CONTROL POINTS #
@@ -123,15 +123,11 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
         if panel:
             # origin
             row = panel.row(align=True)
-            row.label(text="Origin")
-            row.prop(camera.data.vl_settings.origin, "x", text="X")
-            row.prop(camera.data.vl_settings.origin, "y", text="Y")
+            row.prop(camera.data.vl_settings, 'origin')
 
             # principal
             row = panel.row(align=True)
-            row.label(text="Principal")
-            row.prop(camera.data.vl_settings.principal, "x", text="X")
-            row.prop(camera.data.vl_settings.principal, "y", text="Y")
+            row.prop(camera.data.vl_settings, "principal")
 
             for label, lines in [
                 ("1st Axis", camera.data.vl_settings.first_vanishing_lines), 
@@ -139,18 +135,15 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
                 ("3rd Axis", camera.data.vl_settings.third_vanishing_lines),
             ]:
                 panel.separator()
-                panel.label(text=label)
-                for line in lines:
-                    line_box = panel.box()
-                    # col = group.column(align=True)
-                    grid = line_box.grid_flow(row_major=True, columns=3, even_columns=False, even_rows=False, align=True)
-                    grid.label(text="start")
-                    grid.prop(line.start, "x", text="X")
-                    grid.prop(line.start, "y", text="Y")
-
-                    grid.label(text="end")
-                    grid.prop(line.end, "x", text="X")
-                    grid.prop(line.end, "y", text="Y")
+                # row = panel.row(align=True)
+                # panel.label(text=label)
+                for ln, line in enumerate(lines):
+                    # line_box = panel.box()
+                    row = panel.row(align=False)
+                    # grid = line_box.grid_flow(row_major=True, columns=3, even_columns=False, even_rows=False, align=False)
+                    row.label(text=f"{label}" if ln == 0 else "")
+                    row.prop(line, 'start', text="")
+                    row.prop(line, "end", text="")
 
             panel.separator()
 

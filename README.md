@@ -35,6 +35,7 @@ __work in progress__
 - [ ] ADD Loupe
 
 ### **0.7.*
+- [ ] add tests to unproject 
 - [ ] REFACTOR project/unproject between region and compute space to work with the new functions
 - [x] FIX camera view frame
 - [x] fix draw handler unregister

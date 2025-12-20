@@ -49,77 +49,6 @@ def solve(
         first_axis:Axis,
         second_axis:Axis
     )->Dict:
-        """
-        Main solver function.
-        
-        :param mode: Description
-        :type mode: SolverMode
-        
-        :param viewport: Description
-        :type viewport: Rect (x, y, w, h)
-        :param first_vanishing_lines: Description
-        :type first_vanishing_lines: List[Tuple[glm.vec2, glm.vec2]]
-        :param second_vanishing_lines: Description
-        :type second_vanishing_lines: List[Tuple[glm.vec2, glm.vec2]]
-        :param third_vanishing_lines: Description
-        :type third_vanishing_lines: List[Tuple[glm.vec2, glm.vec2]]
-        :param f: focal length (in the same units as viewport rect)
-        :type f: float
-        :param P: Principal point, in the same coordinate system as viewport
-        :type P: glm.vec2
-        :param O: Description
-        :type O: glm.vec2
-        :param reference_axis: Description
-        :type reference_axis: ReferenceAxis
-        :param reference_distance_segment: Description
-        :type reference_distance_segment: Tuple[float, float]
-        :param reference_world_size: Description
-        :type reference_world_size: float
-        :param first_axis: Description
-        :type first_axis: Axis
-        :param second_axis: Description
-        :type second_axis: Axis
-        :return: Description
-        :rtype: Dict
-        
-        """
-        return _solve_functional_impl_v1(
-            mode,
-            viewport,
-            first_vanishing_lines,
-            second_vanishing_lines,
-            third_vanishing_lines,
-
-            f,
-            P,
-            O,
-
-            reference_axis,
-            reference_distance_segment,
-            reference_world_size,
-
-            first_axis,
-            second_axis
-        )
-
-def _solve_functional_impl_v1(
-        mode:SolverMode, 
-        viewport: Rect,
-        first_vanishing_lines:  List[Tuple[glm.vec2, glm.vec2]],
-        second_vanishing_lines: List[Tuple[glm.vec2, glm.vec2]],
-        third_vanishing_lines:  List[Tuple[glm.vec2, glm.vec2]],
-
-        f:float, # focal length (in height units)
-        P:glm.vec2,
-        O:glm.vec2,
-
-        reference_axis:ReferenceAxis,
-        reference_distance_segment:Tuple[float, float], # 2D distance from origin to camera
-        reference_world_size:float,
-
-        first_axis:Axis,
-        second_axis:Axis
-    ):
     
     match mode:
         case SolverMode.OneVP:
@@ -204,7 +133,13 @@ def _solve_functional_impl_v1(
 #####################
 # SOLVER COMPONENTS #
 #####################
-def orientation_from_one_vanishing_point(viewport, vp1, second_line, f, P)->Tuple[glm.mat4, glm.mat4]:
+def orientation_from_one_vanishing_point(
+        viewport:Tuple[float, float, float, float], 
+        vp1:Tuple[float, float], 
+        second_line:Tuple[float, float], 
+        f:float, 
+        P:Tuple[float, float]
+    )->Tuple[glm.mat4, glm.mat4]:
     # compute projection
     projection = compose_intrinsics(viewport, f, P)
 

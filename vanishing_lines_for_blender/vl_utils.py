@@ -2,7 +2,7 @@ import bpy
 import math
 import mathutils
 from typing import Tuple, Iterable, cast
-from . core import solver_functional as solver
+from . core import solver
 import glm
 
 ####################
@@ -39,7 +39,7 @@ def apply_solver_results_to_blender_camera(
         camera_object: bpy.types.Object,
         compute_space: solver.Rect,
         output_space: solver.Rect,
-        fit_mode: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']='HORIZONTAL'
+        fit_mode: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']
     ) -> None:
     """
     Apply solver results to Blender camera, accounting for aspect ratio differences
@@ -52,7 +52,7 @@ def apply_solver_results_to_blender_camera(
         output_space: The actual render output viewport
 
     fit_mode: How to fit the compute space to the output space
-    Important: this has the same behavior as the 'sensor_fit' parameter in blender.
+    Important: this has the same behavior as the 'sensor_fit' parameter in blender, and it has to match the way the camera is set up.
         'HORIZONTAL': Fit based on horizontal dimension
         'VERTICAL': Fit based on vertical dimension
         'AUTO': Fit based on larger dimension
@@ -69,6 +69,7 @@ def apply_solver_results_to_blender_camera(
     # Apply focal length
     P, f, shift = solver.decompose_intrinsics(compute_space, projection)
     camera_data: bpy.types.Camera = cast(bpy.types.Camera, camera_object.data)
+    camera_data.sensor_fit = fit_mode
 
     # Calculate the aspect ratio correction factor
     compute_aspect = compute_space.width / compute_space.height

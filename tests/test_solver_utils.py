@@ -5,7 +5,7 @@ from typing import Final
 from pyglm import glm
 
 from core import utils
-from core import solver_functional as solver
+from core import solver
 
 
 def test_least_squares_intersection_shape_X():
