@@ -80,6 +80,43 @@ class VLSettings(bpy.types.PropertyGroup):
         default=0.5
     )
 
+    # Axis Assignement
+    floor: bpy.props.EnumProperty(
+        name="Ground Plane",
+        items=[
+            ('XY', "XY", ""),
+            ('XZ', "XZ", ""),
+            ('YZ', "YZ", "")
+        ],
+        default='XY'
+    )
+    
+    first_axis: bpy.props.EnumProperty(
+        name="First Axis",
+        items=[
+            ('X+', "X+", ""),
+            ('X-', "X-", ""),
+            ('Y+', "Y+", ""),
+            ('Y-', "Y-", ""),
+            ('Z+', "Z+", ""),
+            ('Z-', "Z-", "")
+        ],
+        default='Y+'
+    )
+
+    second_axis: bpy.props.EnumProperty(
+        name="Second Axis",
+        items=[
+            ('X+', "X+", ""),
+            ('X-', "X-", ""),
+            ('Y+', "Y+", ""),
+            ('Y-', "Y-", ""),
+            ('Z+', "Z+", ""),
+            ('Z-', "Z-", "")
+        ],
+        default='X-'
+    )
+
     # control points
     origin: bpy.props.FloatVectorProperty(
         name="Origin",
@@ -106,6 +143,11 @@ class VLSettings(bpy.types.PropertyGroup):
     third_vanishing_lines: bpy.props.CollectionProperty(
         name="Third Vanishing Lines", 
         type=Line
+    )
+
+    error_message: bpy.props.StringProperty(
+        name="Error Message",
+        default=""
     )
 
 

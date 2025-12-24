@@ -2,7 +2,7 @@ import bpy
 import math
 import mathutils
 from typing import Tuple, Iterable, cast
-from . core import solver
+from . import solver
 import glm
 
 ####################
@@ -29,6 +29,11 @@ def _hit_test_point(pos:Tuple[float, float], mouse_x:float, mouse_y:float, paddi
 def flatten(xss):
     return [x for xs in xss for x in xs]
 
+def get_running_operator_by_idname(op_idname):
+    for op in bpy.context.window.modal_operators:
+        if op and op.bl_idname == op_idname:
+            return op
+    return None
 
 ###################
 # BLENDER HELPERS #
@@ -37,8 +42,8 @@ def apply_solver_results_to_blender_camera(
         projection: glm.mat4,
         view: glm.mat4, 
         camera_object: bpy.types.Object,
-        compute_space: solver.Rect,
-        output_space: solver.Rect,
+        compute_space: solver.types.Rect,
+        output_size: Tuple[float, float],
         fit_mode: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']
     ) -> None:
     """
@@ -49,7 +54,7 @@ def apply_solver_results_to_blender_camera(
         results: Solver results with transform and FOV
         camera_object: Blender camera object to modify
         compute_space: The viewport used for computation (e.g., [-1,-1,2,2])
-        output_space: The actual render output viewport
+        output_size: The actual render output size
 
     fit_mode: How to fit the compute space to the output space
     Important: this has the same behavior as the 'sensor_fit' parameter in blender, and it has to match the way the camera is set up.
@@ -67,13 +72,13 @@ def apply_solver_results_to_blender_camera(
     camera_object.matrix_world = mathutils.Matrix(transform_list)
 
     # Apply focal length
-    P, f, shift = solver.decompose_intrinsics(compute_space, projection)
+    P, f = solver.utils.decompose_intrinsics(compute_space, projection)
     camera_data: bpy.types.Camera = cast(bpy.types.Camera, camera_object.data)
     camera_data.sensor_fit = fit_mode
 
     # Calculate the aspect ratio correction factor
     compute_aspect = compute_space.width / compute_space.height
-    output_aspect = output_space.width / output_space.height
+    output_aspect = output_size[0] / output_size[1]
 
     match fit_mode:
         case 'AUTO':

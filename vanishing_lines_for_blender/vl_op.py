@@ -26,14 +26,9 @@ from .vl_coord_utils import (
     crop_space_to_aspect
 )
 
-# third party
-import glm
-
 # local
-from . core import solver
-from . core import utils
+from . import solver
 from . draw_layer import DrawLayer
-from typing import Protocol
 
 ###############
 # VL OPERATOR #
@@ -68,7 +63,7 @@ class ControlPoint():
 
 
 class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
-    """alignt the camer based on vanishing lines"""
+    """align the camera based on vanishing lines"""
     
     bl_idname = "view.vanishing_lines_operator"
     bl_label = "Vanishing Lines Operator"
@@ -79,23 +74,18 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     _hovered_id: Tuple[bpy.types.ID, str]|None = None
 
     _is_left_mouse_down = False
-    _mouse_tracking = False # set this True, to get mouse move events even when no buttons are held down
-    _props: Any= None
-    # _depsgraph_update_post_handler: Any= None
-
-    # draw
-    _view_draw_screen_handler: Any= None # keep our drawing handler
-    _draw_layer: DrawLayer|None = None
     _controls: dict[Tuple[bpy.types.ID, str], ControlPoint] = dict()
 
+    # rendering
+    _draw_layer: DrawLayer|None = None
+    
     # solver
     _active_camera: bpy.types.Object|None = None
     _solve_error: Exception|None = None
 
     # Cached viewport state
-    _output_space: solver.Rect|None = None
-    _region_width: int = 0
-    _region_height: int = 0
+    _output_size: Tuple[float, float]
+    _region_size: Tuple[int, int] = (0, 0)
     _view_camera_zoom: float = 0.0
     _view_camera_offset: Tuple[float, float] = (0.0, 0.0)
 
@@ -142,49 +132,41 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         
         # Setup default props if not initialized
         vl_settings = self._active_camera.data.vl_settings # type: ignore
-        if not vl_settings.initialized:
-            vl_settings.origin = 0.0,  -0.25
 
-            vl_settings.principal = 0.0,  0.0
+        def setup_defaults():
+            if not vl_settings.initialized:
+                vl_settings.origin = 0.0,  -0.25
+                vl_settings.principal = 0.0,  0.0
+                vl_settings.initialized = True
 
-            vl_settings.initialized = True
+            if len(vl_settings.first_vanishing_lines) == 0:
+                item = vl_settings.first_vanishing_lines.add()
+                item.start = -0.2, -0.53
+                item.end =    0.6,  0.12
 
-        if len(vl_settings.first_vanishing_lines) == 0:
-            item = vl_settings.first_vanishing_lines.add()
-            item.start = 0.2,  0.5
-            item.end = 0.9, 0.7
+                item = vl_settings.first_vanishing_lines.add()
+                item.start = -0.88, 0.0
+                item.end =    0.09, 0.20
 
-            item = vl_settings.first_vanishing_lines.add()
-            item.start = -0.9, 0.0
-            item.end = 0.4, 0.5
+            if len(vl_settings.second_vanishing_lines) == 0:
+                item = vl_settings.second_vanishing_lines.add()
+                item.start =  0.22, -0.48
+                item.end =   -0.80,  0.05
 
-        if len(vl_settings.second_vanishing_lines) == 0:
-            item = vl_settings.second_vanishing_lines.add()
-            item.start = -0.3, -0.52
-            item.end =   -0.9, 0
+                item = vl_settings.second_vanishing_lines.add()
+                item.start =  0.65, 0.05
+                item.end =   -0.10, 0.20
 
-            item = vl_settings.second_vanishing_lines.add()
-            item.start = 0.9, 0.1
-            item.end =   0, 0.4
+            if len(vl_settings.third_vanishing_lines) == 0:
+                item = vl_settings.third_vanishing_lines.add()
+                item.start = -0.3, -0.52
+                item.end =   -0.4, 0.5
 
-        if len(vl_settings.third_vanishing_lines) == 0:
-            item = vl_settings.third_vanishing_lines.add()
-            item.start = -0.3, -0.52
-            item.end =   -0.4, 0.5
+                item = vl_settings.third_vanishing_lines.add()
+                item.start = 0.3, -0.52
+                item.end =   0.4, 0.5
 
-            item = vl_settings.third_vanishing_lines.add()
-            item.start = 0.3, -0.52
-            item.end =   0.4, 0.5
-
-        # deps update handler
-        # if not self._depsgraph_update_post_handler:
-        #     bpy.app.handlers.depsgraph_update_post.append(self._on_deps_graph_update)
-
-        self._view_draw_screen_handler = bpy.types.SpaceView3D.draw_handler_add(
-            self.draw_view, 
-            (context, ), 
-            'WINDOW',
-            'POST_PIXEL')
+        setup_defaults()
 
         # trigger redraw
         if area.type == 'VIEW_3D':
@@ -200,9 +182,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     def _update_viewport_state(self, context) -> None:
         """Update cached viewport state from context"""
         
-        self._output_space = solver.Rect(0,0, context.scene.render.resolution_x, context.scene.render.resolution_y)
-        self._region_width = context.region.width
-        self._region_height = context.region.height
+        self._output_size = context.scene.render.resolution_x, context.scene.render.resolution_y
+        self._region_size = context.region.width, context.region.height
         self._view_camera_zoom = context.space_data.region_3d.view_camera_zoom
         self._view_camera_offset = context.space_data.region_3d.view_camera_offset
         self._region = context.region
@@ -224,14 +205,12 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         if event.type in {'ESC'}:
             if area.type == 'VIEW_3D':
                 area.tag_redraw()
-            self.cleanup(context)
             return {'FINISHED'}
         
         if self._active_camera != vl_utils.get_viewer_camera(context):
             
             if area.type == 'VIEW_3D':
                 area.tag_redraw()
-            self.cleanup(context)
             return {'FINISHED'}
         
         ###
@@ -325,58 +304,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
         return {'PASS_THROUGH'}
 
-    def draw(self, context):
-        pass
-        # todo:
-        """The draw method in a Blender operator will only be called if:
-        The operator uses INVOKE_DEFAULT with properties - When you invoke an 
-        operator that has properties, Blender can show a dialog/popup with 
-        those properties, and the draw method is used to customize how that 
-        dialog looks.
-        The operator is used in a panel's draw method - If you create a UI panel
-        and call layout.operator() or use the operator in a menu, 
-        and the operator has properties that need to be shown.
-
-        The operator returns {'RUNNING_MODAL'} and uses 
-        context.window_manager.invoke_props_dialog() - This explicitly shows
-        a property dialog where your draw method controls the layout.
-
-        In this case, we're using invoke() which returns {'RUNNING_MODAL'} and 
-        runs modally, but you never call invoke_props_dialog() or similar, 
-        so the draw method is never called."""
-
-    def cleanup(self, context):
-        print("Cleaning up Vanishing Lines Operator...")
-        # remove depsgraph handler
-        # if klass._depsgraph_update_post_handler:
-        #     bpy.app.handlers.depsgraph_update_post.remove(klass._depsgraph_update_post_handler)
-        #     klass._depsgraph_update_post_handler = None
-
-        # remove draw handler
-        if self._view_draw_screen_handler:
-            try:
-                bpy.types.SpaceView3D.draw_handler_remove(
-                    self._view_draw_screen_handler, 
-                    'WINDOW')
-                
-            except RuntimeError as e:
-                warnings.warn(f"Tried to remove view handler, that has already been removed: {e}")
-
-            self._view_draw_screen_handler = None
-            
-        # if self._timer:
-        #     # 2. REMOVE THE MODAL TIMER
-        #     context.window_manager.event_timer_remove(self._timer)
-        #     self._timer = None
-            
-    def cancel(self, context):
-        self.cleanup(context)
-        return {'CANCELLED'}
-
-    def finish(self, context):
-        self.cleanup(context)
-        return {'FINISHED'}
-
     def _on_deps_graph_update(self, scene, depsgraph:bpy.types.Depsgraph):
         """when the depsgraph changes, regarding the active camera, 
         or the output resolution, we update the solve."""
@@ -404,160 +331,86 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             return
 
         if not vl_settings.enable_manual_principal:
-            center_x = self.get_compute_space().width/2.0 + self.get_compute_space().x
-            center_y = self.get_compute_space().height/2.0 + self.get_compute_space().y
-
-            vl_settings.principal = center_x, center_y
-
-
-        # compute scene scale fromr eference distance
-        region = context.region            # The active region (usually VIEW_3D window)
-        rv3d   = context.region_data       # The RegionView3D for this region # TODO: context.space_data.region_3d might be more accurate?
-
-        # print("Solving camera...", region, rv3d)
+            vl_settings.principal = self.get_compute_space().center
 
         try:
-            self._solve_error = None
-            match vl_settings.mode:
-                case "ONE_POINT":
-                    if not vl_settings.enable_manual_principal:
-                        center_x = self.get_compute_space().width/2.0 + self.get_compute_space().x
-                        center_y = self.get_compute_space().height/2.0 + self.get_compute_space().y
-                        vl_settings.principal = center_x,  center_y
+            mode = {"ONE_POINT":   solver.types.SolverMode.OneVP,
+                    "TWO_POINT":   solver.types.SolverMode.TwoVP,
+                    "THREE_POINT": solver.types.SolverMode.ThreeVP
+            }[vl_settings.mode]
 
-                    first_vanishing_lines = [
-                        (glm.vec2(*line.start), 
-                            glm.vec2(*line.end)) 
-                        for line in vl_settings.first_vanishing_lines]
+            reference_axis = {
+                'ORIGIN': None,# TODO: ORIGIN option
+                'SCREEN': solver.types.ReferenceAxis.Screen,
+                'X_AXIS': solver.types.ReferenceAxis.X_Axis,
+                'Y_AXIS': solver.types.ReferenceAxis.Y_Axis,
+                'Z_AXIS': solver.types.ReferenceAxis.Z_Axis
+            }[vl_settings.scene_scale_mode]
 
-                    second_vanishing_lines = [
-                        (glm.vec2(*line.start), 
-                            glm.vec2(*line.end)) 
-                        for line in vl_settings.second_vanishing_lines]
+            # first_axis = {
+            #     'X+': solver.types.Axis.PositiveX,
+            #     'Y+': solver.types.Axis.PositiveY,
+            #     'Z+': solver.types.Axis.PositiveZ,
+            #     'X-': solver.types.Axis.NegativeX,
+            #     'Y-': solver.types.Axis.NegativeY,
+            #     'Z-': solver.types.Axis.NegativeZ
+            # }[vl_settings.first_axis]
 
-                    focal_length_pixel = camera_object.data.lens / camera_object.data.sensor_width * self.get_compute_space().height
-        
-                    vp1 = solver.utils.least_squares_intersection_of_lines(first_vanishing_lines)
-                    vp2 = None
-                    vp3 = None
-                    projection, view = solver.orientation_from_one_vanishing_point(
-                        self.get_compute_space(),
-                        vp1=vp1,
-                        second_line=second_vanishing_lines[0],
-                        f=focal_length_pixel,
-                        P=glm.vec2(*vl_settings.principal)
-                    )
-                        
-                case "TWO_POINT":
-                    if not vl_settings.enable_manual_principal:
-                        center_x = self.get_compute_space().width/2.0 + self.get_compute_space().x
-                        center_y = self.get_compute_space().height/2.0 + self.get_compute_space().y
-                        vl_settings.principal = center_x,  center_y
+            # second_axis = {
+            #     'X+': solver.types.Axis.PositiveX,
+            #     'Y+': solver.types.Axis.PositiveY,
+            #     'Z+': solver.types.Axis.PositiveZ,
+            #     'X-': solver.types.Axis.NegativeX,
+            #     'Y-': solver.types.Axis.NegativeY,
+            #     'Z-': solver.types.Axis.NegativeZ
+            # }[vl_settings.second_axis]
 
-                    first_vanishing_lines = [
-                        (glm.vec2(*line.start), 
-                            glm.vec2(*line.end)) 
-                        for line in vl_settings.first_vanishing_lines]
 
-                    if vl_settings.quad_mode:
-                        first_line = vl_settings.first_vanishing_lines[ 0]
-                        last_line = vl_settings.first_vanishing_lines[-1]
-                        
-                        second_vanishing_lines = [
-                            (glm.vec2(*first_line.start), glm.vec2(*last_line.start)),
-                            (glm.vec2(*first_line.end),   glm.vec2(*last_line.end))
-                        ]
-                    else:
-                        second_vanishing_lines = [
-                            (glm.vec2(*line.start), 
-                                glm.vec2(*line.end)) 
-                            for line in vl_settings.second_vanishing_lines]
-                        
-                    vp1 = solver.utils.least_squares_intersection_of_lines(first_vanishing_lines)
-                    vp2 = solver.utils.least_squares_intersection_of_lines(second_vanishing_lines)
-                    vp3 = None
-                    projection, view = solver.orientation_from_two_vanishing_points(
-                        self.get_compute_space(),
-                        vp1=vp1,
-                        vp2=vp2,
-                        P=glm.vec2(*vl_settings.principal)
-                    )
-                    
-                case "THREE_POINT":
-                    first_vanishing_lines = [
-                        (glm.vec2(*line.start), 
-                            glm.vec2(*line.end)) 
-                        for line in vl_settings.first_vanishing_lines]
+            first_axis, second_axis, third_axis = self.get_axes(context)
 
-                    if vl_settings.quad_mode:
-                        first_line = vl_settings.first_vanishing_lines[ 0]
-                        last_line = vl_settings.first_vanishing_lines[-1]
-                        
-                        second_vanishing_lines = [
-                            (glm.vec2(*first_line.start), glm.vec2(*last_line.start)),
-                            (glm.vec2(*first_line.end),   glm.vec2(*last_line.end))
-                        ]
-                    else:
-                        second_vanishing_lines = [
-                            (glm.vec2(*line.start), 
-                                glm.vec2(*line.end)) 
-                            for line in vl_settings.second_vanishing_lines]
-                    
-                    third_vanishing_lines = [
-                        (glm.vec2(*line.start),
-                            glm.vec2(*line.end))
-                        for line in vl_settings.third_vanishing_lines]
-
-                    vp1 = solver.utils.least_squares_intersection_of_lines(first_vanishing_lines)
-                    vp2 = solver.utils.least_squares_intersection_of_lines(second_vanishing_lines)
-                    vp3 = solver.utils.least_squares_intersection_of_lines(third_vanishing_lines)
-
-                    projection, view = solver.orientation_from_three_vanishing_points(
-                        self.get_compute_space(),
-                        vp1=vp1,
-                        vp2=vp2,
-                        vp3=vp3
-                    )
-
-            # validate if matrix is a purely rotational matrix
-            if solver.validate_orthogonality(glm.mat3(view)) is False:
-                view = glm.mat4(solver.utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
-                warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
             
-            view = solver.adjust_position_to_origin(
-                self.get_compute_space(), 
-                projection, 
-                glm.vec2(*vl_settings.origin), 
-                view,
-                distance = vl_settings.scene_scale if vl_settings.scene_scale_mode == 'ORIGIN' else 1.0
-            )
-            if vl_settings.scene_scale_mode != 'ORIGIN':
-                view = solver.adjust_scale_to_reference_distance(
-                    self.get_compute_space(), 
-                    projection, 
-                    vl_settings.scene_scale, 
-                    solver.ReferenceAxis.Screen, 
-                    (0, vl_settings.reference_distance), 
-                    view
-                )
+            second_vanishing_lines = [(line.start, line.end) for line in vl_settings.second_vanishing_lines]
+            if vl_settings.quad_mode and mode in {solver.types.SolverMode.TwoVP, solver.types.SolverMode.ThreeVP}:
+                first_line = vl_settings.first_vanishing_lines[ 0]
+                last_line =  vl_settings.first_vanishing_lines[-1]
 
-            view = solver.adjust_axis_assignment(
-                solver.Axis.PositiveY,
-                solver.Axis.NegativeX,
-                view
+                second_vanishing_lines = [
+                    (first_line.start, last_line.start), (first_line.end, last_line.end)
+                ]
+            
+            self._solve_error = None
+            projection, view = solver.core.solve(
+                mode = mode,
+                viewport=self.get_compute_space(),
+                first_vanishing_lines= [(line.start, line.end) for line in  vl_settings.first_vanishing_lines],
+                second_vanishing_lines=second_vanishing_lines,
+                third_vanishing_lines= [(line.start, line.end) for line in  vl_settings.third_vanishing_lines],
+
+                f = camera_object.data.lens / camera_object.data.sensor_width * self.get_compute_space().height,
+                P = (vl_settings.principal[0], vl_settings.principal[1]), # TODO: is [0], [1] necessary?
+                O = (vl_settings.origin[0], vl_settings.origin[1]),
+
+                reference_axis=reference_axis, # TODO: make configurable
+                reference_distance_segment=(0, vl_settings.reference_distance), # TODO: make fist value configurable
+                reference_world_size=vl_settings.scene_scale,
+
+                first_axis=first_axis,
+                second_axis=second_axis
             )
 
             vl_utils.apply_solver_results_to_blender_camera(
-                projection, 
-                view, 
-                camera_object, 
-                self.get_compute_space(), 
-                self._output_space,
-                self._active_camera.data.sensor_fit
+                projection=projection, 
+                view=view, 
+                camera_object=camera_object, 
+                compute_space=self.get_compute_space(), 
+                output_size=self._output_size,
+                fit_mode=self._active_camera.data.sensor_fit
             )
+
+            vl_settings.error_message = ""
                     
         except Exception as e:
-            self._solve_error = e
+            vl_settings.error_message = str(e)
             import traceback
             traceback.print_exc()
 
@@ -599,6 +452,9 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             point_color = (1.0, 1.0, 1.0, 1.0)
         elif is_hovered:
             point_color = (1.0, 1.0, 1.0, 1.0)
+            self._draw_layer.add_text(
+                (P[0]+5, P[1]-15), f"({cp.value[0]:.2f}, {cp.value[1]:.2f})",
+                color=(1,1,1,1))
 
         self._draw_layer.add_point(
             P,
@@ -618,6 +474,17 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     def is_item_active(self):
         last_id = list(self._controls.keys())[-1]
         return self._active_id == last_id
+    
+    def get_axes(self, context) -> solver.types.Axis:
+        vl_settings = self._active_camera.data.vl_settings # type: ignore
+        # TODO: DOUBLE CHECK AXIS SIGNS in all scenarios. blender is for example uses a right handed coordinate system. The third axis sign was probably not used in the solver.
+        match vl_settings.floor:
+            case 'XY':
+                return [solver.types.Axis.NegativeY, solver.types.Axis.PositiveX, solver.types.Axis.NegativeZ]
+            case 'XZ':
+                return [solver.types.Axis.NegativeX, solver.types.Axis.PositiveZ, solver.types.Axis.PositiveY]
+            case 'YZ':
+                return [solver.types.Axis.NegativeY, solver.types.Axis.PositiveZ, solver.types.Axis.NegativeX]
 
     def draw_view(self, context):
         try:
@@ -627,8 +494,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         except ReferenceError as e:
             warnings.warn(f"Draw layer reference error. Skipping draw. {e}")
             return
-            
-        # Update viewport state for drawing
+        
         self._update_viewport_state(context)
         
         self._draw_layer.clear()
@@ -642,6 +508,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         BLUE = (0,0.3, 1.0, 1.0)
         YELLOW = (1,1,0,1)
         ORANGE = (1.0, 0.5, 0.0, 1.0)
+
+        
 
         # draw reference line
         self._draw_layer.add_point(
@@ -673,42 +541,52 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 vl_utils.dim_color(ORANGE, factor=0.7 if self.is_item_hovered() else 0.1))
 
         # Draw Vanishing Lines
+        def get_axis_color(axis:solver.types.Axis) -> Tuple[float, float, float, float]:
+            match axis:
+                case solver.types.Axis.PositiveX | solver.types.Axis.NegativeX:
+                    return RED
+                case solver.types.Axis.PositiveY | solver.types.Axis.NegativeY:
+                    return GREEN
+                case solver.types.Axis.PositiveZ | solver.types.Axis.NegativeZ:
+                    return BLUE
         vl_settings = self._active_camera.data.vl_settings # type: ignore
+
+        first_axis, second_axis, third_axis = self.get_axes(context)
 
         if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
             # Draw first vanishing lines
             for line in vl_settings.first_vanishing_lines:
-                _ = self.control_point(line, "start", text=f"", color=GREEN)
-                _ = self.control_point(line, "end",   text=f"",   color=GREEN)
+                _ = self.control_point(line, "start", text=f"", color=get_axis_color(first_axis))
+                _ = self.control_point(line, "end",   text=f"", color=get_axis_color(first_axis))
 
                 self._draw_layer.add_line(
                     self.project_compute_to_region(line.start), 
                     self.project_compute_to_region(line.end), 
-                    GREEN)
+                    get_axis_color(first_axis))
 
-        try:
-            # draw extended lines to vanishing point
-            vp1 = solver.utils.least_squares_intersection_of_lines([
-                (line.start, line.end) 
-                for line in vl_settings.first_vanishing_lines])
+            try:
+                # draw extended lines to vanishing point
+                vp1 = solver.core.compute_vanishing_point([
+                    (line.start, line.end) 
+                    for line in vl_settings.first_vanishing_lines])
 
-            for line in vl_settings.first_vanishing_lines:
-                self._draw_layer.add_line(
-                    self.project_compute_to_region(vl_utils.closest_point_to_target([line.start, line.end], vp1)), 
-                    self.project_compute_to_region(vp1), vl_utils.dim_color(GREEN))
-        except ValueError as e:
-            warnings.warn(f"Could not compute VP1: {e}")
+                for line in vl_settings.first_vanishing_lines:
+                    self._draw_layer.add_line(
+                        self.project_compute_to_region(vl_utils.closest_point_to_target([line.start, line.end], vp1)), 
+                        self.project_compute_to_region(vp1), vl_utils.dim_color(get_axis_color(first_axis)))
+            except ValueError as e:
+                warnings.warn(f"Could not compute VP1: {e}")
 
         if vl_settings.mode in {'ONE_POINT'}:
             # Draw the horizontal line for the vp1 mode:
             line = vl_settings.second_vanishing_lines[0]
-            _ = self.control_point(line, "start", text=f"", color=RED)
-            _ = self.control_point(line, "end",   text=f"",   color=RED)
+            _ = self.control_point(line, "start", text=f"", color=get_axis_color(second_axis))
+            _ = self.control_point(line, "end",   text=f"", color=get_axis_color(second_axis))
 
             self._draw_layer.add_line(
                 self.project_compute_to_region(line.start), 
                 self.project_compute_to_region(line.end), 
-                RED)
+                get_axis_color(second_axis))
 
         if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
             if vl_settings.quad_mode:
@@ -719,73 +597,75 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                     self._draw_layer.add_line(
                         self.project_compute_to_region(line_start), 
                         self.project_compute_to_region(line_end), 
-                        RED)
+                        get_axis_color(second_axis))
                     
             else:
                 for line in vl_settings.second_vanishing_lines:
-                    _ = self.control_point(line, "start", text="", color=RED)
-                    _ = self.control_point(line, "end",   text="",   color=RED)
+                    _ = self.control_point(line, "start", text="", color=get_axis_color(second_axis))
+                    _ = self.control_point(line, "end",   text="", color=get_axis_color(second_axis))
 
                     self._draw_layer.add_line(
                         self.project_compute_to_region(line.start), 
                         self.project_compute_to_region(line.end), 
-                        RED)
+                        get_axis_color(second_axis))
 
-        try:
-            if vl_settings.quad_mode:
-                first_line = vl_settings.first_vanishing_lines[ 0]
-                last_line =  vl_settings.first_vanishing_lines[-1]
+            try:
+                if vl_settings.quad_mode:
+                    first_line = vl_settings.first_vanishing_lines[ 0]
+                    last_line =  vl_settings.first_vanishing_lines[-1]
 
-                vp2 = solver.utils.least_squares_intersection_of_lines(
-                    [(first_line.start, first_line.end),
-                    (last_line.start, last_line.end)])
-                
-                for line in [first_line, last_line]:
-                    self._draw_layer.add_line(
-                        self.project_compute_to_region(vl_utils.closest_point_to_target([line_start, line_end], vp2)), 
-                        self.project_compute_to_region(vp2), 
-                        vl_utils.dim_color(RED))
-            else:
-                vp2 = solver.utils.least_squares_intersection_of_lines([
-                    (line.start, line.end) 
-                    for line in vl_settings.second_vanishing_lines])
-                
-                for line in vl_settings.second_vanishing_lines:
-                    self._draw_layer.add_line(
-                        self.project_compute_to_region(vl_utils.closest_point_to_target([line.start, line.end], vp2)), 
-                        self.project_compute_to_region(vp2), 
-                        vl_utils.dim_color(RED))
+                    second_vanishing_lines = [
+                        (first_line.start, last_line.start),
+                        (first_line.end, last_line.end)]
 
-        except ValueError as e:
-            warnings.warn(f"Could not compute VP2: {e}")
+                    vp2 = solver.core.compute_vanishing_point(second_vanishing_lines)
+                    
+                    for line_start, line_end in second_vanishing_lines:
+                        self._draw_layer.add_line(
+                            self.project_compute_to_region(vl_utils.closest_point_to_target([line_start, line_end], vp2)), 
+                            self.project_compute_to_region(vp2), 
+                            vl_utils.dim_color(get_axis_color(second_axis)))
+                else:
+                    vp2 = solver.core.compute_vanishing_point([
+                        (line.start, line.end) 
+                        for line in vl_settings.second_vanishing_lines])
+                    
+                    for line in vl_settings.second_vanishing_lines:
+                        self._draw_layer.add_line(
+                            self.project_compute_to_region(vl_utils.closest_point_to_target([line.start, line.end], vp2)), 
+                            self.project_compute_to_region(vp2), 
+                            vl_utils.dim_color(get_axis_color(second_axis)))
+
+            except ValueError as e:
+                warnings.warn(f"Could not compute VP2: {e}")
 
         if vl_settings.mode in {'THREE_POINT'}:
             for line in vl_settings.third_vanishing_lines:
-                _ = self.control_point(line, "start", text="", color=BLUE)
-                _ = self.control_point(line, "end",   text="",   color=BLUE)
+                _ = self.control_point(line, "start", text="", color=get_axis_color(third_axis))
+                _ = self.control_point(line, "end",   text="", color=get_axis_color(third_axis))
 
                 self._draw_layer.add_line(
                     self.project_compute_to_region(line.start), 
                     self.project_compute_to_region(line.end), 
-                    BLUE)
+                    get_axis_color(third_axis))
                 
-        try:
-            vp3 = solver.utils.least_squares_intersection_of_lines([
-                (line.start, line.end) 
-                for line in vl_settings.third_vanishing_lines])
-            for line in vl_settings.third_vanishing_lines:
-                self._draw_layer.add_line(
-                    self.project_compute_to_region(vl_utils.closest_point_to_target([line.start, line.end], vp3)), 
-                    self.project_compute_to_region(vp3), 
-                    vl_utils.dim_color(BLUE))
-        except ValueError as e:
-            warnings.warn(f"Could not compute VP3: {e}")
+            try:
+                vp3 = solver.core.compute_vanishing_point([
+                    (line.start, line.end) 
+                    for line in vl_settings.third_vanishing_lines])
+                for line in vl_settings.third_vanishing_lines:
+                    self._draw_layer.add_line(
+                        self.project_compute_to_region(vl_utils.closest_point_to_target([line.start, line.end], vp3)), 
+                        self.project_compute_to_region(vp3), 
+                        vl_utils.dim_color(get_axis_color(third_axis)))
+            except ValueError as e:
+                warnings.warn(f"Could not compute VP3: {e}")
 
 
         # Draw Output Frame
         def draw_camera_output_frame():
             bottom_left = self._project_output_to_region((0,0))
-            top_right =   self._project_output_to_region((self._output_space.width, self._output_space.height))
+            top_right =   self._project_output_to_region(self._output_size)
             w = top_right[0]-bottom_left[0]
             h = top_right[1]-bottom_left[1]
 
@@ -800,7 +680,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 color=(1,1,1,1))
             
         draw_camera_output_frame()
-
 
         # Draw compute space frame
         def draw_compute_frame(space):
@@ -875,8 +754,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             case 'Z_AXIS':
                 axis_vector = (0,0,1)
 
-        R = view3d_utils.location_3d_to_region_2d(
-            self._region, self._region_data, axis_vector)
+        R = view3d_utils.location_3d_to_region_2d(self._region, self._region_data, axis_vector)
         
         R = self.unproject_compute_from_region((R.x, R.y))
 
@@ -898,28 +776,29 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         if vl_settings.scene_scale_mode in {'SCREEN', 'ORIGIN'}:
             Px, Py = point
             vl_settings.reference_distance = math.sqrt((Px - Ox) ** 2 + (Py - Oy) ** 2)
-
-        match vl_settings.scene_scale_mode:
-            case 'X_AXIS':
-                axis_vector = (1,0,0)
-            case 'Y_AXIS':
-                axis_vector = (0,1,0)
-            case 'Z_AXIS':
-                axis_vector = (0,0,1)
-
-        R = view3d_utils.location_3d_to_region_2d(self._region, self._region_data, axis_vector)
-        R = self.unproject_compute_from_region((R.x, R.y))
-        R = mathutils.Vector((R[0], R[1]))
-        l = (R - O).magnitude
-        n = (R - O) / l
-        P = mathutils.Vector((point[0], point[1]))
-        d = (P - O).dot(n)
-        vl_settings.reference_distance = d
         
-    def get_compute_space(self) -> solver.Rect:
+        else:
+            match vl_settings.scene_scale_mode:
+                case 'X_AXIS':
+                    axis_vector = (1,0,0)
+                case 'Y_AXIS':
+                    axis_vector = (0,1,0)
+                case 'Z_AXIS':
+                    axis_vector = (0,0,1)
+
+            R = view3d_utils.location_3d_to_region_2d(self._region, self._region_data, axis_vector)
+            R = self.unproject_compute_from_region((R.x, R.y))
+            R = mathutils.Vector((R[0], R[1]))
+            l = (R - O).magnitude
+            n = (R - O) / l
+            P = mathutils.Vector((point[0], point[1]))
+            d = (P - O).dot(n)
+            vl_settings.reference_distance = d
+        
+    def get_compute_space(self) -> solver.types.Rect:
         """compute space is a normalized square"""
         # for now this is hardcoded. TODO: make this user definable
-        return solver.Rect(-1,-1,2,2)
+        return solver.types.Rect(-1,-1,2,2)
 
     def get_sensor_size(self) -> Tuple[float, float]:
         return get_sensor_size(
@@ -929,34 +808,34 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     # Coordinate Mapping
     def _project_output_to_region(self, output_coords: Tuple[float, float]) -> Tuple[float, float]:
         """Convert output frame coordinates to region space using cached viewport state"""
-        assert self._output_space is not None, "Viewport state not initialized"
+        assert self._output_size is not None, "Viewport state not initialized"
 
         return project_output_to_region(
-            sensor_fit=self._active_camera.data.sensor_fit,
-            output_size = (self._output_space.width, self._output_space.height),
-            region_size = (self._region_width, self._region_height),
+            fit_mode=self._active_camera.data.sensor_fit,
+            output_size = self._output_size,
+            region_size = self._region_size,
             view_camera_zoom = self._view_camera_zoom,
             view_camera_offset = self._view_camera_offset,
             output_coords=output_coords)
 
     def _unproject_output_from_region(self, region_coords: Tuple[float, float]) -> Tuple[float, float]:
         """Convert region coordinates to output frame space using cached viewport state"""
-        assert self._output_space is not None, "Viewport state not initialized"
+        assert self._output_size is not None, "Viewport state not initialized"
 
         return unproject_output_from_region(
-            sensor_fit=self._active_camera.data.sensor_fit,
-            output_size = (self._output_space.width, self._output_space.height),
-            region_size = (self._region_width, self._region_height),
+            fit_mode=self._active_camera.data.sensor_fit,
+            output_size = self._output_size,
+            region_size = self._region_size,
             view_camera_zoom = self._view_camera_zoom,
             view_camera_offset = self._view_camera_offset,
             region_coords=region_coords)
 
     def project_sensor_to_region(self, sensor_coord:Tuple[float, float]) -> Tuple[float, float]:
         """Project from sensor space to region space (uses cached viewport state)"""
-        assert self._output_space is not None, "Viewport state not initialized"
+        assert self._output_size is not None, "Viewport state not initialized"
 
         sensor_size = self.get_sensor_size()
-        sensor_rect = solver.Rect(
+        sensor_rect = solver.types.Rect(
             x=0,
             y=0,
             width=sensor_size[0],
@@ -965,11 +844,11 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         return project_sensor_to_region(
             fit_mode=self._active_camera.data.sensor_fit,
             sensor_size = (sensor_rect.width, sensor_rect.height),
-            output_size = (self._output_space.width, self._output_space.height),
-            region_size = (self._region_width, self._region_height),
+            output_size = self._output_size,
+            region_size = self._region_size,
             view_camera_zoom = self._view_camera_zoom,
             view_camera_offset = self._view_camera_offset,
-            sensor_coord=sensor_coord)
+            sensor_coords=sensor_coord)
     
     def unproject_sensor_from_region(self, coord: Tuple[float, float]) -> Tuple[float, float]:
         raise NotImplementedError("unproject_sensor_from_region not implemented yet")
@@ -979,17 +858,17 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         x, y = coord
         assert isinstance(x, (int, float)), f"got: {x}"
         assert isinstance(y, (int, float)), f"got: {y}"
-        assert self._output_space is not None, "Viewport state not initialized"
+        assert self._output_size is not None, "Viewport state not initialized"
 
         x, y, w, h = self.get_compute_space()
         return project_compute_to_region(
             fit_mode=self._active_camera.data.sensor_fit,
             compute_rect = (x, y, w, h),
-            output_size = (self._output_space.width, self._output_space.height),
-            region_size = (self._region_width, self._region_height),
+            output_size = self._output_size,
+            region_size = self._region_size,
             view_camera_zoom = self._view_camera_zoom,
             view_camera_offset = self._view_camera_offset,
-            compute_coord=coord
+            compute_coords=coord
         )
 
     def unproject_compute_from_region(self, coord: Tuple[float, float]) -> Tuple[float, float]:
@@ -997,17 +876,17 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         x, y = coord
         assert isinstance(x, (int, float)), f"got: {x}"
         assert isinstance(y, (int, float)), f"got: {y}"
-        assert self._output_space is not None, "Viewport state not initialized"
+        assert self._output_size is not None, "Viewport state not initialized"
 
         x, y, w, h = self.get_compute_space()
         return unproject_compute_from_region(
             fit_mode=self._active_camera.data.sensor_fit,
             compute_rect = (x, y, w, h),
-            output_size = (self._output_space.width, self._output_space.height),
-            region_size = (self._region_width, self._region_height),
+            output_size = self._output_size,
+            region_size = self._region_size,
             view_camera_zoom = self._view_camera_zoom,
             view_camera_offset = self._view_camera_offset,
-            region_coord=coord
+            region_coords=coord
         )
     
 
@@ -1017,28 +896,19 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 def view_menu_func(self, context):
     self.layout.operator(VIEW_OT_VanishingLinesOperator.bl_idname, text="Vanishing Lines Modal Operator")
 
-draw_handler = None
-draw_list = DrawLayer()
-
-def get_vl_instance(op_idname):
-    for op in bpy.context.window.modal_operators:
-        if op and op.bl_idname == 'VIEW_OT_vanishing_lines_operator':
-            return op
-    return None
-
 def view_draw_func():
     # global draw_list
     """Wrapper function to call the draw_view method of the operator instance."""
-    if op:=get_vl_instance("VIEW_OT_vanishing_lines_operator"):
+    if op:=vl_utils.get_running_operator_by_idname("VIEW_OT_vanishing_lines_operator"):
         op.draw_view(bpy.context)
 
 def on_depsgraph_update(scene, depsgraph):
-    if op:=get_vl_instance("VIEW_OT_vanishing_lines_operator"):
+    if op:=vl_utils.get_running_operator_by_idname("VIEW_OT_vanishing_lines_operator"):
         op._on_deps_graph_update(scene, depsgraph)
 
+draw_handler = None
 def register():
     global draw_handler
-    global deps_update_handler
     bpy.utils.register_class(VIEW_OT_VanishingLinesOperator)
     draw_handler = bpy.types.SpaceView3D.draw_handler_add(
             view_draw_func, 
@@ -1058,5 +928,4 @@ def unregister():
         draw_handler = None
 
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
-    # VIEW_OT_VanishingLinesOperator.cleanup()
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesOperator)

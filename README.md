@@ -14,11 +14,7 @@ __work in progress__
 
 ## TODO, ChangeLog
 - [ ] test with blender's python.
-  add to 'settings.json': "python.defaultInterpreterPath": "C:\\Program Files\\Blender Foundation\\Blender 4.5\\4.5\\python\\bin\\python.exe"
-
-### **0.7.*
-- [ ] REFACTOR coordinate space conversion
-- [ ] ADD axis assignment
+      add to 'settings.json': "python.defaultInterpreterPath": "C:\\Program Files\\Blender Foundation\\Blender 4.5\\4.5\\python\\bin\\python.exe"
 
 ### **0.7.*
 - [ ] ADD draw antialiased lines, and circle shader
@@ -26,6 +22,8 @@ __work in progress__
 ### **0.7.*
 - [ ] ADD align tracked camera
 - [ ] ADD animation
+
+### **0.7.*
 - [ ] show errors in the UI, and phrase them to be helpful.
 - [ ] FIX when a line is zero length, there is an unhandled error
 
@@ -35,8 +33,30 @@ __work in progress__
 - [ ] ADD Loupe
 
 ### **0.7.*
-- [ ] add tests to unproject 
-- [ ] REFACTOR project/unproject between region and compute space to work with the new functions
+- [ ] ADD UI for the background image to our panel
+- [ ] ADD UI under the CAMERA Parameters (camera_panel.py)
+- [ ] REFACTOR coordinate space conversion
+
+
+### **0.7.*
+- [ ] Test axis assignment (currently only support right handed coordinate systems)
+- [ ] Set vanishing lines color based on the axis assignment axes
+- [ ] Double check axis sign, if it matches tha actual blender axes. the selected msign should go towards the vanishing points
+- [x] ADD axis assignment
+
+### **0.7.*
+- [x] BUG FIXES
+  - [X] FIX: Now, all the extended vanishing lines are drawn regardless of the active mode.
+  - [X] FIX solve scale by origin distance->adjust_position_to_origin was slightly off
+
+
+### **0.7.5
+- [x] ADD tests for solve components
+- [x] FIX reference is slightly off -> axis assignment and reference axis was applied in the wrong order.
+- [x] add tests to unprojects
+- [x] use the main _solver_ function in the operator
+- [x] REFACTOR project/unproject between region and compute space to work with the new functions
+- [x] reorganize the solver
 - [x] FIX camera view frame
 - [x] fix draw handler unregister
 

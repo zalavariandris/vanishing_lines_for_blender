@@ -5,65 +5,16 @@ import math
 import warnings
 
 from . constants import EPSILON
-
+from . types import Point2, Line2, Ray3, Line3, Rect
 ###########################
 # 2D-3D GOMETRY FUNCTIONS #
 ###########################
-
-Point2 = Tuple[float, float]
-Point3 = Tuple[float, float, float]
-Line2 = Tuple[Point2, Point2] # two endpoints
-Line3 = Tuple[Point3, Point3] # two endpoints
-Ray2 = Tuple[Point2, Point2] # origin, direction
-Ray3 = Tuple[Point3, Point3] # origin, direction
-Plane3 = Tuple[Point3, Point3]  # point, normal
 
 
 def dot2d(u: Point2, v: Point2) -> float:
     Ux, Uy = u
     Vx, Vy = v
     return Ux * Vx + Uy * Vy
-
-def least_squares_intersection_of_lines(lines: List[Line2]) -> Point2:
-    """
-    Compute the least-squares intersection (vanishing point) of a set of 2D lines
-    defined by their endpoints. Uses pure PyGLM math, no numpy.
-
-    Args:
-        line_segments: list of ((x1, y1), (x2, y2)) as glm.vec2 pairs.
-
-    Returns:
-        glm.vec2: the least-squares intersection point.
-    """
-    if len(lines) < 2:
-        raise ValueError("At least two lines are required to compute a vanishing point")
-
-    # Accumulate normal equation components
-    S_aa = S_ab = S_bb = S_ac = S_bc = 0.0
-
-    for (Px, Py), (Qx, Qy) in lines:
-        # Line equation coefficients: a*x + b*y + c = 0
-        a = Py - Qy
-        b = Qx - Px
-        c = Px * Qy - Qx * Py
-
-        S_aa += a * a
-        S_ab += a * b
-        S_bb += b * b
-        S_ac += a * c
-        S_bc += b * c
-
-    # Solve normal equations:
-    # [S_aa S_ab][x] = -[S_ac]
-    # [S_ab S_bb][y]   -[S_bc]
-    det = S_aa * S_bb - S_ab * S_ab
-    if abs(det) < EPSILON:
-        raise ValueError(f"Lines are nearly parallel or determinant is zero. linesegments: {lines}")
-
-    x = (-S_bb * S_ac + S_ab * S_bc) / det
-    y = (-S_aa * S_bc + S_ab * S_ac) / det
-
-    return glm.vec2(x, y)
 
 def triangle_orthocenter(A: glm.vec2, B: glm.vec2, C: glm.vec2)-> glm.vec2:
     a = A.x
@@ -130,7 +81,30 @@ def cast_ray(
 
     return ray_origin, ray_target
 
-def closest_point_between_lines(AB: Line3, CD: Line3)-> glm.vec3:
+# def closest_point_between_lines(AB: Line3, CD: Line3)-> glm.vec3:
+#     A = glm.vec3(AB[0])
+#     B = glm.vec3(AB[1])
+#     C = glm.vec3(CD[0])
+#     D = glm.vec3(CD[1])
+
+#     d1 = B - A
+#     d2 = D - C
+#     r  = C - A
+
+#     cross_d1d2 = glm.cross(d1, d2)
+#     denom = glm.dot(cross_d1d2, cross_d1d2)
+
+#     # If parallel: project r onto d1
+#     if denom < EPSILON:
+#         t_parallel = glm.dot(r, d1) / glm.dot(d1, d1)
+#         return A + t_parallel * d1
+
+#     # Solve for t (closest point on line 1)
+#     t = glm.determinant(glm.mat3(r, d2, cross_d1d2)) / denom
+
+#     return A + t * d1
+
+def closest_point_between_lines(AB: Line3, CD: Line3) -> glm.vec3:
     A = glm.vec3(AB[0])
     B = glm.vec3(AB[1])
     C = glm.vec3(CD[0])
@@ -140,16 +114,20 @@ def closest_point_between_lines(AB: Line3, CD: Line3)-> glm.vec3:
     d2 = D - C
     r  = C - A
 
-    cross_d1d2 = glm.cross(d1, d2)
-    denom = glm.dot(cross_d1d2, cross_d1d2)
+    # The common normal vector
+    n = glm.cross(d1, d2)
+    denom = glm.dot(n, n)
 
-    # If parallel: project r onto d1
-    if denom < EPSILON:
+    # If lines are parallel, the cross product is zero
+    if denom < 1e-8:
+        # Project r onto d1 to find the closest point to C on line AB
         t_parallel = glm.dot(r, d1) / glm.dot(d1, d1)
         return A + t_parallel * d1
 
-    # Solve for t (closest point on line 1)
-    t = glm.determinant(glm.mat3(r, d2, cross_d1d2)) / denom
+    # Using the vector triple product identity to solve for t
+    # t = dot(cross(r, d2), n) / dot(n, n)
+    n2 = glm.cross(r, d2)
+    t = glm.dot(n2, n) / denom
 
     return A + t * d1
 
@@ -196,6 +174,12 @@ def intersect_ray_with_plane(ray: Ray3, plane_point: glm.vec3, plane_normal: glm
     
     return ray[0] + ray_direction * t
 
+def validate_orthogonality(mat: glm.mat3) -> bool:
+    """ Validates if the given matrix is orthogonal (i.e., its transpose equals its inverse)."""
+    identity = glm.mat3(1.0)
+    should_be_identity = mat * glm.transpose(mat)
+    return glm.all(glm.equal(should_be_identity, identity, glm.vec3(EPSILON)))
+
 def apply_gram_schmidt_orthogonalization(matrix: glm.mat3) -> glm.mat3:
     """
     Apply Gram-Schmidt orthogonalization to a 3x3 matrix to make it orthogonal.
@@ -224,6 +208,32 @@ def apply_gram_schmidt_orthogonalization(matrix: glm.mat3) -> glm.mat3:
     result[2] = u3  # Third column
     
     return result
+
+#####################
+# UTILITY FUNCTIONS #
+#####################
+
+def calc_vanishing_points_from_camera(
+        view_matrix: glm.mat3, 
+        projection_matrix: glm.mat4, 
+        viewport: Rect
+    ) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
+    """
+    Calculate the projected vanishing points from the camera matrices.
+    """
+    
+    # Project vanishing Points
+    MAX_FLOAT32 = (2 - 2**-23) * 2**127
+    VPX = glm.project(glm.vec3(MAX_FLOAT32,0,0), view_matrix, projection_matrix, viewport)
+    VPY = glm.project(glm.vec3(0,MAX_FLOAT32,0), view_matrix, projection_matrix, viewport)
+    VPZ = glm.project(glm.vec3(0,0,MAX_FLOAT32), view_matrix, projection_matrix, viewport)
+
+    return glm.vec2(VPX), glm.vec2(VPY), glm.vec2(VPZ)
+
+def flip_coordinate_handness(mat: glm.mat4) -> glm.mat4:
+    """swap left-right handed coordinate system"""
+    flipZ = glm.scale(glm.vec3(1.0, 1.0, -1.0))  # type: ignore[attr-defined]
+    return flipZ * mat # todo: check order
 
 
 ##################
@@ -439,3 +449,75 @@ def decompose_perspective_tiltshift(P: glm.mat4):
     shift_y = P[2][1]
 
     return fovy, aspect, near, far, shift_x, shift_y
+
+def decompose_intrinsics(viewport:Rect, projection:glm.mat4)->Tuple[glm.vec2, float]:
+    """
+    Decomposes the projection matrix to retreive principal point, focal length and shift.
+    
+    :param viewport:   Description
+    :param projection: Description
+
+    :return: P, f, shift
+    :rtype: Tuple[Any, float, Any]
+    
+    """ 
+    left, right, top, bottom, near, far = decompose_frustum(projection)
+    Ppx = ((right + left) / (top - bottom)) * near
+    Ppy = ((top + bottom) / (top - bottom)) * near
+    P = glm.vec2(
+        viewport.center[0] - (Ppx / near) * (viewport.height / 2),
+        viewport.center[1] + (Ppy / near) * (viewport.height / 2)
+    )
+    f = near/(bottom-top) * viewport.height
+    return P, f
+
+def decompose_extrinsics(view)->Tuple[glm.vec3, glm.quat]:
+    """ Decomposes the view matrix to retreive position and orientation.
+    returns (position, orientation)
+    
+    :param viewport:   Description
+    :param projection: Description
+
+    :return: position, orientation
+    :rtype: Tuple[glm.vec3, glm.quat]
+    
+    """
+    scale = glm.vec3()
+    quat = glm.quat()  # This will be our quaternion
+    translation = glm.vec3()
+    skew = glm.vec3()
+    perspective = glm.vec4()
+    success = glm.decompose(view, scale, quat, translation, skew, perspective)
+
+    if not success:
+        raise ValueError("Failed to decompose view matrix.")
+    
+    return translation, quat
+
+def compose_intrinsics(viewport:Rect, f:float, P:glm.vec2, near:float, far:float)->glm.mat4:
+    """ Composes the projection matrix from intrinsic parameters."""
+    # compute projection
+    shift = -(P - glm.vec2(*viewport.center)) / (glm.vec2(*viewport.size) / 2.0)  # Negated to match convention
+    fovy = fov_from_focal_length(f, viewport.height)
+    aspect = viewport.width/viewport.height
+
+    # return glm.perspective(fovy, aspect, DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE)
+    # Compute top/bottom/left/right in view space
+    top = near * glm.tan(fovy / 2)
+    bottom = -top
+    right = top * aspect
+    left = -right
+
+    # Apply shifts
+    width = right - left
+    height = top - bottom
+
+    left   += shift.x * width / 2
+    right  += shift.x * width / 2
+    bottom += shift.y * height / 2
+    top    += shift.y * height / 2
+
+    # Create the projection matrix with lens shift
+    return glm.frustum(left, right, bottom, top, near, far)
+
+

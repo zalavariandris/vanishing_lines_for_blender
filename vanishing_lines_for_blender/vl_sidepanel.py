@@ -33,6 +33,7 @@ def is_operator_running(op_idname):
             return True
     return False
 
+
 class VIEW_PT_vanishing_lines(bpy.types.Panel):
     """Creates a Panel in the 3D Viewport sidebar"""
     bl_label = "Vanishing Lines"
@@ -63,10 +64,14 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
         # SOLVER #
         ##########
         header, panel = self.layout.panel("solver", default_closed=False)
-        header.label(text="Solver")
+        header_row = header.row()
+        header_row.alert = camera.data.vl_settings.error_message != ""
+        header_row.label(text="Solver")
+       
         if panel:
             panel.prop(camera.data.vl_settings, "solver_is_paused", text="Pause Solver")
             panel.separator()
+
             # panel.prop(camera.data.vl_settings, "compute_space", text="Compute Space")
             # panel.separator()
             panel.prop(camera.data.vl_settings, "mode", text="Mode")
@@ -86,8 +91,12 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
                     panel.prop(camera.data.vl_settings, "quad_mode", text="Quad Mode")
                     panel.label(text="")
             
-            panel.separator()
-
+            # panel.separator()
+            row = panel.row()
+            row.alert = camera.data.vl_settings.error_message != ""
+            if camera.data.vl_settings.error_message:
+                row.label(text=f"{camera.data.vl_settings.error_message}", icon='ERROR')
+        
         ######################
         # REFERENCE DISTANCE #
         ######################
@@ -99,20 +108,69 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
             panel.prop(camera.data.vl_settings, "reference_distance", text="Reference Distance")
             panel.separator()
 
-        # ###################
-        # # AXIS ASSIGNMENT #
-        # ###################
-        # header, panel = self.layout.panel("axis_assignement", default_closed=True)
-        # header.label(text="Axis Assignement")
+        ###################
+        # AXIS ASSIGNMENT #
+        ###################
+        header, panel = self.layout.panel("axis_assignement", default_closed=True)
+        header.label(text="Axis Assignement")
 
-        # if panel:
-        #     panel.label(text="Assign vanishing line axes by color:")
-        #     row = panel.row(align=False)
-        #     row.prop(camera.data.vl_settings, "first_axis_assignment", text="1st Axis", expand=True)
-        #     row.prop(camera.data.vl_settings, "first_axis_sign", text="1st Sign", expand=True)
-        #     row = panel.row(align=True)
-        #     row.prop(camera.data.vl_settings, "second_axis_assignment", text="2nd Axis", expand=True)
-        #     panel.separator()
+        if panel:
+            # panel.prop(camera.data.vl_settings, "floor", text="Floor", expand=False)
+            row = panel.row()
+            row.prop(camera.data.vl_settings, "first_axis", text="First Axis", expand=False)
+            row = panel.row()
+            incompatible_second_axis = camera.data.vl_settings.first_axis[0] == camera.data.vl_settings.second_axis[0]
+            row.alert = incompatible_second_axis
+            row.prop(camera.data.vl_settings, "second_axis", text="Second Axis", expand=False)
+            panel.separator()
+
+            box = panel.row()
+            box.label(text="First Axis")
+            col = box.column(align=True)
+            
+            row = col.row(align=True)
+            row.prop_enum(camera.data.vl_settings, "first_axis", "X-")
+            row.prop_enum(camera.data.vl_settings, "first_axis", "X+")
+
+            row = col.row(align=True)
+            row.prop_enum(camera.data.vl_settings, "first_axis", "Y-")
+            row.prop_enum(camera.data.vl_settings, "first_axis", "Y+")
+
+            row = col.row(align=True)
+            row.prop_enum(camera.data.vl_settings, "first_axis", "Z-")
+            row.prop_enum(camera.data.vl_settings, "first_axis", "Z+")
+
+            box = panel.row()
+            box.label(text="Second Axis")
+            col = box.column(align=True)
+            
+            row = col.row(align=True)
+            row.enabled = not camera.data.vl_settings.first_axis.startswith("X")
+            row.prop_enum(camera.data.vl_settings, "second_axis", "X-")
+            row.prop_enum(camera.data.vl_settings, "second_axis", "X+")
+
+            row = col.row(align=True)
+            row.enabled = not camera.data.vl_settings.first_axis.startswith("Y")
+            row.prop_enum(camera.data.vl_settings, "second_axis", "Y-")
+            row.prop_enum(camera.data.vl_settings, "second_axis", "Y+")
+
+
+            row = col.row(align=True)
+            row.enabled = not camera.data.vl_settings.first_axis.startswith("Z")
+            row.prop_enum(camera.data.vl_settings, "second_axis", "Z-")
+            row.prop_enum(camera.data.vl_settings, "second_axis", "Z+")
+
+
+
+
+            # col.prop_enum(camera.data.vl_settings, "second_axis", text="Second Axis", expand=False)
+            # col.prop_enum(camera.data.vl_settings, "third_axis", text="Third Axis", expand=False)
+            # row = panel.row(align=False)
+            # row.prop(camera.data.vl_settings, "first_axis_assignment", text="1st Axis", expand=True)
+            # row.prop(camera.data.vl_settings, "first_axis_sign", text="1st Sign", expand=True)
+            # row = panel.row(align=True)
+            # row.prop(camera.data.vl_settings, "second_axis_assignment", text="2nd Axis", expand=True)
+            # panel.separator()
 
         ##################
         # CONTROL POINTS #
@@ -147,26 +205,26 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
 
             panel.separator()
 
-        #####################
-        # BACKGROUND IMAGES #
-        #####################
-        header, panel = self.layout.panel("Background_Images", default_closed=True)
+        # #####################
+        # # BACKGROUND IMAGES #
+        # #####################
+        # header, panel = self.layout.panel("Background_Images", default_closed=True)
 
-        header.prop(camera.data, "show_background_images", text="Background Images")
+        # header.prop(camera.data, "show_background_images", text="Background Images")
         
-        if panel:
-            panel.label(text="See camera properties for more options.")
-            # box = self.layout.box()
-            for i, bg in enumerate(camera.data.background_images):
-                box = self.layout.box()
-                header, panel = box.panel(f"No{i}_vl_bg_image", default_closed=True)
-                header.label(text=f"{bpy.path.basename(bg.image.filepath)}" if bg.image else "Not Set")
-                # header.prop(bg, "show_expanded", text="", emboss=False, icon="TRIA_DOWN" if bg.show_expanded else "TRIA_RIGHT")
-                header.prop(bg, "show_background_image", text="", icon="HIDE_ON" if bg.show_background_image else "HIDE_OFF", emboss=False)
-                if panel:
-                    panel.prop(bg, "alpha", text="Opacity", slider=True)
+        # if panel:
+        #     panel.label(text="See camera properties for more options.")
+        #     # box = self.layout.box()
+        #     for i, bg in enumerate(camera.data.background_images):
+        #         box = self.layout.box()
+        #         header, panel = box.panel(f"No{i}_vl_bg_image", default_closed=True)
+        #         header.label(text=f"{bpy.path.basename(bg.image.filepath)}" if bg.image else "Not Set")
+        #         # header.prop(bg, "show_expanded", text="", emboss=False, icon="TRIA_DOWN" if bg.show_expanded else "TRIA_RIGHT")
+        #         header.prop(bg, "show_background_image", text="", icon="HIDE_ON" if bg.show_background_image else "HIDE_OFF", emboss=False)
+        #         if panel:
+        #             panel.prop(bg, "alpha", text="Opacity", slider=True)
 
-            panel.separator()
+        #     panel.separator()
 
 
 ######################

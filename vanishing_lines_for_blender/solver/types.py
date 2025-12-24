@@ -1,10 +1,19 @@
 from enum import IntEnum
-from pyglm import glm
+from typing import Tuple
 from dataclasses import dataclass
 
 #########
 # TYPES #
 #########
+Point2 = Tuple[float, float]
+Point3 = Tuple[float, float, float]
+Line2 = Tuple[Point2, Point2] # two endpoints
+Line3 = Tuple[Point3, Point3] # two endpoints
+Ray2 = Tuple[Point2, Point2] # origin, direction
+Ray3 = Tuple[Point3, Point3] # origin, direction
+Plane3 = Tuple[Point3, Point3]  # point, normal
+
+
 class Axis(IntEnum):
     PositiveX = 0
     NegativeX = 1
@@ -22,10 +31,10 @@ class EulerOrder(IntEnum):
     ZYX = 5
 
 class ReferenceAxis(IntEnum):
-    Screen = 0
-    X_Axis = 1
-    Y_Axis = 2
-    Z_Axis = 3
+    Screen = 1
+    X_Axis = 2
+    Y_Axis = 3
+    Z_Axis = 4
 
 class SolverMode(IntEnum):
     OneVP =   0
@@ -40,12 +49,12 @@ class Rect:
     height: float
 
     @property
-    def size(self) -> glm.vec2:
-        return glm.vec2(self.width, self.height)
+    def size(self) -> Tuple[float, float]:
+        return self.width, self.height
 
     @property
-    def center(self) -> glm.vec2:
-        return glm.vec2(self.x + self.width / 2, self.y + self.height / 2)
+    def center(self) -> Tuple[float, float]:
+        return (self.x + self.width / 2, self.y + self.height / 2)
     
     @property
     def aspect(self) -> float:

@@ -4,17 +4,15 @@ from typing import Final
 
 from pyglm import glm
 
-from core import utils
-from core import solver
+import solver
 
-
-def test_least_squares_intersection_shape_X():
+def test_compute_vanishing_point_shape_X():
     """Test least squares intersection of lines in X shape."""
     lines = [
         (glm.vec2(0, 0), glm.vec2(1, 1)),
         (glm.vec2(0, 1), glm.vec2(1, 0)),
     ]
-    vp_computed = utils.least_squares_intersection_of_lines(lines)
+    vp_computed = solver.core.compute_vanishing_point(lines)
 
     assert vp_computed == glm.vec2(0.5, 0.5)
 
@@ -22,8 +20,8 @@ def test_fov_focal_length_conversion():
     """Test conversion between FOV and focal length"""
     height = 1080
     fov = math.radians(60)
-    f = utils.focal_length_from_fov(fov, height)
-    fov_back = utils.fov_from_focal_length(f, height)
+    f = solver.utils.focal_length_from_fov(fov, height)
+    fov_back = solver.utils.fov_from_focal_length(f, height)
     
     assert pytest.approx(fov_back) == fov
     
@@ -37,7 +35,7 @@ def test_ray_casting():
     
     # Cast ray through center of screen
     center = glm.vec2(width/2, height/2)
-    origin, target = utils.cast_ray(center, view_matrix, proj_matrix, viewport)
+    origin, target = solver.utils.cast_ray(center, view_matrix, proj_matrix, viewport)
     
     # Direction should point roughly forward (negative Z)
     direction = glm.normalize(target - origin)
@@ -57,7 +55,7 @@ def test_euler_extraction_ZXY():
     for angle, axis in [(angle_z, z_axis), (angle_x, x_axis), (angle_y, y_axis)]:
         mat = glm.rotate(mat, angle, axis) 
 
-    ez, ex, ey = utils.extract_euler_ZXY(glm.mat3(mat))
+    ez, ex, ey = solver.utils.extract_euler_ZXY(glm.mat3(mat))
     
     # Should be close to original (within numerical precision)
     assert (ex, ey, ez) == pytest.approx((angle_x, angle_y, angle_z))
@@ -69,7 +67,7 @@ def test_euler_extraction(order):
     note: angles returned in the specified order.
     example: for order 'ZXY', angles are returned as (z, x, y)
     """
-    extract_euler = getattr(utils, f'extract_euler_{order}')
+    extract_euler = getattr(solver.utils, f'extract_euler_{order}')
 
     axes:Final =   {
         'X': glm.vec3(1, 0, 0),
