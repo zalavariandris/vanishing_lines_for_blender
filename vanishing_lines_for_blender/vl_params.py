@@ -80,17 +80,7 @@ class VLSettings(bpy.types.PropertyGroup):
         default=0.5
     )
 
-    # Axis Assignement
-    floor: bpy.props.EnumProperty(
-        name="Ground Plane",
-        items=[
-            ('XY', "XY", ""),
-            ('XZ', "XZ", ""),
-            ('YZ', "YZ", "")
-        ],
-        default='XY'
-    )
-    
+    # Axis Assignement    
     first_axis: bpy.props.EnumProperty(
         name="First Axis",
         items=[

@@ -181,6 +181,10 @@ def third_axis_vector(axis1:Axis, axis2:Axis)->glm.vec3:
     vec2 = vector_from_axis(axis2)
     return glm.normalize(glm.cross(vec1, vec2))
 
+def third_axis(axis1:Axis, axis2:Axis)->Axis:
+    vec = third_axis_vector(axis1, axis2)
+    return axis_from_vector(vec)
+
 def axis_from_vector(vector: glm.vec3)->Axis:
     if vector.x == 0 and vector.y == 0:
       return Axis.PositiveZ if vector.z > 0 else Axis.NegativeZ

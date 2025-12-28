@@ -347,26 +347,26 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 'Z_AXIS': solver.types.ReferenceAxis.Z_Axis
             }[vl_settings.scene_scale_mode]
 
-            # first_axis = {
-            #     'X+': solver.types.Axis.PositiveX,
-            #     'Y+': solver.types.Axis.PositiveY,
-            #     'Z+': solver.types.Axis.PositiveZ,
-            #     'X-': solver.types.Axis.NegativeX,
-            #     'Y-': solver.types.Axis.NegativeY,
-            #     'Z-': solver.types.Axis.NegativeZ
-            # }[vl_settings.first_axis]
+            first_axis = {
+                'X+': solver.types.Axis.PositiveX,
+                'Y+': solver.types.Axis.PositiveY,
+                'Z+': solver.types.Axis.PositiveZ,
+                'X-': solver.types.Axis.NegativeX,
+                'Y-': solver.types.Axis.NegativeY,
+                'Z-': solver.types.Axis.NegativeZ
+            }[vl_settings.first_axis]
 
-            # second_axis = {
-            #     'X+': solver.types.Axis.PositiveX,
-            #     'Y+': solver.types.Axis.PositiveY,
-            #     'Z+': solver.types.Axis.PositiveZ,
-            #     'X-': solver.types.Axis.NegativeX,
-            #     'Y-': solver.types.Axis.NegativeY,
-            #     'Z-': solver.types.Axis.NegativeZ
-            # }[vl_settings.second_axis]
+            second_axis = {
+                'X+': solver.types.Axis.PositiveX,
+                'Y+': solver.types.Axis.PositiveY,
+                'Z+': solver.types.Axis.PositiveZ,
+                'X-': solver.types.Axis.NegativeX,
+                'Y-': solver.types.Axis.NegativeY,
+                'Z-': solver.types.Axis.NegativeZ
+            }[vl_settings.second_axis]
 
 
-            first_axis, second_axis, third_axis = self.get_axes(context)
+            third_axis = solver.helpers.third_axis(first_axis, second_axis)
 
             
             second_vanishing_lines = [(line.start, line.end) for line in vl_settings.second_vanishing_lines]
@@ -474,17 +474,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     def is_item_active(self):
         last_id = list(self._controls.keys())[-1]
         return self._active_id == last_id
-    
-    def get_axes(self, context) -> solver.types.Axis:
-        vl_settings = self._active_camera.data.vl_settings # type: ignore
-        # TODO: DOUBLE CHECK AXIS SIGNS in all scenarios. blender is for example uses a right handed coordinate system. The third axis sign was probably not used in the solver.
-        match vl_settings.floor:
-            case 'XY':
-                return [solver.types.Axis.NegativeY, solver.types.Axis.PositiveX, solver.types.Axis.NegativeZ]
-            case 'XZ':
-                return [solver.types.Axis.NegativeX, solver.types.Axis.PositiveZ, solver.types.Axis.PositiveY]
-            case 'YZ':
-                return [solver.types.Axis.NegativeY, solver.types.Axis.PositiveZ, solver.types.Axis.NegativeX]
 
     def draw_view(self, context):
         try:
@@ -551,7 +540,26 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                     return BLUE
         vl_settings = self._active_camera.data.vl_settings # type: ignore
 
-        first_axis, second_axis, third_axis = self.get_axes(context)
+        first_axis = {
+            'X+': solver.types.Axis.PositiveX,
+            'Y+': solver.types.Axis.PositiveY,
+            'Z+': solver.types.Axis.PositiveZ,
+            'X-': solver.types.Axis.NegativeX,
+            'Y-': solver.types.Axis.NegativeY,
+            'Z-': solver.types.Axis.NegativeZ
+        }[vl_settings.first_axis]
+
+        second_axis = {
+            'X+': solver.types.Axis.PositiveX,
+            'Y+': solver.types.Axis.PositiveY,
+            'Z+': solver.types.Axis.PositiveZ,
+            'X-': solver.types.Axis.NegativeX,
+            'Y-': solver.types.Axis.NegativeY,
+            'Z-': solver.types.Axis.NegativeZ
+        }[vl_settings.second_axis]
+
+        # find third axis based on the first two
+        third_axis = solver.helpers.third_axis(first_axis, second_axis)
 
         if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
             # Draw first vanishing lines
