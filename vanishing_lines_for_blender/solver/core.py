@@ -107,6 +107,7 @@ def solve(
         distance=reference_world_size
     )
 
+    print(first_axis.name, second_axis.name)
     view = adjust_axis_assignment(
         first_axis,
         second_axis,
@@ -420,7 +421,7 @@ def adjust_axis_assignment(
         second_axis: Axis,
         view_matrix:glm.mat4
     )->glm.mat4:
-    return view_matrix * glm.mat4(create_axis_assignment_matrix(first_axis, second_axis))  # type: ignore[return-value] # PyGLM type stubs incorrectly infer mat4x2
+    return view_matrix * glm.inverse(glm.mat4(create_axis_assignment_matrix(first_axis, second_axis))) # type: ignore[return-value] # PyGLM type stubs incorrectly infer mat4x2
 
 def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.mat3:
     """
