@@ -418,3 +418,32 @@ def crop_space_to_aspect(
         new_y = sy
 
     return new_x, new_y, new_w, new_h
+
+def get_view_camera_frame_rect(context)->Tuple[float, float, float, float]|None:
+    if not context.space_data.region_3d.view_perspective == 'CAMERA':
+        return None
+    
+    view_camera_zoom =   context.space_data.region_3d.view_camera_zoom
+    view_camera_offset = context.space_data.region_3d.view_camera_offset
+    sensor_fit =         context.space_data.camera.data.sensor_fit  # get the camera associated with the viewport
+    output_size =        context.scene.render.resolution_x, context.scene.render.resolution_y
+    region_size =        context.region.width, context.region.height
+
+    x_min, y_min = project_output_to_region(
+        fit_mode = sensor_fit,
+        output_size = output_size,
+        region_size = region_size,
+        view_camera_zoom = view_camera_zoom,
+        view_camera_offset = view_camera_offset,
+        output_coords = (0,0))
+    
+    x_max, y_max = project_output_to_region(
+        fit_mode = sensor_fit,
+        output_size = output_size,
+        region_size = region_size,
+        view_camera_zoom = view_camera_zoom,
+        view_camera_offset = view_camera_offset,
+        output_coords = output_size)
+
+    w, h = x_max-x_min, y_max-y_min
+    return x_min, y_min, w, h

@@ -78,20 +78,20 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
 
             mode = camera.data.vl_settings.mode
 
-            match mode:
-                case 'ONE_POINT':
-                    panel.prop(camera.data, "lens", text="Focal Length")
-                    panel.prop(camera.data.vl_settings, "enable_manual_principal", text="Manual Principal Point")
+            # match mode:
+            #     case 'ONE_POINT':
+            row = panel.row()
+            row.enabled = mode == 'ONE_POINT'
+            row.prop(camera.data, "lens", text="Focal Length")
 
-                case 'TWO_POINT':
-                    panel.prop(camera.data.vl_settings, "quad_mode", text="Quad Mode")
-                    panel.prop(camera.data.vl_settings, "enable_manual_principal", text="Manual Principal Point")
+            row = panel.row()
+            row.enabled = mode in {'ONE_POINT', 'TWO_POINT'}
+            row.prop(camera.data.vl_settings, "enable_manual_principal", text="Manual Principal Point")
 
-                case 'THREE_POINT':
-                    panel.prop(camera.data.vl_settings, "quad_mode", text="Quad Mode")
-                    panel.label(text="")
-            
-            # panel.separator()
+            row = panel.row()
+            row.enabled = mode in {'TWO_POINT', 'THREE_POINT'}
+
+            panel.separator()
             row = panel.row()
             row.alert = camera.data.vl_settings.error_message != ""
             if camera.data.vl_settings.error_message:
@@ -105,7 +105,10 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
         if panel:
             panel.prop(camera.data.vl_settings, "scene_scale_mode", text="Scale Mode")
             panel.prop(camera.data.vl_settings, "scene_scale", text="Scene Scale")
-            panel.prop(camera.data.vl_settings, "reference_distance", text="Reference Distance")
+
+            row = panel.row()
+            row.enabled = camera.data.vl_settings.scene_scale_mode != 'ORIGIN'
+            row.prop(camera.data.vl_settings, "reference_distance", text="Reference Distance")
             panel.separator()
 
         ###################

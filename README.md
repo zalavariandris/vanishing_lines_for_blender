@@ -32,19 +32,23 @@ __work in progress__
 - [ ] ADD slow point drag with SHIFT
 - [ ] ADD Loupe
 
+
+
+### **0.7.6**
+- [ ] refactor control points
+
 ### **0.7.*
 - [ ] ADD UI for the background image to our panel
 - [ ] ADD UI under the CAMERA Parameters (camera_panel.py)
 - [ ] REFACTOR coordinate space conversion
 
-
-### **0.7.*
+### **0.7.5.2
 - [ ] Test axis assignment (currently only support right handed coordinate systems)
-- [ ] Set vanishing lines color based on the axis assignment axes
-- [ ] Double check axis sign, if it matches tha actual blender axes. the selected msign should go towards the vanishing points
+- [x] Set vanishing lines color based on the axis assignment axes
+- [x] Double check axis sign, if it matches tha actual blender axes. the selected sign should go towards the vanishing points
 - [x] ADD axis assignment
 
-### **0.7.*
+### **0.7.5.1
 - [x] BUG FIXES
   - [X] FIX: Now, all the extended vanishing lines are drawn regardless of the active mode.
   - [X] FIX solve scale by origin distance->adjust_position_to_origin was slightly off
