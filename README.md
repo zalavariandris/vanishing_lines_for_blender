@@ -24,26 +24,26 @@ __work in progress__
 - [ ] ADD animation
 
 ### **0.7.*
-- [ ] show errors in the UI, and phrase them to be helpful.
-- [ ] FIX when a line is zero length, there is an unhandled error
-
-### **0.7.*
 - [ ] FIX🛠️ while dragging controlpoints, move them with mouse instead of setting the coords to the mousepos
 - [ ] ADD slow point drag with SHIFT
 - [ ] ADD Loupe
-
-
-
-### **0.7.6**
-- [ ] refactor control points
 
 ### **0.7.*
 - [ ] ADD UI for the background image to our panel
 - [ ] ADD UI under the CAMERA Parameters (camera_panel.py)
 - [ ] REFACTOR coordinate space conversion
+- [ ] Test axis assignment (currently only support right handed coordinate systems)
+- [ ] Test UIView controls, projection mapping
+
+### **0.7.*
+- [ ] show better error messages in the UI, and phrase them to be helpful.
+- [ ] FIX when a line is zero length, there is an unhandled error
+
+### **0.7.6**
+- [X] refactor control points
 
 ### **0.7.5.2
-- [ ] Test axis assignment (currently only support right handed coordinate systems)
+
 - [x] Set vanishing lines color based on the axis assignment axes
 - [x] Double check axis sign, if it matches tha actual blender axes. the selected sign should go towards the vanishing points
 - [x] ADD axis assignment
