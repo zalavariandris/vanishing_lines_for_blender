@@ -22,15 +22,15 @@ class DrawLayer:
         self._annotations = []
 
     def clear(self):
-        self._point_attributes = {
+        self._point_attributes: dict[str, List[Tuple[float, ...]]] = {
             "pos":   [],
             "color": [],
         }
-        self._line_attributes = {
+        self._line_attributes: dict[str, List[Tuple[float, ...]]] = {
             "pos":   [],
             "color": [],
         }
-        self._annotations = []
+        self._annotations: List[Tuple[Tuple[float, float], str, Tuple[float, float, float, float]]] = []
 
     def add_line(self, start, end, color):
         self._line_attributes['pos'].append( start )
@@ -38,9 +38,14 @@ class DrawLayer:
         self._line_attributes['pos'].append( end )
         self._line_attributes['color'].append( color )
 
-    def add_rect(self, top_left, bottom_right, color):
-        x0, y0 = top_left
-        x1, y1 = bottom_right
+    def add_rect(self, 
+            pos:Tuple[float, float], 
+            size:Tuple[float, float], 
+            color:Tuple[float, float, float, float]):
+        
+        x0, y0 = pos
+        w, h = size
+        x1, y1 = x0 + w, y0 + h
 
         self.add_line( (x0, y0), (x1, y0), color ) # top
         self.add_line( (x1, y0), (x1, y1), color ) # right
@@ -73,11 +78,11 @@ class DrawLayer:
 
         self.lines_batch.draw(self.shader)
 
-
         # render annotations
         for pos, text, color in self._annotations:
             font_id = 0
-            blf.position(font_id, pos[0]+10, pos[1]+10, 0)
+            blf.position(font_id, pos[0]+3, pos[1]+3, 0)
             blf.size(font_id, 12)
             blf.color(font_id, *color)
             blf.draw(font_id, f"{text}")
+

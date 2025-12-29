@@ -3,20 +3,75 @@
 A Blender add-on for aligning your camera’s perspective using vanishing lines.
 __work in progress__
 
-![capture](docs/rome_lake_vanishing_lines.gif)
+![capture](docs/assets/rome_lake_vanishing_lines.gif)
 
 ## Usage
 - when the addon is installed, open the VL sidepanel and click on Start Vanishing Lines Button.
-- add a background t the camera
+- add a background to the camera
 - select 1,2 or 3 mode vanishing points
 - move the vanishing line endpoints to match the camera to the background
 
 
-## ChangeLog
+## TODO, ChangeLog
+- [ ] test with blender's python.
+      add to 'settings.json': "python.defaultInterpreterPath": "C:\\Program Files\\Blender Foundation\\Blender 4.5\\4.5\\python\\bin\\python.exe"
+
+### **0.7.*
+- [ ] ADD draw antialiased lines, and circle shader
+
+### **0.7.*
+- [ ] ADD align tracked camera
+- [ ] ADD animation
+
+### **0.7.*
+- [ ] show errors in the UI, and phrase them to be helpful.
+- [ ] FIX when a line is zero length, there is an unhandled error
+
+### **0.7.*
+- [ ] FIX🛠️ while dragging controlpoints, move them with mouse instead of setting the coords to the mousepos
+- [ ] ADD slow point drag with SHIFT
+- [ ] ADD Loupe
+
+### **0.7.*
+- [ ] ADD UI for the background image to our panel
+- [ ] ADD UI under the CAMERA Parameters (camera_panel.py)
+- [ ] REFACTOR coordinate space conversion
+
+
+### **0.7.*
+- [ ] Test axis assignment (currently only support right handed coordinate systems)
+- [ ] Set vanishing lines color based on the axis assignment axes
+- [ ] Double check axis sign, if it matches tha actual blender axes. the selected msign should go towards the vanishing points
+- [x] ADD axis assignment
+
+### **0.7.*
+- [x] BUG FIXES
+  - [X] FIX: Now, all the extended vanishing lines are drawn regardless of the active mode.
+  - [X] FIX solve scale by origin distance->adjust_position_to_origin was slightly off
+
+
+### **0.7.5
+- [x] ADD tests for solve components
+- [x] FIX reference is slightly off -> axis assignment and reference axis was applied in the wrong order.
+- [x] add tests to unprojects
+- [x] use the main _solver_ function in the operator
+- [x] REFACTOR project/unproject between region and compute space to work with the new functions
+- [x] reorganize the solver
+- [x] FIX camera view frame
+- [x] fix draw handler unregister
+
+### **0.7.4
+- [x] Add arbitrary axis to measure distance.
+- [X] ADD set scale by camera to origin distance.
+- [X] FIX reference distance mouse handling.
 
 ### **0.7.3
-- [ ] ADD axis assignment
-- [ ] ADD reference distance
+- [x] ADD reference distance controls to the viewport
+- [x] FIX draw extended vanishing lines with new ControlPoints
+- [x] REFACTOR: vl_params now use FloatVectors to represent points, and also Operator now mostly uses tuples instead of a glm.vec2
+- [x] ADD hover color for new controlopoints
+- [x] FIX🔥 quad mode for new Control Points
+- [x] 🔧 refactor ControlPoints
 
 ### **0.7.2 - 2025-11-28**
 - [x] FIX use _centered_, _square_ (fit to output rectangle) normalized coordinates.
@@ -24,6 +79,7 @@ __work in progress__
 - [x] refactor draw code to DrawLayer class
 - [x] FIX Active and HOVER control point color
 - [x] ADD draw vanishing lines extended to vanishing points
+- [x] ADD draw horizon
 
 ### **0.7.2 - 2025-11-24**
 - [x] ADD support three-point perspective mode
@@ -33,23 +89,6 @@ __work in progress__
 ### **0.7.1 - 2025-11-24**
 **Added**
 - [x] ADD quad mode for two-point perspective mode.
-
-
-## Todo
-- [ ] when a line is zero length, there is an unhandled error
-- [ ] show errors in the UI, and phrase them to be helpful.
-
-- [ ] FIX while dragging controlpoint, move them with mouse instead of setting the coords to the mousepos
-- [ ] ADD slow point drag with SHIFT
-- [ ] ADD Loupe
-
-- [ ] ADD draw antialiased lines, and circle shader
-- [ ] ADD align tracked camera
-- [ ] ADD animation
-
-- [ ] ADD draw horizon
-
-- [ ] ADD draw vanishing points
 - [x] ADD manual principal point to TWO and THREE-Point mode
 - [x] FIX use principal point for til_shift, and apply to blender camera
 - [x] ADD solve three vanishing point mode

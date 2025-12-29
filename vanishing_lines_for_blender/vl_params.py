@@ -2,16 +2,18 @@
 import bpy
 
 
-class Point(bpy.types.PropertyGroup):
-    name="Point"
-    x: bpy.props.FloatProperty(name="x", default=0.0)# is_animatable=False, subtype='PIXEL')
-    y: bpy.props.FloatProperty(name="y", default=0.0)
-
-
 class Line(bpy.types.PropertyGroup):
     name="Line"
-    start: bpy.props.PointerProperty(name="start", type=Point)
-    end: bpy.props.PointerProperty(name="end", type=Point)
+    start: bpy.props.FloatVectorProperty(
+        name="start",
+        size=2,
+        default=(0.0, 0.0)
+    )
+    end: bpy.props.FloatVectorProperty(
+        name="end",
+        size=2,
+        default=(0.0, 0.0)
+    )
 
 
 class VLSettings(bpy.types.PropertyGroup):
@@ -20,13 +22,13 @@ class VLSettings(bpy.types.PropertyGroup):
     initialized: bpy.props.BoolProperty(name="Initialized", default=False, options={'HIDDEN'})
     solver_is_paused: bpy.props.BoolProperty(name="Paused", default=False)
 
-    compute_space: bpy.props.FloatVectorProperty(
-        name="Compute Space",
-        description="Compute space rectangle (x, y, width, height)",
-        size=4,
-        default=(0.0, 0.0, 1920.0, 1080.0),
-        # options={'HIDDEN'}
-    )
+    # compute_space: bpy.props.FloatVectorProperty(
+    #     name="Compute Space",
+    #     description="Compute space rectangle (x, y, width, height)",
+    #     size=4,
+    #     default=(0.0, 0.0, 1920.0, 1080.0),
+    #     # options={'HIDDEN'}
+    # )
 
     mode: bpy.props.EnumProperty(
         name="Perspective Mode",
@@ -55,11 +57,13 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Scene Scale Mode",
         description="Scene Scale Mode",
         items=[
+            ('SCREEN', "Screen", "Use the screen plane for reference distance"),
             ('ORIGIN', "Origin", "Set the origin distance from the camera"),
             ('X_AXIS', "X Axis", "Use the X axis for reference distance"),
             ('Y_AXIS', "Y Axis", "Use the Y axis for reference distance"),
             ('Z_AXIS', "Z Axis", "Use the Z axis for reference distance")
-        ]
+        ],
+        default='X_AXIS'
     )
 
     scene_scale: bpy.props.FloatProperty(
@@ -73,14 +77,48 @@ class VLSettings(bpy.types.PropertyGroup):
     reference_distance: bpy.props.FloatProperty(
         name="Reference distance",
         description="Reference distance",
-        default=0.5,
-        min=0.001,
-        max=2.0
+        default=0.5
+    )
+
+    # Axis Assignement    
+    first_axis: bpy.props.EnumProperty(
+        name="First Axis",
+        items=[
+            ('X+', "X+", ""),
+            ('X-', "X-", ""),
+            ('Y+', "Y+", ""),
+            ('Y-', "Y-", ""),
+            ('Z+', "Z+", ""),
+            ('Z-', "Z-", "")
+        ],
+        default='Y+'
+    )
+
+    second_axis: bpy.props.EnumProperty(
+        name="Second Axis",
+        items=[
+            ('X+', "X+", ""),
+            ('X-', "X-", ""),
+            ('Y+', "Y+", ""),
+            ('Y-', "Y-", ""),
+            ('Z+', "Z+", ""),
+            ('Z-', "Z-", "")
+        ],
+        default='X-'
     )
 
     # control points
-    origin: bpy.props.PointerProperty(name="origin", type=Point)
-    principal: bpy.props.PointerProperty(name="principal", type=Point)
+    origin: bpy.props.FloatVectorProperty(
+        name="Origin",
+        size=2,
+        default=(0.0, 0.0)
+    )
+    
+    principal: bpy.props.FloatVectorProperty(
+        name="Principal",
+        size=2,
+        default=(0.0, 0.0)
+    )
 
     first_vanishing_lines: bpy.props.CollectionProperty(
         name="First Vanishing Lines",
@@ -97,12 +135,16 @@ class VLSettings(bpy.types.PropertyGroup):
         type=Line
     )
 
+    error_message: bpy.props.StringProperty(
+        name="Error Message",
+        default=""
+    )
+
 
 ######################
 # REGISTER FUNCTIONS #
 ######################
 def register():
-    bpy.utils.register_class(Point)
     bpy.utils.register_class(Line)
     bpy.utils.register_class(VLSettings)
     bpy.types.Camera.vl_settings = bpy.props.PointerProperty(type=VLSettings, name="VL Settings")
@@ -110,6 +152,5 @@ def register():
 def unregister():
     if hasattr(bpy.types.Camera, 'vl_settings'):
         del bpy.types.Camera.vl_settings
-    bpy.utils.unregister_class(Point)
     bpy.utils.unregister_class(Line)
     bpy.utils.unregister_class(VLSettings)

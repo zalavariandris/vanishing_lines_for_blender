@@ -1,5 +1,6 @@
 from . import vl_params
 from . import vl_op
+from . import vl_utils
 from . import vl_sidepanel
 from . import camera_panel
 
