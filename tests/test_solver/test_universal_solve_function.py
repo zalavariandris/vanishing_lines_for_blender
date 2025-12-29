@@ -162,7 +162,6 @@ def test_solve_with_three_vp():
         f"View matrix does not match expected."\
         f"\nGot:\n{projection}\nExpected:\n{expected_view}"
 
-
 def test_solve_with_no_reference_axis():
     ORIGIN_DISTANCE = 7.0
     projection, view = solver.core.solve(
@@ -238,74 +237,8 @@ if __name__ == "__main__":
 #         self.assertGreater(f, 0)
 #         self.assertLess(f, max(self.width, self.height) * 2)
         
-#     def test_single_vp_solver(self):
-#         """Test single vanishing point solver"""
-#         Fu = glm.vec2(960, 300)  # VP above center
-#         second_line = (glm.vec2(100, 540), glm.vec2(1820, 540))  # Horizontal line
         
-#         camera_transform = solver.solve1vp(
-#             self.width, 
-#             self.height, 
-#             Fu,
-#             second_line,
-#             f=self.focal_length,
-#             P=self.principal_point,
-#             O=self.principal_point
-#         )
-        
-#         # Check that we got a valid 4x4 matrix
-#         self.assertEqual(camera_transform.length(), 4)
-        
-#         # Check that it's a valid transformation (det should be ±1)
-#         det = glm.determinant(glm.mat3(camera_transform))
-#         self.assertAlmostEqual(abs(det), 1.0, places=5)
-        
-#     def test_two_vp_solver(self):
-#         """Test two vanishing point solver"""
-#         Fu = glm.vec2(1500, 540)
-#         Fv = glm.vec2(960, 200)
-        
-#         fovy, camera_transform = solver.solve2vp(
-#             self.width,
-#             self.height,
-#             Fu,
-#             Fv,
-#             self.principal_point,
-#             self.principal_point
-#         )
-        
-#         # Check FOV is reasonable (between 10° and 120°)
-#         self.assertGreater(fovy, math.radians(10))
-#         self.assertLess(fovy, math.radians(120))
-        
-#         # Check matrix validity
-#         det = glm.determinant(glm.mat3(camera_transform))
-#         self.assertAlmostEqual(abs(det), 1.0, places=5)
-        
-#     def test_least_squares_intersection(self):
-#         """Test vanishing point computation from multiple lines"""
-#         # Create lines that should intersect at (500, 300)
-#         vp_target = glm.vec2(500, 300)
-#         lines = [
-#             (glm.vec2(100, 100), vp_target),
-#             (glm.vec2(200, 500), vp_target),
-#             (glm.vec2(800, 200), vp_target),
-#             (glm.vec2(700, 600), vp_target)
-#         ]
-        
-#         # Add some noise to make it realistic
-#         noisy_lines = []
-#         for p1, p2 in lines:
-#             # Move p2 slightly away from perfect intersection
-#             noise = glm.vec2(5, -3)
-#             noisy_lines.append((p1, p2 + noise))
-        
-#         vp_computed = solver.least_squares_intersection_of_lines(noisy_lines)
-        
-#         # Should be close to target
-#         distance = glm.distance(vp_computed, vp_target)
-#         self.assertLess(distance, 20)  # Within 20 pixels
-        
+
 #     def test_axis_assignment(self):
 #         """Test axis assignment matrix creation"""        
 #         # Test standard assignment (should give identity-like behavior)
@@ -318,47 +251,6 @@ if __name__ == "__main__":
 #         det2 = glm.determinant(mat2)
 #         self.assertAlmostEqual(abs(det2), 1.0, places=6)
         
-#     def test_fov_focal_length_conversion(self):
-#         """Test conversion between FOV and focal length"""
-#         fov = math.radians(60)
-#         f = solver.focal_length_from_fov(fov, self.height)
-#         fov_back = solver.fov_from_focal_length(f, self.height)
-        
-#         self.assertAlmostEqual(fov, fov_back, places=6)
-        
-#     def test_ray_casting(self):
-#         """Test ray casting from screen coordinates"""
-#         view_matrix = glm.mat4(1.0)
-#         fovy = math.radians(60)
-#         proj_matrix = glm.perspective(fovy, self.width/self.height, 0.1, 100)
-#         viewport = glm.vec4(0, 0, self.width, self.height)
-        
-#         # Cast ray through center of screen
-#         center = glm.vec2(self.width/2, self.height/2)
-#         origin, direction = solver.cast_ray(center, view_matrix, proj_matrix, viewport)
-        
-#         # Direction should point roughly forward (negative Z)
-#         self.assertLess(direction.z, 0)
-#         self.assertAlmostEqual(glm.length(direction), 1.0, places=5)
-        
-#     def test_euler_extraction(self):
-#         """Test Euler angle extraction"""
-        
-#         # Create a known rotation
-#         angle_x, angle_y, angle_z = math.radians(30), math.radians(45), math.radians(60)
-#         mat = glm.mat4(1.0)
-#         mat = glm.rotate(mat, angle_z, glm.vec3(0, 0, 1))
-#         mat = glm.rotate(mat, angle_x, glm.vec3(1, 0, 0))
-#         mat = glm.rotate(mat, angle_y, glm.vec3(0, 1, 0))
-        
-#         # Extract angles
-#         ex, ey, ez = solver.extract_euler(glm.mat3(mat), solver.EulerOrder.ZXY)
-        
-#         # Should be close to original (within numerical precision)
-#         self.assertAlmostEqual(ex, angle_x, places=4)
-#         self.assertAlmostEqual(ey, angle_y, places=4)
-#         self.assertAlmostEqual(ez, angle_z, places=4)
-
 
 # class TestEdgeCases(unittest.TestCase):
 #     """Test edge cases and error handling"""

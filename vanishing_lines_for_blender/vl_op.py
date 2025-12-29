@@ -35,13 +35,13 @@ from . draw_layer import DrawLayer
 ###############
 from typing import Callable
 
+
 class ControlPoint():
     def __init__(self, data:bpy.types.ID, prop:str, *, 
             setter:Callable|None=None, 
             getter:Callable|None=None):
         self._data = data
         self._prop = prop
-
 
         if setter is None:
             self._setter = lambda data, prop, value: setattr(self._data, self._prop, value)
@@ -69,6 +69,10 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     bl_label = "Vanishing Lines Operator"
     bl_options = {"REGISTER", "UNDO"}
     
+    # solver
+    _active_camera: bpy.types.Object|None = None
+    _solve_error: Exception|None = None
+
     # interaction
     _active_id: Tuple[bpy.types.ID, str]|None = None
     _hovered_id: Tuple[bpy.types.ID, str]|None = None
@@ -78,10 +82,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
     # rendering
     _draw_layer: DrawLayer|None = None
-    
-    # solver
-    _active_camera: bpy.types.Object|None = None
-    _solve_error: Exception|None = None
 
     # Cached viewport state
     _output_size: Tuple[float, float]
@@ -313,6 +313,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             if isinstance(update.id, bpy.types.Camera):
                 self.update_solve(bpy.context)
 
+    # commands
     def update_solve(self, context):
         # region = context.region
         # rv3d = context.space_data.region_3d
@@ -498,8 +499,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         YELLOW = (1,1,0,1)
         ORANGE = (1.0, 0.5, 0.0, 1.0)
 
-        
-
         # draw reference line
         self._draw_layer.add_point(
             self.project_compute_to_region(
@@ -514,6 +513,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         _ = self.control_point(vl_settings, "principal", 
             text="P",
             color=YELLOW)
+        
         
         if vl_settings.scene_scale_mode != 'ORIGIN':
             _ = self.control_point(vl_settings, "reference_distance", 
@@ -574,6 +574,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
 
             try:
                 # draw extended lines to vanishing point
+        
                 vp1 = solver.core.compute_vanishing_point([
                     (line.start, line.end) 
                     for line in vl_settings.first_vanishing_lines])

@@ -107,7 +107,6 @@ def solve(
         distance=reference_world_size
     )
 
-    print(first_axis.name, second_axis.name)
     view = adjust_axis_assignment(
         first_axis,
         second_axis,

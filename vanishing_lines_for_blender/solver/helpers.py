@@ -84,14 +84,18 @@ def calc_second_vanishing_point_from_focal_length(
     return Fv
 
 def compute_focal_length_from_vanishing_points(
-        Fu: glm.vec2, # first vanishing point
-        Fv: glm.vec2, # second vanishing point
-        P: glm.vec2   # principal point
+        Fu:Tuple[float, float], # first vanishing point
+        Fv:Tuple[float, float], # second vanishing point
+        P: Tuple[float, float]   # principal point
     )-> float:
     """
     Computes the focal length from two orthogonal vanishing points using the cross-ratio formula.
     Enhanced with numerical stability improvements for distant vanishing points.
     """
+    Fu = glm.vec2(*Fu)
+    Fv = glm.vec2(*Fv)
+    P = glm.vec2(*P)
+    
     # Check for degenerate cases
     Fu_Fv_distance = glm.distance(Fu, Fv)
     if Fu_Fv_distance < EPSILON:
