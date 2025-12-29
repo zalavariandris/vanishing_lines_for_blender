@@ -527,22 +527,24 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         #         color=(0,1,1,1))
             
         # draw_sensor_frame()
-    
+
+        # Draw error messages
+        print("Solve error:", self._solve_error)
+        if error_msg:=vl_settings.error_message:
+            lines = str(error_msg).splitlines()
+            font_size = 16
+            line_height = 18
+            text_height = line_height * len(lines)
+            font_id = 0
+            blf.position(font_id, 20, text_height+40, 0)
+            blf.size(font_id, font_size)
+            blf.color(font_id, 0.7,0.2,0.2,1)
+            for i, line in enumerate(lines):
+                blf.position(font_id, 20, text_height-line_height*i+40, 0)
+                blf.draw(font_id, f"{line}")
+
         # Execute the draw calls
         self.uiview.render()
-
-        # # Draw error messages
-        # if self._solve_error:
-        #     lines = str(self._solve_error).splitlines()
-        #     line_height = 12
-        #     text_height = line_height * len(lines)
-        #     font_id = 0
-        #     blf.position(font_id, 20, text_height+40, 0)
-        #     blf.size(font_id, 12)
-        #     blf.color(font_id, 1,0,0,1)
-        #     for i, line in enumerate(lines):
-        #         blf.position(font_id, 20, text_height-line_height*i+40, 0)
-        #         blf.draw(font_id, f"{line}")
   
     # GETTERS / SETTERS
     def get_reference_distance_point(self, 

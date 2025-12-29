@@ -92,10 +92,17 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
             row.enabled = mode in {'TWO_POINT', 'THREE_POINT'}
 
             panel.separator()
-            row = panel.row()
-            row.alert = camera.data.vl_settings.error_message != ""
-            if camera.data.vl_settings.error_message:
-                row.label(text=f"{camera.data.vl_settings.error_message}", icon='ERROR')
+
+            if error_msg:=camera.data.vl_settings.error_message:
+                error_row = panel.column()
+                error_row.alert = camera.data.vl_settings.error_message != ""
+                lines = str(error_msg).splitlines()
+                for i, line in enumerate(lines):
+                    line_row = error_row.row()
+                    if i == 0:
+                        line_row.label(text=line, icon='ERROR')
+                    else:
+                        line_row.label(text=line)
         
         ######################
         # REFERENCE DISTANCE #
@@ -162,9 +169,6 @@ class VIEW_PT_vanishing_lines(bpy.types.Panel):
             row.enabled = not camera.data.vl_settings.first_axis.startswith("Z")
             row.prop_enum(camera.data.vl_settings, "second_axis", "Z-")
             row.prop_enum(camera.data.vl_settings, "second_axis", "Z+")
-
-
-
 
             # col.prop_enum(camera.data.vl_settings, "second_axis", text="Second Axis", expand=False)
             # col.prop_enum(camera.data.vl_settings, "third_axis", text="Third Axis", expand=False)
