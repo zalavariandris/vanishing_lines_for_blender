@@ -13,37 +13,54 @@ __work in progress__
 
 
 ## TODO, ChangeLog
+
+
+###
+- [ ] ADD draw antialiased lines, and circles shader
+
+###
+- [ ] ADD align tracked camera
+- [ ] ADD animation
+- [ ] ADD Loupe
+
+##
 - [ ] test with blender's python.
       add to 'settings.json': "python.defaultInterpreterPath": "C:\\Program Files\\Blender Foundation\\Blender 4.5\\4.5\\python\\bin\\python.exe"
 
-### **0.7.*
-- [ ] ADD draw antialiased lines, and circle shader
+### 
+- [ ] active camera selection, must be obvious in the sidepanel. All panels operators must woirk on the active camera. we have to store the working camera somewhere, so all the ui panels can access it and work on the same one.
+  - in the ui we could select options to determine the active amera, or for now, experience with them: 
+    - scene.camera
+    - get the camera if the viewer is looking throiugh one
+    - select a camera from a list of cameras to work on, than make sure, the viewer is looking through.
+    - what i fmultiple cameras or multiple viewers are on the screen? !!!
 
-### **0.7.*
-- [ ] ADD align tracked camera
-- [ ] ADD animation
+- [ ] test user interfgace and find bugs
+- [ ] see what else can be tested without blender
 
-### **0.7.*
-- [ ] FIX🛠️ while dragging controlpoints, move them with mouse instead of setting the coords to the mousepos
-- [ ] ADD slow point drag with SHIFT
-- [ ] ADD Loupe
+### **0.7..**
+- [/] REFACTOR coordinate space conversion
+- [X] ADD UI for the background image to our panel
+- [?] ADD UI under the CAMERA Parameters (camera_panel.py)
 
-### **0.7.*
-- [ ] ADD UI for the background image to our panel
-- [ ] ADD UI under the CAMERA Parameters (camera_panel.py)
-- [ ] REFACTOR coordinate space conversion
+### **0.7.**
+- [?] ADD slow point drag with SHIFT
 - [ ] Test axis assignment (currently only support right handed coordinate systems)
 - [ ] Test UIView controls, projection mapping
+- [?] better handle warnings.warn in the UI?
 
-### **0.7.*
-- [ ] show better error messages in the UI, and phrase them to be helpful.
-- [ ] FIX when a line is zero length, there is an unhandled error
+### **0.7.**
+- [x] FIX🛠️ while dragging controlpoints, move them with mouse instead of setting the coords to the mousepos
+- [X] text on reference distance segment
+- [X] ADD referende distance segment instead of a simple distance
+- [X] FIX when a line is zero length, there is an unhandled error
+- [X] show better error messages in the UI, and phrase them to be helpful.
+
 
 ### **0.7.6**
 - [X] refactor control points
 
 ### **0.7.5.2
-
 - [x] Set vanishing lines color based on the axis assignment axes
 - [x] Double check axis sign, if it matches tha actual blender axes. the selected sign should go towards the vanishing points
 - [x] ADD axis assignment

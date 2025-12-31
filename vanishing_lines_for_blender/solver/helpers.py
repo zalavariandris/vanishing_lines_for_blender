@@ -7,6 +7,7 @@ import warnings
 from . constants import EPSILON, MAX_VANISHING_POINT_DISTANCE
 
 from . types import Point2
+from . exceptions import *
 
 def compute_roll_matrix(
         second_vanishing_line:Tuple[Point2, Point2],
@@ -74,7 +75,7 @@ def calc_second_vanishing_point_from_focal_length(
     # find the second vanishing point
     # // TODO_ take principal point into account here
     if glm.distance(Fu, P) < EPSILON:
-        raise ValueError("First vanishing point coincides with principal point, cannot compute second vanishing point.")
+        raise VanishingLinesError(" Cannot compute second vanishing point; first vanishing point overlaps principal point.")
 
     Fu_P = Fu - P
 
@@ -99,7 +100,7 @@ def compute_focal_length_from_vanishing_points(
     # Check for degenerate cases
     Fu_Fv_distance = glm.distance(Fu, Fv)
     if Fu_Fv_distance < EPSILON:
-        raise ValueError(f"Vanishing points are too close together: distance = {Fu_Fv_distance:.2e}")
+        raise VanishingLinesError("Focal length cannot be computed; vanishing points overlap.")
     
     # Detect if vanishing points are very far away and need special handling
     max_reasonable_distance = MAX_VANISHING_POINT_DISTANCE # Configurable threshold
@@ -129,7 +130,7 @@ def compute_focal_length_from_vanishing_points(
     projection_length = glm.dot(horizon_direction, principal_to_fv)
     projection_point = Fv + projection_length * horizon_direction
     
-    # Use double precision for critical calculations
+    # Us e double precision for critical calculations
     distance_fv_to_proj = float(glm.distance(Fv, projection_point))
     distance_fu_to_proj = float(glm.distance(Fu, projection_point))
     distance_p_to_proj =  float(glm.distance(P, projection_point))
@@ -142,19 +143,69 @@ def compute_focal_length_from_vanishing_points(
             glm.dot(glm.normalize(Fu - P), glm.normalize(Fv - P)), -1.0, 1.0
         )))
         
-        raise ValueError(
-            f"Invalid vanishing point configuration: cannot compute focal length.\n"
-            f"  f² = {focal_length_squared:.6f} (must be > 0)\n"
-            f"  Vanishing point separation: {vanishing_point_distance:.2f} pixels\n"
-            f"  Angle between VP directions: {angle_deg:.1f}° (should be close to 90°)\n"
-            f"  Distance Fu->projection: {distance_fu_to_proj:.2f}\n"
-            f"  Distance Fv->projection: {distance_fv_to_proj:.2f}\n"
-            f"  Distance P->projection: {distance_p_to_proj:.2f}\n"
-            f"  Possible causes: VPs too close to principal point, VPs not orthogonal, or VPs collinear with principal point"
-        )
+        raise VanishingLinesError(f"Invalid vanishing point configuration: cannot compute focal length.\n")
     
     focal_length = math.sqrt(focal_length_squared)
     return focal_length
+
+
+# def compute_focal_length_from_vanishing_points(
+#     Fu: Point2, 
+#     Fv: Point2, 
+#     P: Point2, 
+#     EPSILON: float = 1e-6,
+#     MAX_DIST: float = 1e6
+# ) -> float:
+#     """
+#     Computes focal length from two orthogonal vanishing points.
+#     Includes concise error hints based on geometric violations.
+#     """
+#     # Convert to glm vectors
+#     fu, fv, p = glm.vec2(*Fu), glm.vec2(*Fv), glm.vec2(*P)
+    
+#     # 1. Check for basic degeneracy
+#     dist_uv = glm.distance(fu, fv)
+#     if dist_uv < EPSILON:
+#         raise ValueError("Vanishing points overlap. Check line grouping.")
+
+#     # 2. Handle distant VPs (Stability Clamp)
+#     for target in [fu, fv]:
+#         dist_p = glm.distance(target, p)
+#         if dist_p > MAX_DIST:
+#             direction = glm.normalize(target - p)
+#             target.x, target.y = p + direction * MAX_DIST
+#             warnings.warn(f"Distant VP clamped to {MAX_DIST} units.")
+
+#     # 3. Geometric Projection
+#     # Project P onto the horizon line (the line connecting Fu and Fv)
+#     horizon_vec = fu - fv
+#     horizon_dir = glm.normalize(horizon_vec)
+    
+#     # Vector from Fv to P projected onto the horizon direction
+#     proj_len = glm.dot(horizon_dir, p - fv)
+#     proj_p = fv + proj_len * horizon_dir
+    
+#     # 4. Focal Length Calculation
+#     # Formula: f^2 = (distance from Proj to Fu * distance from Proj to Fv) - (dist P to Proj)^2
+#     d_fu = glm.distance(fu, proj_p)
+#     d_fv = glm.distance(fv, proj_p)
+#     d_p  = glm.distance(p, proj_p)
+    
+#     f2 = (d_fu * d_fv) - (d_p * d_p)
+    
+#     # 5. Intelligent Error Reporting
+#     if f2 <= 0:
+#         # Check angle: Orthogonal VPs must form an obtuse angle relative to P in 2D
+#         dot_prod = glm.dot(glm.normalize(fu - p), glm.normalize(fv - p))
+        
+#         if dot_prod > 0:
+#             hint = "VPs form an acute angle; they are likely not orthogonal."
+#         else:
+#             hint = "P lies outside the VP span; check image center/cropping."
+            
+#         raise ValueError(f"Invalid Geometry (f²={f2:.1f}). Hint: {hint}")
+
+#     return math.sqrt(f2)
 
 def vector_from_axis(axis: Axis)->glm.vec3:
     match axis:
@@ -187,17 +238,42 @@ def third_axis_vector(axis1:Axis, axis2:Axis)->glm.vec3:
 
 def third_axis(axis1:Axis, axis2:Axis)->Axis:
     vec = third_axis_vector(axis1, axis2)
-    return axis_from_vector(vec)
+    return primary_axis_from_vector(vec)
 
-def axis_from_vector(vector: glm.vec3)->Axis:
-    if vector.x == 0 and vector.y == 0:
-      return Axis.PositiveZ if vector.z > 0 else Axis.NegativeZ
-    elif vector.x == 0 and vector.z == 0:
-      return Axis.PositiveY if vector.y > 0 else Axis.NegativeY
-    elif vector.y == 0 and vector.z == 0:
-      return Axis.PositiveX if vector.x > 0 else Axis.NegativeX
+# def primary_axis_from_vector(vector: glm.vec3)->Axis:
+#     """
+#     Determine the primary axis (positive or negative) that the given vector aligns with.
+#     """
     
-    raise ValueError('Invalid axis vector')
+#     # TODO: handle any vector, not just primary axes
+#     if vector.x == 0 and vector.y == 0:
+#       return Axis.PositiveZ if vector.z > 0 else Axis.NegativeZ
+    
+#     elif vector.x == 0 and vector.z == 0:
+#       return Axis.PositiveY if vector.y > 0 else Axis.NegativeY
+    
+#     elif vector.y == 0 and vector.z == 0:
+#       return Axis.PositiveX if vector.x > 0 else Axis.NegativeX
+    
+#     raise ValueError('The axis vector must align with a primary axis.')
+
+def primary_axis_from_vector(vector: glm.vec3) -> Axis:
+    # 1. Find the index (0, 1, or 2) of the largest absolute component
+    abs_v = glm.abs(vector)
+    # Using a list allows us to find the index of the max value
+    components = [abs_v.x, abs_v.y, abs_v.z]
+    major_axis_index = components.index(max(components))
+    
+    # 2. Use a simple lookup to return the correct Enum
+    is_positive = vector[major_axis_index] > 0
+    
+    lookup = {
+        0: (Axis.PositiveX, Axis.NegativeX),
+        1: (Axis.PositiveY, Axis.NegativeY),
+        2: (Axis.PositiveZ, Axis.NegativeZ)
+    }
+    
+    return lookup[major_axis_index][0 if is_positive else 1]
 
 def adjust_vanishing_lines(
         old_vp:glm.vec2, 

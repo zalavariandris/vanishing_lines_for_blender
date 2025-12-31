@@ -81,13 +81,22 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Scene Scale",
         default=10.0,
         min=0.01,
-        max=100.0,
-        update=update_camera_vl
+        max=99999.0,
+        update=update_camera_vl,
+        unit='LENGTH',
+        subtype='DISTANCE'
     )
 
     reference_distance: bpy.props.FloatProperty(
         name="Reference Distance",
         default=0.5,
+        update=update_camera_vl
+    )
+
+    reference_distance_segment: bpy.props.FloatVectorProperty(
+        name="Reference Distance Segment",
+        size=2,
+        default=(0.0, 0.5),
         update=update_camera_vl
     )
 

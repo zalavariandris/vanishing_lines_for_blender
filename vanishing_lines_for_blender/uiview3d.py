@@ -6,11 +6,12 @@ from pyglm import glm
 import bpy
 
 class _ControlPoint():
-    def __init__(self, data:bpy.types.ID, prop:str, *, 
+    def __init__(self, data:bpy.types.ID, prop:str, index:int|None=None, *, 
             setter:Callable|None=None, 
             getter:Callable|None=None):
         self._data = data
         self._prop = prop
+        self._index = index
 
 
         if setter is None:
@@ -24,12 +25,18 @@ class _ControlPoint():
             self._getter = getter
         
     @property
-    def value(self):
-        return self._getter(self._data, self._prop)
+    def value(self)->Tuple[float, float]:
+        if self._index is not None:
+            return self._getter(self._data, self._prop, self._index)
+        else:
+            return self._getter(self._data, self._prop)
     
     @value.setter
-    def value(self, value): # todo: we should use the actual _bpy prop_ type here, but how?
-        self._setter(self._data, self._prop, value)
+    def value(self, value:Tuple[float, float] ): # todo: we should use the actual _bpy prop_ type here, but how?
+        if self._index is not None:
+            self._setter(self._data, self._prop, self._index, value)
+        else:
+            self._setter(self._data, self._prop, value)
 
 class UIView3D:
     def __init__(self):
@@ -39,8 +46,13 @@ class UIView3D:
         # interaction
         self._active_id: Tuple[bpy.types.ID, str]|None = None
         self._hovered_id: Tuple[bpy.types.ID, str]|None = None
-        self._is_left_mouse_down = False
 
+        # mouse dragging
+        self._is_left_mouse_down = False
+        self._mouse_down_pos: Tuple[float, float] = (0.0, 0.0)
+        self._active_down_pos: Tuple[float, float] = (0.0, 0.0)
+
+        # coordinate system
         self._view: glm.mat4 = glm.mat4(1.0)
         self._projection: glm.mat4 = glm.mat4(1.0)
         self._viewport: Tuple[int, int, int, int] = (0, 0, 1, 1)
@@ -153,14 +165,23 @@ class UIView3D:
 
         if MouseIsInRegion and event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             self._is_left_mouse_down = True
+            self._mouse_down_pos = (event.mouse_region_x, event.mouse_region_y)
 
             # activate cp under mouse
-            self._active_id = self.get_closest_id(event.mouse_region_x, event.mouse_region_y)    
+            self._active_id = self.get_closest_id(event.mouse_region_x, event.mouse_region_y)
+
+            if self._active_id is not None:
+                # store a _copy_ of the control position at mouse down
+                self._active_down_pos = tuple(self._controls[self._active_id].value)
+            else:
+                self._active_down_pos = None
+
             # trigger redraw
             if area.type == 'VIEW_3D':
                 area.tag_redraw()
 
             if self._active_id is not None:
+
                 return {'RUNNING_MODAL'}
             else:
                 return {'PASS_THROUGH'}
@@ -169,7 +190,6 @@ class UIView3D:
             if not self._is_left_mouse_down:
                 """Mouse Move"""
                 # update hover
-
                 new_hovered_id = self.get_closest_id(event.mouse_region_x, event.mouse_region_y)
 
                 if new_hovered_id != self._hovered_id:
@@ -187,8 +207,15 @@ class UIView3D:
                 """Mouse Drag"""
                 # move active control point
                 mouse_x_unproj, mouse_y_unproj = self.unproject((event.mouse_region_x, event.mouse_region_y))
+                mouse_down_x_unproj, mouse_down_y_unproj = self.unproject(self._mouse_down_pos)
 
-                self._controls[self._active_id].value = (mouse_x_unproj, mouse_y_unproj)
+                mouse_unproj_delta_x = mouse_x_unproj - mouse_down_x_unproj
+                mouse_unproj_delta_y = mouse_y_unproj - mouse_down_y_unproj
+
+                new_x_unproj = self._active_down_pos[0] + mouse_unproj_delta_x
+                new_y_unproj = self._active_down_pos[1] + mouse_unproj_delta_y
+
+                self._controls[self._active_id].value = (new_x_unproj, new_y_unproj)
                 # self.set_control_point(self._active_name, (mouse_x_unproj, mouse_y_unproj))
                 # self.update_solve(context)
 
@@ -239,16 +266,16 @@ class UIView3D:
         return self._active_id == last_id
 
     # Widgets
-    def prop_point(self, data:bpy.types.ID, prop:str, *,
+    def prop_point(self, data:bpy.types.ID, prop:str, index:int|None=None, *,
         text:str="",
         color=(1.0,0.5,0.0,1.0),
         setter:Callable|None=None, 
         getter:Callable|None=None
     ) -> _ControlPoint:
         assert self._draw_layer is not None, "Draw layer not initialized"
-        control_id = (data, prop)
+        control_id = (data, prop, index)
         if control_id not in self._controls:
-            self._controls[control_id] = _ControlPoint(data, prop, setter=setter, getter=getter)
+            self._controls[control_id] = _ControlPoint(data, prop, index=index, setter=setter, getter=getter)
 
         cp = self._controls[control_id]
         P = self.project(cp.value)
@@ -288,7 +315,9 @@ class UIView3D:
             P_end,
             color=color)
         
-    def prop_distance(self, data:bpy.types.ID, prop:str, origin:Tuple[float, float], direction:Tuple[float, float]=(1,0), *,
+    def prop_distance(self, data:bpy.types.ID, prop:str, *,
+        origin:Tuple[float, float], 
+        direction:Tuple[float, float]=(1,0), 
         text:str="",
         color=(0.0,0.5,1.0,1.0),
     ) -> _ControlPoint:
@@ -326,3 +355,59 @@ class UIView3D:
             self.project(getter(data, prop)),
             color=vl_utils.dim_color(color, 0.3) if self.is_item_active() or self.is_item_hovered() else vl_utils.dim_color(color, 0.1))
     
+    def prop_distance_segment(self, data:bpy.types.ID, prop:str, *, 
+        origin:Tuple[float, float], 
+        direction:Tuple[float, float]=(1,0),
+        text:str="",
+        color=(0.0,0.5,1.0,1.0),
+    ):
+
+        def setter(data:bpy.types.ID, prop:str, index:int, P:Tuple[float, float]):
+            P = glm.vec2(P[0], P[1])
+            O = glm.vec2(origin[0], origin[1])
+            dir = glm.normalize(glm.vec2(direction[0], direction[1]))
+            end_distance = glm.dot(P - O, dir)
+            segment = list([_ for _ in getattr(data, prop)])
+            segment[index] = end_distance
+            setattr(data, prop, segment)
+
+        def getter(data:bpy.types.ID, prop:str, index:int) -> float:
+            segment = getattr(data, prop)
+            end_distance = segment[index]
+
+            # set direction magnitude
+            dx, dy = direction
+            l = (dx**2 + dy**2)**0.5
+            dx, dy = dx/l*end_distance, dy/l*end_distance
+
+            # get origin
+            Ox, Oy = origin
+
+            # set point position
+            Px = Ox + dx
+            Py = Oy + dy
+
+            return Px, Py
+        
+        highlight = False
+        start_cp = self.prop_point(data, prop, index=0, color=color, setter=setter, getter=getter)
+        if self.is_item_active() or self.is_item_hovered():
+            highlight = True
+        end_cp =   self.prop_point(data, prop, index=1, color=color, setter=setter, getter=getter)
+        if self.is_item_active() or self.is_item_hovered():
+            highlight = True
+
+        P_start = self.project(start_cp.value)
+        P_end =   self.project(end_cp.value)
+
+        color = color if highlight else vl_utils.dim_color(color, 0.3)
+        self._draw_layer.add_line(
+            P_start,
+            P_end,
+            color=color)
+        
+        self._draw_layer.add_text(
+            ((P_start[0]+P_end[0])/2 + 5, (P_start[1]+P_end[1])/2 - 5),
+            text,
+            color=color,
+            angle=glm.atan2(direction[1], direction[0]))

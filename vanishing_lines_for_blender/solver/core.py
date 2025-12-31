@@ -30,6 +30,8 @@ from . types import (
     ReferenceAxis
 )
 
+from . exceptions import *
+
 from . import helpers
 
 from typing import TypedDict, NamedTuple
@@ -38,6 +40,8 @@ from typing import TypedDict, NamedTuple
 #########################
 # MAIN SOLVER FUNCTIONS #
 #########################
+
+from . exceptions import *
 
 def solve(
         mode:SolverMode, 
@@ -130,46 +134,82 @@ def solve(
 # SOLVER COMPONENTS #
 #####################
 
-def compute_vanishing_point(lines: List[Line2]) -> Point2:
+import glm
+from typing import List, Tuple
+
+# Type Aliases
+Point2 = Tuple[float, float]
+Line2 = Tuple[Point2, Point2]
+
+def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> Tuple[glm.vec2, float]:
     """
-    Compute the least-squares intersection (vanishing point) of a set of 2D lines
-    defined by their endpoints. Uses pure PyGLM math, no numpy.
-
-    Args:
-        line_segments: list of ((x1, y1), (x2, y2)) as glm.vec2 pairs.
-
+    Compute the least-squares intersection of 2D lines.
+    
     Returns:
-        glm.vec2: the least-squares intersection point.
+        Tuple[glm.vec2, float]: (The intersection point, The total squared error)
     """
     if len(lines) < 2:
-        raise ValueError("At least two lines are required to compute a vanishing point")
+        raise VanishingLinesError("At least two lines are required.")
 
-    # Accumulate normal equation components
-    S_aa = S_ab = S_bb = S_ac = S_bc = 0.0
+    # 1. Accumulate normal equation components
+    S_aa = S_ab = S_bb = S_ac = S_bc = S_cc = 0.0
 
-    for (Px, Py), (Qx, Qy) in lines:
-        # Line equation coefficients: a*x + b*y + c = 0
-        a = Py - Qy
-        b = Qx - Px
-        c = Px * Qy - Qx * Py
+    for (px, py), (qx, qy) in lines:
+        # Check for degenerate lines (zero length)
+        dx, dy = qx - px, qy - py
+        length_sq = dx*dx + dy*dy
+        if length_sq < EPSILON:
+            raise VanishingLinesError("Line of zero length.") 
+
+        # Coefficients for ax + by + c = 0
+        a = py - qy
+        b = qx - px
+        c = px * qy - qx * py
+
+        # # Optionally normalize coefficients so the error is actual Euclidean distance
+        # norm = 1.0 / glm.sqrt(a*a + b*b)
+        # a *= norm
+        # b *= norm
+        # c *= norm
 
         S_aa += a * a
         S_ab += a * b
         S_bb += b * b
         S_ac += a * c
         S_bc += b * c
+        S_cc += c * c
 
-    # Solve normal equations:
-    # [S_aa S_ab][x] = -[S_ac]
-    # [S_ab S_bb][y]   -[S_bc]
+    # 2. Analyze the Determinant
     det = S_aa * S_bb - S_ab * S_ab
+    
     if abs(det) < EPSILON:
-        raise ValueError(f"Lines are nearly parallel or determinant is zero. linesegments: {lines}")
+        p1_x, p1_y = lines[0][0]
+        residual = abs(S_aa * p1_x + S_ab * p1_y + S_ac)
+        
+        if residual < EPSILON:
+            raise VanishingLinesError("All Lines are collinear.")
+        else:
+            raise VanishingLinesError("All lines are parallel.")
 
-    x = (-S_bb * S_ac + S_ab * S_bc) / det
-    y = (-S_aa * S_bc + S_ab * S_ac) / det
+    # 3. Solve the system using Cramer's Rule
+    # [S_aa S_ab][x] = [-S_ac]
+    # [S_ab S_bb][y] = [-S_bc]
+    x = ((-S_ac) * S_bb - S_ab * (-S_bc)) / det
+    y = (S_aa * (-S_bc) - (-S_ac) * S_ab) / det
+    
+    vp = glm.vec2(x, y)
 
-    return x, y
+    # # Optionally Compute Total Squared Error and raise an Exception
+    # #                    (Residual Sum of Squares)
+    # # This is the expansion of sum((a*x + b*y + c)^2)
+    # total_error = (x*x * S_aa + 
+    #                y*y * S_bb + 
+    #                2*x*y * S_ab + 
+    #                2*x * S_ac + 
+    #                2*y * S_bc + 
+    #                S_cc)
+
+    return vp.x, vp.y
 
 def orientation_from_one_vanishing_point(
         viewport:Tuple[float, float, float, float], 
@@ -267,7 +307,6 @@ def orientation_from_three_vanishing_points(
     if utils.validate_orthogonality(glm.mat3(view)) is False:
         view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
         warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
-    
 
     return projection, view
 
@@ -454,7 +493,7 @@ def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.ma
                 return "Z"
             
     if get_axis(first_axis) == get_axis(second_axis):
-        raise Exception("Invalid axis assignment: axes must be distinct")
+        raise AxisAssignmentError("Invalid axis assignment: axes must be distinct")
     
     
     # Get the unit vectors for the specified axes

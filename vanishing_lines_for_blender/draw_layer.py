@@ -1,3 +1,4 @@
+import math
 import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
@@ -56,8 +57,8 @@ class DrawLayer:
         self._point_attributes['pos'].append( pos )
         self._point_attributes['color'].append( color )
 
-    def add_text(self, pos, text, color):
-            self._annotations.append( (pos, text, color) )
+    def add_text(self, pos, text, color, angle=0.0):
+            self._annotations.append( (pos, text, color, angle) )
 
     def draw(self):
         gpu.state.blend_set('ALPHA')
@@ -79,10 +80,23 @@ class DrawLayer:
         self.lines_batch.draw(self.shader)
 
         # render annotations
-        for pos, text, color in self._annotations:
+        # blf.enable(0, blf.SHADOW)
+        # blf.shadow(0, 5, (0, 0, 0, 0.5))
+        blf.enable(0, blf.ROTATION)
+        for pos, text, color, angle in self._annotations:
             font_id = 0
-            blf.position(font_id, pos[0]+3, pos[1]+3, 0)
+            w, _ = blf.dimensions(font_id, text)
+            x, y = pos
+            # center text, along angle
+            x, y = x - (w/2) * math.cos(angle), y - (w/2) * math.sin(angle)
+            blf.position(font_id, x+3, y+3, 0)
+            blf.rotation(font_id, angle)
             blf.size(font_id, 12)
             blf.color(font_id, *color)
             blf.draw(font_id, f"{text}")
+
+        # reset rotation
+        blf.rotation(font_id, 0)
+        blf.disable(0, blf.ROTATION)
+        # blf.disable(0, blf.SHADOW)
 

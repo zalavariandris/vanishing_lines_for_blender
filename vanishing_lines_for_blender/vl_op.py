@@ -78,7 +78,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     
     # solver
     _active_camera: bpy.types.Object|None = None
-    _solve_error: Exception|None = None
 
     # rendering
     uiview: UIView3D|None = None
@@ -237,9 +236,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 'Z-': solver.types.Axis.NegativeZ
             }[vl_settings.second_axis]
 
-
-            third_axis = solver.helpers.third_axis(first_axis, second_axis)
-
             
             second_vanishing_lines = [(line.start, line.end) for line in vl_settings.second_vanishing_lines]
             if vl_settings.quad_mode and mode in {solver.types.SolverMode.TwoVP, solver.types.SolverMode.ThreeVP}:
@@ -250,7 +246,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                     (first_line.start, last_line.start), (first_line.end, last_line.end)
                 ]
             
-            self._solve_error = None
             projection, view = solver.core.solve(
                 mode = mode,
                 viewport=self.get_compute_space(),
@@ -263,7 +258,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 O = (vl_settings.origin[0], vl_settings.origin[1]),
 
                 reference_axis=reference_axis, # TODO: make configurable
-                reference_distance_segment=(0, vl_settings.reference_distance), # TODO: make fist value configurable
+                reference_distance_segment=(vl_settings.reference_distance_segment[0], vl_settings.reference_distance_segment[1]-vl_settings.reference_distance_segment[0]), # TODO: make fist value configurable
                 reference_world_size=vl_settings.scene_scale,
 
                 first_axis=first_axis,
@@ -282,7 +277,9 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
             vl_settings.error_message = ""
                     
         except Exception as e:
-            vl_settings.error_message = str(e)
+            error_type = type(e).__name__  # Gets 'ValueError' as a string
+            error_message = str(e)         # Gets the actual message you wrote in 'raise'
+            vl_settings.error_message = f"{error_type}\n{error_message}"
             import traceback
             traceback.print_exc()
 
@@ -482,10 +479,28 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                     O = mathutils.Vector((vl_settings.origin[0], vl_settings.origin[1]))
                     return (R - O).normalized()
 
-            self.uiview.prop_distance(vl_settings, "reference_distance", 
+            # self.uiview.prop_distance(vl_settings, "reference_distance", 
+            #     origin=vl_settings.origin,
+            #     direction=get_distance_measurement_direction(),
+            #     text="R",
+            #     color=ORANGE)
+            
+            unit_settings = bpy.context.scene.unit_settings
+            system = unit_settings.system
+            scale = unit_settings.scale_length
+            length_unit = unit_settings.length_unit
+            match length_unit:
+                case 'METERS':
+                    length_unit = "m"
+                case 'CENTIMETERS':
+                    length_unit = "cm"
+                case 'INCHES':
+                    length_unit = "in"
+                
+            self.uiview.prop_distance_segment(vl_settings, "reference_distance_segment", 
                 origin=vl_settings.origin,
                 direction=get_distance_measurement_direction(),
-                text="R",
+                text=f"{vl_settings.scene_scale:.2f}{length_unit}",
                 color=ORANGE)
 
         # # Reference Distance
@@ -529,7 +544,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         # draw_sensor_frame()
 
         # Draw error messages
-        print("Solve error:", self._solve_error)
         if error_msg:=vl_settings.error_message:
             lines = str(error_msg).splitlines()
             font_size = 16
