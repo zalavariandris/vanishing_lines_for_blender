@@ -1,17 +1,19 @@
 from . import vl_params
-from . import vl_op
+from . import vl_operator
 from . import vl_utils
 from . import vl_sidepanel
-from . import camera_panel
+from . import vl_camera_panel
 
 def register():
+    print("registering vanishing_lines_for_blender...")
     vl_params.register()
-    vl_op.register()
+    vl_operator.register()
     vl_sidepanel.register()
-    camera_panel.register()
+    vl_camera_panel.register()
 
 def unregister():
-    camera_panel.unregister()
+    print("unregistering vanishing_lines_for_blender...")
+    vl_camera_panel.unregister()
     vl_sidepanel.unregister()
-    vl_op.unregister()
+    vl_operator.unregister()
     vl_params.unregister()

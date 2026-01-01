@@ -134,7 +134,7 @@ def solve(
 # SOLVER COMPONENTS #
 #####################
 
-import glm
+from pyglm import glm
 from typing import List, Tuple
 
 # Type Aliases
@@ -459,6 +459,8 @@ def adjust_axis_assignment(
         second_axis: Axis,
         view_matrix:glm.mat4
     )->glm.mat4:
+    """adjust a view matrix to match user-specified axis assignment. when used as a trasform matrix.
+    create_axis_assignment_matrix crates a native transform matrix"""
     return view_matrix * glm.inverse(glm.mat4(create_axis_assignment_matrix(first_axis, second_axis))) # type: ignore[return-value] # PyGLM type stubs incorrectly infer mat4x2
 
 def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.mat3:
@@ -474,6 +476,12 @@ def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.ma
     
     Raises:
         Exception: If the axis assignment creates an invalid (non-orthogonal) matrix
+
+    Usage:
+        M_with_axis_shuffled = m * create_axis_assignment_matrix(
+            firstVanishingPointAxis=Axis.PositiveX,
+            secondVanishingPointAxis=Axis.PositiveY
+        )
 
     Note:
         Identity if:

@@ -39,26 +39,27 @@ __work in progress__
 - [ ] see what else can be tested without blender
 
 ### **0.7..**
-- [/] REFACTOR coordinate space conversion
-- [X] ADD UI for the background image to our panel
-- [?] ADD UI under the CAMERA Parameters (camera_panel.py)
+- [ ] ~~REFACTOR coordinate space conversion~~
+- [ ] ~~better handle warnings.warn in the UI?~~
+- [ ] ADD Start, Pause, Stop modal operator
+- [x] ADD UI for the background image to our panel
+- [x] ADD UI under the CAMERA Parameters (camera_panel.py)
 
 ### **0.7.**
+- [ ] ~~Test UIView controls?~~
 - [?] ADD slow point drag with SHIFT
-- [ ] Test axis assignment (currently only support right handed coordinate systems)
-- [ ] Test UIView controls, projection mapping
-- [?] better handle warnings.warn in the UI?
+- [x] Test axis assignment (currently only support right handed coordinate systems)
+
 
 ### **0.7.**
 - [x] FIX🛠️ while dragging controlpoints, move them with mouse instead of setting the coords to the mousepos
-- [X] text on reference distance segment
-- [X] ADD referende distance segment instead of a simple distance
-- [X] FIX when a line is zero length, there is an unhandled error
-- [X] show better error messages in the UI, and phrase them to be helpful.
-
+- [x] text on reference distance segment
+- [x] ADD referende distance segment instead of a simple distance
+- [x] FIX when a line is zero length, there is an unhandled error
+- [x] show better error messages in the UI, and phrase them to be helpful.
 
 ### **0.7.6**
-- [X] refactor control points
+- [x] refactor control points
 
 ### **0.7.5.2
 - [x] Set vanishing lines color based on the axis assignment axes
@@ -67,8 +68,8 @@ __work in progress__
 
 ### **0.7.5.1
 - [x] BUG FIXES
-  - [X] FIX: Now, all the extended vanishing lines are drawn regardless of the active mode.
-  - [X] FIX solve scale by origin distance->adjust_position_to_origin was slightly off
+  - [x] FIX: Now, all the extended vanishing lines are drawn regardless of the active mode.
+  - [x] FIX solve scale by origin distance->adjust_position_to_origin was slightly off
 
 
 ### **0.7.5

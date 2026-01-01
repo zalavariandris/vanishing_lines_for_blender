@@ -31,11 +31,11 @@ from .vl_coord_utils import (
 
 
 
-from . uiview3d import UIView3D
+from .uiview3d import UIView3D
 
 # local
 from . import solver
-from . draw_layer import DrawLayer
+from .draw_layer import DrawLayer
 
 ###############
 # VL OPERATOR #
@@ -164,6 +164,17 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         # run as modal
         window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
+
+    def cancel(self, context):
+        print("Cancelling Vanishing Lines Operator")
+        # cleanup
+        self.uiview = None
+        self._active_camera = None # when active camera is None, modal will finish
+
+        # trigger redraw
+        area: bpy.types.Area|None = context.area
+        if area and area.type == 'VIEW_3D':
+           area.tag_redraw()
 
     def modal(self, context, event):
         if self._active_camera != vl_utils.get_viewer_camera(context): 
@@ -715,6 +726,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     #         region_coords=coord
     #     )
     
+
 
 ######################
 # REGISTER FUNCTIONS #

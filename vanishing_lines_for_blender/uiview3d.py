@@ -3,16 +3,15 @@ from . import vl_utils
 from . import vl_coord_utils
 from . draw_layer import DrawLayer
 from pyglm import glm
-import bpy
+
 
 class _ControlPoint():
-    def __init__(self, data:bpy.types.ID, prop:str, index:int|None=None, *, 
+    def __init__(self, data:'bpy.types.ID', prop:str, index:int|None=None, *, 
             setter:Callable|None=None, 
             getter:Callable|None=None):
         self._data = data
         self._prop = prop
         self._index = index
-
 
         if setter is None:
             self._setter = lambda data, prop, value: setattr(self._data, self._prop, value)
@@ -32,20 +31,21 @@ class _ControlPoint():
             return self._getter(self._data, self._prop)
     
     @value.setter
-    def value(self, value:Tuple[float, float] ): # todo: we should use the actual _bpy prop_ type here, but how?
+    def value(self, value:Tuple[float, float] ):
         if self._index is not None:
             self._setter(self._data, self._prop, self._index, value)
         else:
             self._setter(self._data, self._prop, value)
 
+
 class UIView3D:
     def __init__(self):
-        self._controls: dict[Tuple[bpy.types.ID, str], _ControlPoint] = dict()
+        self._controls: dict[Tuple['bpy.types.ID', str], _ControlPoint] = dict()
         self._draw_layer: DrawLayer|None = DrawLayer()
 
         # interaction
-        self._active_id: Tuple[bpy.types.ID, str]|None = None
-        self._hovered_id: Tuple[bpy.types.ID, str]|None = None
+        self._active_id: Tuple['bpy.types.ID', str]|None = None
+        self._hovered_id: Tuple['bpy.types.ID', str]|None = None
 
         # mouse dragging
         self._is_left_mouse_down = False
@@ -118,16 +118,16 @@ class UIView3D:
         return world_space.x, world_space.y
     
     # Event Handling
-    def event(self, context, event:bpy.types.Event):
+    def event(self, context, event:'bpy.types.Event'):
         ###
         # Event Helpers
         ###
         # print("Event:", event.type, event.value)
-        area: bpy.types.Area|None = context.area
+        area: 'bpy.types.Area'|None = context.area
         if area is None:
             return {'PASS_THROUGH'}
         
-        region: bpy.types.Region|None = context.region
+        region: 'bpy.types.Region'|None = context.region
         if region is None:
             return {'PASS_THROUGH'}
 
@@ -244,8 +244,8 @@ class UIView3D:
         return {'PASS_THROUGH'}
 
     # GUI
-    def get_closest_id(self, mouse_region_x: float, mouse_region_y: float, threshold:float=22.0) -> Tuple[bpy.types.ID, str]|None:
-        closest_key:Tuple[bpy.types.ID, str]|None = None
+    def get_closest_id(self, mouse_region_x: float, mouse_region_y: float, threshold:float=22.0) -> Tuple['bpy.types.ID', str]|None:
+        closest_key:Tuple['bpy.types.ID', str]|None = None
         closest_dist_sq = threshold * threshold
 
         for control_id, control_point in self._controls.items():
@@ -266,7 +266,7 @@ class UIView3D:
         return self._active_id == last_id
 
     # Widgets
-    def prop_point(self, data:bpy.types.ID, prop:str, index:int|None=None, *,
+    def prop_point(self, data:'bpy.types.ID', prop:str, index:int|None=None, *,
         text:str="",
         color=(1.0,0.5,0.0,1.0),
         setter:Callable|None=None, 
@@ -300,7 +300,7 @@ class UIView3D:
         
         return self._controls[control_id]
     
-    def prop_line(self, data:bpy.types.ID, *, start_prop:str='start', end_prop:str='end', 
+    def prop_line(self, data:'bpy.types.ID', *, start_prop:str='start', end_prop:str='end', 
         color=(0.8,0.8,0.8,1.0)
     ):
         assert self._draw_layer is not None, "Draw layer not initialized"
@@ -315,21 +315,21 @@ class UIView3D:
             P_end,
             color=color)
         
-    def prop_distance(self, data:bpy.types.ID, prop:str, *,
+    def prop_distance(self, data:'bpy.types.ID', prop:str, *,
         origin:Tuple[float, float], 
         direction:Tuple[float, float]=(1,0), 
         text:str="",
         color=(0.0,0.5,1.0,1.0),
     ) -> _ControlPoint:
         
-        def setter(data:bpy.types.ID, prop:str, P:Tuple[float, float]):
+        def setter(data:'bpy.types.ID', prop:str, P:Tuple[float, float]):
             P = glm.vec2(P[0], P[1])
             O = glm.vec2(origin[0], origin[1])
             dir = glm.normalize(glm.vec2(direction[0], direction[1]))
             distance = glm.dot(P - O, dir)
             setattr(data, prop, distance)
 
-        def getter(data:bpy.types.ID, prop:str) -> float:
+        def getter(data:'bpy.types.ID', prop:str) -> float:
             distance = getattr(data, prop)
 
             # set direction magnitude
@@ -355,14 +355,14 @@ class UIView3D:
             self.project(getter(data, prop)),
             color=vl_utils.dim_color(color, 0.3) if self.is_item_active() or self.is_item_hovered() else vl_utils.dim_color(color, 0.1))
     
-    def prop_distance_segment(self, data:bpy.types.ID, prop:str, *, 
+    def prop_distance_segment(self, data:'bpy.types.ID', prop:str, *, 
         origin:Tuple[float, float], 
         direction:Tuple[float, float]=(1,0),
         text:str="",
         color=(0.0,0.5,1.0,1.0),
     ):
 
-        def setter(data:bpy.types.ID, prop:str, index:int, P:Tuple[float, float]):
+        def setter(data:'bpy.types.ID', prop:str, index:int, P:Tuple[float, float]):
             P = glm.vec2(P[0], P[1])
             O = glm.vec2(origin[0], origin[1])
             dir = glm.normalize(glm.vec2(direction[0], direction[1]))
@@ -371,7 +371,7 @@ class UIView3D:
             segment[index] = end_distance
             setattr(data, prop, segment)
 
-        def getter(data:bpy.types.ID, prop:str, index:int) -> float:
+        def getter(data:'bpy.types.ID', prop:str, index:int) -> float:
             segment = getattr(data, prop)
             end_distance = segment[index]
 
