@@ -98,38 +98,38 @@ def draw_solver_panel(layout, camera):
     ##########
     # SOLVER #
     ##########
-    header, background_images_panel = layout.panel("solver", default_closed=False)
+    header, solver_panel = layout.panel("solver", default_closed=False)
     header_row = header.row()
     header_row.alert = camera.data.vl_settings.error_message != ""
     header_row.label(text="Solver")
     
-    if background_images_panel:
+    if solver_panel:
 
 
         # panel.prop(camera.data.vl_settings, "compute_space", text="Compute Space")
         # panel.separator()
-        background_images_panel.prop(camera.data.vl_settings, "mode", text="Mode")
+        solver_panel.prop(camera.data.vl_settings, "mode", text="Mode")
 
         mode = camera.data.vl_settings.mode
 
         # match mode:
         #     case 'ONE_POINT':
-        row = background_images_panel.row()
-        row.enabled = mode == 'ONE_POINT'
-        row.prop(camera.data, "lens", text="Focal Length")
+        focal_length_row = solver_panel.row()
+        focal_length_row.enabled = mode == 'ONE_POINT'
+        focal_length_row.prop(camera.data, "lens", text="Focal Length")
 
-        row = background_images_panel.row()
-        row.enabled = mode in {'ONE_POINT', 'TWO_POINT'}
-        row.prop(camera.data.vl_settings, "enable_manual_principal", text="Manual Principal Point")
+        manual_principal_row = solver_panel.row()
+        manual_principal_row.enabled = mode in {'ONE_POINT', 'TWO_POINT'}
+        manual_principal_row.prop(camera.data.vl_settings, "enable_manual_principal", text="Manual Principal Point")
 
-        row = background_images_panel.row()
-        row.enabled = mode in {'TWO_POINT', 'THREE_POINT'}
+        # row = solver_panel.row()
+        # row.enabled = mode in {'TWO_POINT', 'THREE_POINT'}
 
-        background_images_panel.separator()
+        solver_panel.separator()
 
         if error_msg:=camera.data.vl_settings.error_message:
-            error_row = background_images_panel.column()
-            error_row.alert = camera.data.vl_settings.error_message != ""
+            error_row = solver_panel.column()
+            error_row.alert = True
             lines = str(error_msg).splitlines()
             for i, line in enumerate(lines):
                 line_row = error_row.row()
@@ -142,36 +142,36 @@ def draw_reference_distance_panel(layout, camera):
     ######################
     # REFERENCE DISTANCE #
     ######################
-    header, background_images_panel = layout.panel("reference_distance", default_closed=False)
+    header, reference_distance_panel = layout.panel("reference_distance", default_closed=False)
     header.label(text="Reference Distance")
-    if background_images_panel:
-        background_images_panel.prop(camera.data.vl_settings, "scene_scale_mode", text="Scale Mode")
-        background_images_panel.prop(camera.data.vl_settings, "scene_scale", text="Scene Scale")
+    if reference_distance_panel:
+        reference_distance_panel.prop(camera.data.vl_settings, "scene_scale_mode", text="Scale Mode")
+        reference_distance_panel.prop(camera.data.vl_settings, "scene_scale", text="Scene Scale")
 
-        row = background_images_panel.row()
+        row = reference_distance_panel.row()
         row.enabled = camera.data.vl_settings.scene_scale_mode != 'ORIGIN'
         # row.prop(camera.data.vl_settings, "reference_distance", text="Reference Distance")
         row.prop(camera.data.vl_settings, "reference_distance_segment", text="Reference Distance Segment")
-        background_images_panel.separator()
+        reference_distance_panel.separator()
 
 def draw_axis_assignment_panel(layout, camera):
     ###################
     # AXIS ASSIGNMENT #
     ###################
-    header, background_images_panel = layout.panel("axis_assignement", default_closed=True)
-    header.label(text="Axis Assignement")
+    header, axis_assignment_panel = layout.panel("axis_assignment", default_closed=True)
+    header.label(text="Axis Assignment")
 
-    if background_images_panel:
+    if axis_assignment_panel:
         # panel.prop(camera.data.vl_settings, "floor", text="Floor", expand=False)
-        row = background_images_panel.row()
+        row = axis_assignment_panel.row()
         row.prop(camera.data.vl_settings, "first_axis", text="First Axis", expand=False)
-        row = background_images_panel.row()
+        row = axis_assignment_panel.row()
         incompatible_second_axis = camera.data.vl_settings.first_axis[0] == camera.data.vl_settings.second_axis[0]
         row.alert = incompatible_second_axis
         row.prop(camera.data.vl_settings, "second_axis", text="Second Axis", expand=False)
-        background_images_panel.separator()
+        axis_assignment_panel.separator()
 
-        box = background_images_panel.row()
+        box = axis_assignment_panel.row()
         box.label(text="First Axis")
         col = box.column(align=True)
         
@@ -187,7 +187,7 @@ def draw_axis_assignment_panel(layout, camera):
         row.prop_enum(camera.data.vl_settings, "first_axis", "Z-")
         row.prop_enum(camera.data.vl_settings, "first_axis", "Z+")
 
-        box = background_images_panel.row()
+        box = axis_assignment_panel.row()
         box.label(text="Second Axis")
         col = box.column(align=True)
         
@@ -224,9 +224,9 @@ def draw_coordinates_panel(layout, camera):
     header.label(text="Coordinates")
 
     def prop_point(layout, data, prop, text):
-        layout = col.column(align=True, heading="Origin")
-        layout.prop(data, prop, index=0, text=f"{text} X")
-        layout.prop(data, prop, index=1, text="Y")
+        col = layout.column(align=True, heading=text)
+        col.prop(data, prop, index=0, text=f"{text} X")
+        col.prop(data, prop, index=1, text="Y")
 
     if coordinates_panel:
         col = coordinates_panel.column()

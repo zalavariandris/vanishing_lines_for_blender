@@ -1,8 +1,20 @@
 from typing import Tuple, Callable
+
 from . import vl_utils
 from . import vl_coord_utils
 from . draw_layer import DrawLayer
 from pyglm import glm
+
+
+# Constants
+CLIP_NEAR = -1000.0
+CLIP_FAR = 1000.0
+DEFAULT_CLICK_THRESHOLD = 22.0
+ANNOTATION_OFFSET_X = 5
+TEXT_OFFSET_Y_BELOW = -15
+TEXT_OFFSET_Y_ABOVE = 5
+DIM_FACTOR_ACTIVE = 0.3
+DIM_FACTOR_INACTIVE = 0.1
 
 
 class _ControlPoint():
@@ -14,38 +26,50 @@ class _ControlPoint():
         self._index = index
 
         if setter is None:
-            self._setter = lambda data, prop, value: setattr(self._data, self._prop, value)
+            if index is None:
+                self._set_transform = lambda data, prop, value: setattr(data, prop, value)
+            else:
+                def indexed_setter(data, prop, idx, value):
+                    seq = list(getattr(data, prop))
+                    seq[idx] = value
+                    setattr(data, prop, seq)
+                self._set_transform = indexed_setter
         else:
-            self._setter = setter
+            self._set_transform = setter
         
         if getter is None:
-            self._getter = lambda data, prop: getattr(self._data, self._prop)
+            if index is None:
+                self._get_transform = lambda data, prop: getattr(data, prop)
+            else:
+                self._get_transform = lambda data, prop, idx: getattr(data, prop)[idx]
         else:
-            self._getter = getter
+            self._get_transform = getter
         
     @property
     def value(self)->Tuple[float, float]:
         if self._index is not None:
-            return self._getter(self._data, self._prop, self._index)
+            return self._get_transform(self._data, self._prop, self._index)
         else:
-            return self._getter(self._data, self._prop)
+            return self._get_transform(self._data, self._prop)
     
     @value.setter
     def value(self, value:Tuple[float, float] ):
         if self._index is not None:
-            self._setter(self._data, self._prop, self._index, value)
+            self._set_transform(self._data, self._prop, self._index, value)
         else:
-            self._setter(self._data, self._prop, value)
+            self._set_transform(self._data, self._prop, value)
 
+
+ControlIdType = Tuple['bpy.types.ID', str, int|None]
 
 class UIView3D:
     def __init__(self):
-        self._controls: dict[Tuple['bpy.types.ID', str], _ControlPoint] = dict()
+        self._controls: dict[ControlIdType, _ControlPoint] = dict()
         self._draw_layer: DrawLayer|None = DrawLayer()
 
         # interaction
-        self._active_id: Tuple['bpy.types.ID', str]|None = None
-        self._hovered_id: Tuple['bpy.types.ID', str]|None = None
+        self._active_id: ControlIdType|None = None
+        self._hovered_id: ControlIdType|None = None
 
         # mouse dragging
         self._is_left_mouse_down = False
@@ -73,33 +97,26 @@ class UIView3D:
     def set_coordinate_system_to_camera_frame(self, context):
         # Set UIVIEW camera, so _compute space_ matches _camera frame_, respect to _sensor fit_
         camera_frame = vl_coord_utils.get_view_camera_frame_rect(context)
-        output_aspect = context.scene.render.resolution_x / context.scene.render.resolution_y     
-        match context.space_data.camera.data.sensor_fit:
-            case 'AUTO':
-                if output_aspect >= 1.0:
-                    # horizontal
-                    x, y = -1, -1 + (2-2/output_aspect)/2
-                    w, h = 2, 2/output_aspect
-                    self.set_projection(glm.orthoLH(x, x+w, y, y+h, -1000.0, 1000.0))
-                    self.set_viewport(camera_frame)
-                else:
-                    # vertical
-                    x, y = -1+ (2-2*output_aspect)/2, -1
-                    w, h = 2*output_aspect, 2
-                    self.set_projection(glm.orthoLH(x, x+w, y, y+h, -1000.0, 1000.0))
-                    self.set_viewport(camera_frame)
-
-            case 'HORIZONTAL':
-                x, y = -1, -1 + (2-2/output_aspect)/2
-                w, h = 2, 2/output_aspect
-                self.set_projection(glm.orthoLH(x, x+w, y, y+h, -1000.0, 1000.0))
-                self.set_viewport(camera_frame)
-
-            case 'VERTICAL':
-                x, y = -1+ (2-2*output_aspect)/2, -1
-                w, h = 2*output_aspect, 2
-                self.set_projection(glm.orthoLH(x, x+w, y, y+h, -1000.0, 1000.0))
-                self.set_viewport(camera_frame)
+        output_aspect = context.scene.render.resolution_x / context.scene.render.resolution_y
+        sensor_fit = context.space_data.camera.data.sensor_fit
+        
+        # Determine orientation
+        is_horizontal = {
+            'AUTO': output_aspect >= 1.0,
+            'HORIZONTAL': True,
+            'VERTICAL': False
+        }[sensor_fit]
+        
+        # Single calculation path
+        if is_horizontal:
+            x, y = -1, -1 + (2-2/output_aspect)/2
+            w, h = 2, 2/output_aspect
+        else:
+            x, y = -1+ (2-2*output_aspect)/2, -1
+            w, h = 2*output_aspect, 2
+        
+        self.set_projection(glm.orthoLH(x, x+w, y, y+h, CLIP_NEAR, CLIP_FAR))
+        self.set_viewport(camera_frame)
 
     def project(self, coord:Tuple[float, float]) -> Tuple[float, float]:
         region = glm.project(glm.vec3(coord[0], coord[1], 0), 
@@ -244,8 +261,8 @@ class UIView3D:
         return {'PASS_THROUGH'}
 
     # GUI
-    def get_closest_id(self, mouse_region_x: float, mouse_region_y: float, threshold:float=22.0) -> Tuple['bpy.types.ID', str]|None:
-        closest_key:Tuple['bpy.types.ID', str]|None = None
+    def get_closest_id(self, mouse_region_x: float, mouse_region_y: float, threshold:float=DEFAULT_CLICK_THRESHOLD) -> ControlIdType|None:
+        closest_key:ControlIdType|None = None
         closest_dist_sq = threshold * threshold
 
         for control_id, control_point in self._controls.items():
@@ -258,43 +275,44 @@ class UIView3D:
         return closest_key
    
     def is_item_hovered(self):
-        last_id = list(self._controls.keys())[-1]
+        last_id = next(reversed(self._controls))
         return self._hovered_id == last_id
     
     def is_item_active(self):
-        last_id = list(self._controls.keys())[-1]
+        last_id = next(reversed(self._controls))
         return self._active_id == last_id
 
     # Widgets
     def prop_point(self, data:'bpy.types.ID', prop:str, index:int|None=None, *,
         text:str="",
         color=(1.0,0.5,0.0,1.0),
-        setter:Callable|None=None, 
-        getter:Callable|None=None
+        set_transform:Callable|None=None, 
+        get_transform:Callable|None=None
     ) -> _ControlPoint:
         assert self._draw_layer is not None, "Draw layer not initialized"
         control_id = (data, prop, index)
         if control_id not in self._controls:
-            self._controls[control_id] = _ControlPoint(data, prop, index=index, setter=setter, getter=getter)
+            self._controls[control_id] = _ControlPoint(data, prop, index=index, setter=set_transform, getter=get_transform)
 
         cp = self._controls[control_id]
         P = self.project(cp.value)
         is_active = (self._active_id == control_id)
         is_hovered = (self._hovered_id == control_id)
 
-        point_color = color
+        point_render_color = color
         if is_active or is_hovered:
-            point_color = (1.0, 1.0, 1.0, 1.0)
-            self._draw_layer.add_text(
-                (P[0]+5, P[1]-15), f"({cp.value[0]:.2f}, {cp.value[1]:.2f})",
+            point_render_color = (1.0, 1.0, 1.0, 1.0)
+            self._draw_layer.add_annotation(
+                (P[0] + ANNOTATION_OFFSET_X, P[1] + TEXT_OFFSET_Y_BELOW), 
+                f"({cp.value[0]:.2f}, {cp.value[1]:.2f})",
                 color=(1,1,1,1))
 
         self._draw_layer.add_point(
             P,
-            point_color)
+            point_render_color)
 
-        self._draw_layer.add_text(
-            (P[0]+5, P[1]+5),
+        self._draw_layer.add_annotation(
+            (P[0] + ANNOTATION_OFFSET_X, P[1] + TEXT_OFFSET_Y_ABOVE),
             text,
             color=(1,1,1,1))
         
@@ -322,14 +340,14 @@ class UIView3D:
         color=(0.0,0.5,1.0,1.0),
     ) -> _ControlPoint:
         
-        def setter(data:'bpy.types.ID', prop:str, P:Tuple[float, float]):
+        def set_transform(data:'bpy.types.ID', prop:str, P:Tuple[float, float]):
             P = glm.vec2(P[0], P[1])
             O = glm.vec2(origin[0], origin[1])
             dir = glm.normalize(glm.vec2(direction[0], direction[1]))
             distance = glm.dot(P - O, dir)
             setattr(data, prop, distance)
 
-        def getter(data:'bpy.types.ID', prop:str) -> float:
+        def get_transform(data:'bpy.types.ID', prop:str) -> Tuple[float, float]:
             distance = getattr(data, prop)
 
             # set direction magnitude
@@ -347,13 +365,18 @@ class UIView3D:
             return Px, Py
         
         self.prop_point(data, prop, text=text, color=color, 
-                        setter=setter,
-                        getter=getter)
+                        set_transform=set_transform,
+                        get_transform=get_transform)
+        
+        if self.is_item_active() or self.is_item_hovered():
+            render_color  = vl_utils.dim_color(color, DIM_FACTOR_ACTIVE)
+        else:
+            render_color  = vl_utils.dim_color(color, DIM_FACTOR_INACTIVE)
         
         self._draw_layer.add_line(
             self.project(origin),
-            self.project(getter(data, prop)),
-            color=vl_utils.dim_color(color, 0.3) if self.is_item_active() or self.is_item_hovered() else vl_utils.dim_color(color, 0.1))
+            self.project(get_transform(data, prop)),
+            color=render_color)
     
     def prop_distance_segment(self, data:'bpy.types.ID', prop:str, *, 
         origin:Tuple[float, float], 
@@ -371,7 +394,7 @@ class UIView3D:
             segment[index] = end_distance
             setattr(data, prop, segment)
 
-        def getter(data:'bpy.types.ID', prop:str, index:int) -> float:
+        def getter(data:'bpy.types.ID', prop:str, index:int) -> Tuple[float, float]:
             segment = getattr(data, prop)
             end_distance = segment[index]
 
@@ -390,24 +413,24 @@ class UIView3D:
             return Px, Py
         
         highlight = False
-        start_cp = self.prop_point(data, prop, index=0, color=color, setter=setter, getter=getter)
+        start_cp = self.prop_point(data, prop, index=0, color=color, set_transform=setter, get_transform=getter)
         if self.is_item_active() or self.is_item_hovered():
             highlight = True
-        end_cp =   self.prop_point(data, prop, index=1, color=color, setter=setter, getter=getter)
+        end_cp =   self.prop_point(data, prop, index=1, color=color, set_transform=setter, get_transform=getter)
         if self.is_item_active() or self.is_item_hovered():
             highlight = True
 
         P_start = self.project(start_cp.value)
         P_end =   self.project(end_cp.value)
 
-        color = color if highlight else vl_utils.dim_color(color, 0.3)
+        render_color  = color if highlight else vl_utils.dim_color(color, DIM_FACTOR_ACTIVE)
         self._draw_layer.add_line(
             P_start,
             P_end,
-            color=color)
+            color=render_color)
         
-        self._draw_layer.add_text(
-            ((P_start[0]+P_end[0])/2 + 5, (P_start[1]+P_end[1])/2 - 5),
+        self._draw_layer.add_annotation(
+            ((P_start[0]+P_end[0])/2 + ANNOTATION_OFFSET_X, (P_start[1]+P_end[1])/2 - ANNOTATION_OFFSET_X),
             text,
-            color=color,
+            color=render_color,
             angle=glm.atan2(direction[1], direction[0]))

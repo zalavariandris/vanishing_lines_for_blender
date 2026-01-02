@@ -6,10 +6,11 @@ import warnings
 
 from . constants import EPSILON
 from . types import Point2, Line2, Ray3, Line3, Rect
-###########################
-# 2D-3D GOMETRY FUNCTIONS #
-###########################
 
+
+############################
+# 2D-3D GEOMETRY FUNCTIONS #
+############################
 
 def dot2d(u: Point2, v: Point2) -> float:
     Ux, Uy = u
@@ -81,29 +82,6 @@ def cast_ray(
 
     return ray_origin, ray_target
 
-# def closest_point_between_lines(AB: Line3, CD: Line3)-> glm.vec3:
-#     A = glm.vec3(AB[0])
-#     B = glm.vec3(AB[1])
-#     C = glm.vec3(CD[0])
-#     D = glm.vec3(CD[1])
-
-#     d1 = B - A
-#     d2 = D - C
-#     r  = C - A
-
-#     cross_d1d2 = glm.cross(d1, d2)
-#     denom = glm.dot(cross_d1d2, cross_d1d2)
-
-#     # If parallel: project r onto d1
-#     if denom < EPSILON:
-#         t_parallel = glm.dot(r, d1) / glm.dot(d1, d1)
-#         return A + t_parallel * d1
-
-#     # Solve for t (closest point on line 1)
-#     t = glm.determinant(glm.mat3(r, d2, cross_d1d2)) / denom
-
-#     return A + t * d1
-
 def closest_point_between_lines(AB: Line3, CD: Line3) -> glm.vec3:
     A = glm.vec3(AB[0])
     B = glm.vec3(AB[1])
@@ -133,9 +111,10 @@ def closest_point_between_lines(AB: Line3, CD: Line3) -> glm.vec3:
 
 def _world_depth_to_ndc_z(distance:float, near:float, far:float, clamp=False) -> float:
     """Convert world depth to NDC z-coordinate using perspective-correct mapping
-    world_distance: The distance from the camera in world units
+    distance: The distance from the camera in world units
     near: The near clipping plane distance
     far: The far clipping plane distance
+    clamp: Whether to clamp the distance between near and far, default is False
     returns: NDC z-coordinate in [0, 1], where 0 is near and 1 is far
     """
     # Clamp the distance between near and far
@@ -315,7 +294,7 @@ def extract_euler_ZXY(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
     return T1, T2, T3
 
 def decompose(M: glm.mat4) -> Tuple[glm.vec3, glm.quat, glm.vec3, glm.vec3, glm.vec4]:
-    """glm dedomcpose wrapper.
+    """glm decompose wrapper.
     returns: scale(vec3), rotation(quat), translation(vec3), skew(vec3), perspective(vec4)
     raises ValueError if decomposition fails.
     """

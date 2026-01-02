@@ -1,18 +1,11 @@
 # standard library
-from collections import namedtuple
-from typing import Dict, List, Tuple, Literal, Final, Iterable
-from enum import IntEnum
-import math
-from dataclasses import dataclass
-from textwrap import dedent
-from abc import ABC, abstractmethod
+from typing import List, Tuple
+import warnings
 
 # third party library
 from pyglm import glm
-import numpy as np
 
-import warnings
-
+# local imports
 from .constants import (
     EPSILON, 
     DEFAULT_NEAR_PLANE, 
@@ -30,18 +23,17 @@ from . types import (
     ReferenceAxis
 )
 
-from . exceptions import *
+from . exceptions import (
+    VanishingLinesError,
+    AxisAssignmentError
+)
 
 from . import helpers
-
-from typing import TypedDict, NamedTuple
 
 
 #########################
 # MAIN SOLVER FUNCTIONS #
 #########################
-
-from . exceptions import *
 
 def solve(
         mode:SolverMode, 
@@ -134,19 +126,12 @@ def solve(
 # SOLVER COMPONENTS #
 #####################
 
-from pyglm import glm
-from typing import List, Tuple
-
-# Type Aliases
-Point2 = Tuple[float, float]
-Line2 = Tuple[Point2, Point2]
-
-def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> Tuple[glm.vec2, float]:
+def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> Tuple[float, float]:
     """
     Compute the least-squares intersection of 2D lines.
     
     Returns:
-        Tuple[glm.vec2, float]: (The intersection point, The total squared error)
+        Tuple[float, float]: (The intersection point, The total squared error)
     """
     if len(lines) < 2:
         raise VanishingLinesError("At least two lines are required.")
@@ -475,7 +460,7 @@ def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.ma
         A 3x3 rotation matrix that transforms from vanishing point space to world space
     
     Raises:
-        Exception: If the axis assignment creates an invalid (non-orthogonal) matrix
+        AxisAssignmentError: If the axis assignment creates an invalid (non-orthogonal) matrix
 
     Usage:
         M_with_axis_shuffled = m * create_axis_assignment_matrix(
@@ -503,14 +488,13 @@ def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.ma
     if get_axis(first_axis) == get_axis(second_axis):
         raise AxisAssignmentError("Invalid axis assignment: axes must be distinct")
     
-    
     # Get the unit vectors for the specified axes
     forward = helpers.vector_from_axis(first_axis)
     right = helpers.vector_from_axis(second_axis)
-    up = glm.cross(forward, right) # Todo: this will make a right-handed system, for left handedness we need the third_axis
+    up = helpers.third_axis_vector(first_axis, second_axis, handedness="right") # Todo: make sure this is correct
     
     # Build the matrix with each row representing the target world axis
-    axis_assignment_matrix = glm.mat3( # TODO: this is the inverse of the mat3_from_directions
+    axis_assignment_matrix = glm.mat3( # Note: this is the inverse of the mat3_from_directions
         forward.x,
         forward.y,
         forward.z,

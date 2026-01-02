@@ -1,7 +1,7 @@
 import bpy
 
 
-from . import vl_view
+from . import vl_panel_components
 
 class CAMERA_PT_custom_panel(bpy.types.Panel):
     bl_label = "Vanishing Lines"
@@ -17,16 +17,13 @@ class CAMERA_PT_custom_panel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        # cam = context.camera
-
-        layout.label(text=f"'{context.active_object.name}'", icon='CAMERA_DATA')
-
-        vl_view.draw_solver_panel(layout, context.active_object)
+        vl_panel_components.draw_solver_panel(layout, context.active_object)
+        vl_panel_components.draw_reference_distance_panel(layout, context.active_object)
+        vl_panel_components.draw_axis_assignment_panel(layout, context.active_object)
+        vl_panel_components.draw_coordinates_panel(layout, context.active_object)
 
 def register():
-    print("Registering camera panel...")
     bpy.utils.register_class(CAMERA_PT_custom_panel)
 
 def unregister():
-    print("Unregistering camera panel...")
     bpy.utils.unregister_class(CAMERA_PT_custom_panel)

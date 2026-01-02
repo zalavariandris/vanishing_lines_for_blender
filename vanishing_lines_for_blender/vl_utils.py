@@ -4,12 +4,17 @@ import mathutils
 from typing import Tuple, Iterable, cast
 from . import solver
 import glm
-
+import warnings
 ####################
 # HELPER FUNCTIONS #
 ####################
 from typing import Literal
 
+def is_operator_running(op_idname):
+    for op in bpy.context.window.modal_operators:
+        if op.bl_idname == op_idname:
+            return True
+    return False
 
 def closest_point_to_target(points: Iterable[Tuple[float, float]], P:Tuple[float, float]) -> Tuple[float, float]:
     sorted_points = sorted(points, key=lambda Q: (Q[0]-P[0])**2 + (Q[1]-P[1])**2)
@@ -20,14 +25,12 @@ def closest_point_to_target(points: Iterable[Tuple[float, float]], P:Tuple[float
 def dim_color(color:Tuple[float, float, float, float], factor:float=0.18)->Tuple[float, float, float, float]:
     return (color[0], color[1], color[2], color[3]*factor)
 
-def _hit_test_point(pos:Tuple[float, float], mouse_x:float, mouse_y:float, padding:float=35.0)->bool:
-    return (mouse_x >= pos[0] - padding and
-            mouse_x <= pos[0] + padding and
-            mouse_y >= pos[1] - padding and 
-            mouse_y <= pos[1] + padding)
-
 def flatten(xss):
     return [x for xs in xss for x in xs]
+
+###################
+# BLENDER HELPERS #
+###################
 
 def get_running_operator_by_idname(op_idname):
     for op in bpy.context.window.modal_operators:
@@ -35,9 +38,6 @@ def get_running_operator_by_idname(op_idname):
             return op
     return None
 
-###################
-# BLENDER HELPERS #
-###################
 def apply_solver_results_to_blender_camera(
         projection: glm.mat4,
         view: glm.mat4, 
@@ -107,20 +107,36 @@ def apply_solver_results_to_blender_camera(
     camera_data.shift_x = shift_x/2
     camera_data.shift_y = shift_y/2
 
-def get_viewer_camera(context) -> bpy.types.Object|None:
-    for area in context.window.screen.areas:
-        if area.type == 'VIEW_3D':
-            for space in area.spaces:
-                if space.type == 'VIEW_3D':
-                    if space.region_3d.view_perspective == 'CAMERA': # only return if viewing through camera
-                        return space.camera # get the camera associated with the viewport
+def set_view_camera(context, camera_object: bpy.types.Object):
+    space = context.space_data
+    if not space or space.type != 'VIEW_3D':
+        warnings.warn("Context is not a 3D Viewport!")
+        return None
+
+    space.camera = camera_object  # Set the viewport camera
+    space.region_3d.view_perspective = 'CAMERA'  # Switch to camera view
+
+def get_view_camera(context):
+    space = context.space_data
+    if not space or space.type != 'VIEW_3D':
+        # warnings.warn("Context is not a 3D Viewport!")
+        return None
+
+    # If the viewport is locked to a camera
+    if space.region_3d.view_perspective != 'CAMERA':
+        # warnings.warn("View does not use a Camera!")
+        return None
+
+    return space.camera
+
+def get_scene_camera(context)-> bpy.types.Object|None:
+    camera = context.scene.camera
+    return camera
+
+def get_calibration_camera(context) -> bpy.types.Object|None:
+    if camera := get_view_camera(context):
+        return camera
+    elif camera := get_scene_camera(context):
+        return camera
     return None
-
-def set_viewer_camera(context, camera_object: bpy.types.Object):
-    for area in context.window.screen.areas:
-        if area.type == 'VIEW_3D':
-            for space in area.spaces:
-                if space.type == 'VIEW_3D':
-                    space.camera = camera_object  # Set the viewport camera
-                    space.region_3d.view_perspective = 'CAMERA'  # Switch to camera view
-
+ 

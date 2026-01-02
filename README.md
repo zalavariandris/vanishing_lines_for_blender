@@ -28,20 +28,35 @@ __work in progress__
       add to 'settings.json': "python.defaultInterpreterPath": "C:\\Program Files\\Blender Foundation\\Blender 4.5\\4.5\\python\\bin\\python.exe"
 
 ### 
-- [ ] active camera selection, must be obvious in the sidepanel. All panels operators must woirk on the active camera. we have to store the working camera somewhere, so all the ui panels can access it and work on the same one.
+- [x] active camera selection, must be obvious in the sidepanel. All panels operators must woirk on the active camera. we have to store the working camera somewhere, so all the ui panels can access it and work on the same one.
   - in the ui we could select options to determine the active amera, or for now, experience with them: 
     - scene.camera
     - get the camera if the viewer is looking throiugh one
     - select a camera from a list of cameras to work on, than make sure, the viewer is looking through.
     - what i fmultiple cameras or multiple viewers are on the screen? !!!
 
-- [ ] test user interfgace and find bugs
+- [ ] create a user test documentation, for to test user interface and find bugs
 - [ ] see what else can be tested without blender
+
+### !!!
+- [!] solver now only support right-handed coordinate systems. implement _left handed_ as well.
+
+###
+REVIEW
+- [x] vl_operators.py
+- [x] uiview3d
+- [x] draw_layer
+- [ ] ~~vl_camera_panel~~
+- [x] vl_params
+- [x] vl_sidepanel
+- [x] vl_utils
+- [x] vl_panel_components
+- [x] solver
 
 ### **0.7..**
 - [ ] ~~REFACTOR coordinate space conversion~~
 - [ ] ~~better handle warnings.warn in the UI?~~
-- [ ] ADD Start, Pause, Stop modal operator
+- [X] ADD Start, Pause, Stop modal operator
 - [x] ADD UI for the background image to our panel
 - [x] ADD UI under the CAMERA Parameters (camera_panel.py)
 

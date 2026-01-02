@@ -1,82 +1,44 @@
 # standard library
-import math
-from typing import Any, Iterable, List, Sequence, Tuple, Literal, cast
+from typing import Tuple
 import warnings
 
 # Blender
 import bpy
-import gpu
-from gpu_extras.batch import batch_for_shader
+
 import blf
 import mathutils
 from bpy_extras import view3d_utils
 
+# third party
 from pyglm import glm
-
-from . import vl_utils
-from . import vl_coord_utils
-from .vl_coord_utils import (
-    get_view3d_zoom_to_fac,
-    project_output_to_region,
-    unproject_output_from_region,
-    get_sensor_size,
-    project_sensor_to_region,
-    unproject_sensor_from_region,
-    project_compute_to_region,
-    unproject_compute_from_region,
-    fit_space_to_aspect,
-    map_space,
-    crop_space_to_aspect
-)
-
-
-
-from .uiview3d import UIView3D
 
 # local
 from . import solver
-from .draw_layer import DrawLayer
+from . import vl_utils
+from . import vl_coord_utils
+from . uiview3d import UIView3D
+from . vl_params import initialize_vl_settings
+
+
+# Constants
+FONT_SIZE = 16
+LINE_HEIGHT = 18
+ERROR_TEXT_X_OFFSET = 20
+ERROR_TEXT_Y_OFFSET = 40
 
 ###############
 # VL OPERATOR #
 ###############
-from typing import Callable
 
 
-class ControlPoint():
-    def __init__(self, data:bpy.types.ID, prop:str, *, 
-            setter:Callable|None=None, 
-            getter:Callable|None=None):
-        self._data = data
-        self._prop = prop
-
-        if setter is None:
-            self._setter = lambda data, prop, value: setattr(self._data, self._prop, value)
-        else:
-            self._setter = setter
-        
-        if getter is None:
-            self._getter = lambda data, prop: getattr(self._data, self._prop)
-        else:
-            self._getter = getter
-        
-    @property
-    def value(self):
-        return self._getter(self._data, self._prop)
-    
-    @value.setter
-    def value(self, value): # todo: we should use the actual _bpy prop_ type here, but how?
-        self._setter(self._data, self._prop, value)
-
-
-class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
+class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
     """align the camera based on vanishing lines"""
-    
     bl_idname = "view.vanishing_lines_operator"
     bl_label = "Vanishing Lines Operator"
     bl_options = {"REGISTER", "UNDO"}
+    bl_description  = "Start calibrating the active camera using vanishing lines"
     
-    # solver
+    # solver    
     _active_camera: bpy.types.Object|None = None
 
     # rendering
@@ -85,7 +47,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
     # Operator
     def invoke(self, context, event):
         # validate context
-        print("Invoking Vanishing Lines Operator")
         scene = context.scene
         if scene is None:
             self.report({'ERROR'}, "No active scene found")
@@ -100,61 +61,24 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
         if window_manager is None:
             self.report({'ERROR'}, "No active window manager found")
             return {'CANCELLED'}
-        
-        # activate the camera view
-        if scene.camera is None:
-            self.report({'ERROR'}, "Scene has no active camera set")
-            return {'CANCELLED'}
 
-        vl_utils.set_viewer_camera(context, scene.camera)
-        self._active_camera = vl_utils.get_viewer_camera(context)
+        # activate the camera view
+        self._active_camera = vl_utils.get_calibration_camera(context)
         if self._active_camera is None:
             self.report({'ERROR'}, "Scene has no active camera set")
             return {'CANCELLED'}
+        
+        vl_utils.set_view_camera(context, self._active_camera)
+
         
         # Setup controls layer
         self.uiview = UIView3D()
         
         # Setup default props if not initialized
         vl_settings = self._active_camera.data.vl_settings # type: ignore
-
-        def setup_defaults_props():
-            if not vl_settings.initialized:
-                vl_settings.origin = 0.0,  -0.25
-                vl_settings.principal = 0.0,  0.0
-                vl_settings.initialized = True
-
-            if len(vl_settings.first_vanishing_lines) == 0:
-                item = vl_settings.first_vanishing_lines.add()
-                item.start = -0.2, -0.53
-                item.end =    0.6,  0.12
-
-                item = vl_settings.first_vanishing_lines.add()
-                item.start = -0.88, 0.0
-                item.end =    0.09, 0.20
-
-            if len(vl_settings.second_vanishing_lines) == 0:
-                item = vl_settings.second_vanishing_lines.add()
-                item.start =  0.22, -0.48
-                item.end =   -0.80,  0.05
-
-                item = vl_settings.second_vanishing_lines.add()
-                item.start =  0.65, 0.05
-                item.end =   -0.10, 0.20
-
-            if len(vl_settings.third_vanishing_lines) == 0:
-                item = vl_settings.third_vanishing_lines.add()
-                item.start = -0.3, -0.52
-                item.end =   -0.4, 0.5
-
-                item = vl_settings.third_vanishing_lines.add()
-                item.start = 0.3, -0.52
-                item.end =   0.4, 0.5
-
-        setup_defaults_props()
+        initialize_vl_settings(vl_settings)
 
         # Initial Solve
-        self._active_camera = vl_utils.get_viewer_camera(context)
         self.update_solve(context)
 
         # # trigger redraw
@@ -177,8 +101,8 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
            area.tag_redraw()
 
     def modal(self, context, event):
-        if self._active_camera != vl_utils.get_viewer_camera(context): 
-            if context.area.type == 'VIEW_3D':
+        if self._active_camera != vl_utils.get_view_camera(context): 
+            if context.area and context.area.type == 'VIEW_3D':
                 context.area.tag_redraw()
             return {'FINISHED'}
         return self.uiview.event(context, event)
@@ -439,7 +363,7 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                             self.uiview.project(vp2), 
                             vl_utils.dim_color(get_axis_color(second_axis)))
                 except ValueError as e:
-                    warnings.warn(f"Could not compute VP1: {e}")
+                    warnings.warn(f"Could not compute VP2: {e}")
             else:
                 try:
                     vp2 = solver.core.compute_vanishing_point([
@@ -475,13 +399,9 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 if vl_settings.scene_scale_mode == 'SCREEN':
                     return mathutils.Vector((1,0))
                 else:
-                    match vl_settings.scene_scale_mode:
-                        case 'X_AXIS':
-                            axis_vector = (1,0,0)
-                        case 'Y_AXIS':
-                            axis_vector = (0,1,0)
-                        case 'Z_AXIS':
-                            axis_vector = (0,0,1)
+                    axis_vectors = {'X_AXIS': (1, 0, 0), 'Y_AXIS': (0, 1, 0), 'Z_AXIS': (0, 0, 1)}
+                    axis_vector = axis_vectors[vl_settings.scene_scale_mode]
+
                     region = context.region
                     rv3d = context.space_data.region_3d
                     R = view3d_utils.location_3d_to_region_2d(region, rv3d, axis_vector)
@@ -490,12 +410,6 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                     O = mathutils.Vector((vl_settings.origin[0], vl_settings.origin[1]))
                     return (R - O).normalized()
 
-            # self.uiview.prop_distance(vl_settings, "reference_distance", 
-            #     origin=vl_settings.origin,
-            #     direction=get_distance_measurement_direction(),
-            #     text="R",
-            #     color=ORANGE)
-            
             unit_settings = bpy.context.scene.unit_settings
             system = unit_settings.system
             scale = unit_settings.scale_length
@@ -514,225 +428,86 @@ class VIEW_OT_VanishingLinesOperator(bpy.types.Operator):
                 text=f"{vl_settings.scene_scale:.2f}{length_unit}",
                 color=ORANGE)
 
-        # # Reference Distance
-        # self.uiview._draw_layer.add_point(
-        #     self.uiview.project(
-        #         self.get_reference_distance_point(vl_settings)), 
-        #         (1.0, 1.0, 1.0, 1.0))
-        
-        # if vl_settings.scene_scale_mode != 'ORIGIN':
-        #     _ = self.uiview.prop_point(vl_settings, "reference_distance", 
-        #         text="R",
-        #         color=ORANGE,
-        #         setter=lambda data, prop, value: self.set_reference_distance_point(vl_settings, value),
-        #         getter=lambda data, prop: 
-        #             self.get_reference_distance_point(vl_settings))
-                
-        #     self.uiview._draw_layer.add_line(
-        #         self.uiview.project(vl_settings.origin), 
-        #         self.uiview.project(
-        #             self.get_reference_distance_point(vl_settings)),
-        #         vl_utils.dim_color(ORANGE, factor=0.7 if self.is_item_hovered() else 0.1))
-
-
-        # # draw sensor frame
-        # def draw_sensor_frame():
-        #     sensor_size = self.get_sensor_size()
-        #     bottom_left = self.project_sensor_to_region((0,0))
-        #     top_right = self.project_sensor_to_region(
-        #         (sensor_size[0], sensor_size[1]))
-
-        #     self._draw_layer.add_rect(
-        #         bottom_left,
-        #         (top_right[0]-bottom_left[0], top_right[1]-bottom_left[1]),
-        #         color=(0,1,1,0.5))
-
-        #     self._draw_layer.add_text(
-        #         bottom_left,
-        #         f"Sensor Frame",
-        #         color=(0,1,1,1))
-            
-        # draw_sensor_frame()
-
         # Draw error messages
         if error_msg:=vl_settings.error_message:
             lines = str(error_msg).splitlines()
-            font_size = 16
-            line_height = 18
-            text_height = line_height * len(lines)
+            text_height = LINE_HEIGHT * len(lines)
             font_id = 0
-            blf.position(font_id, 20, text_height+40, 0)
-            blf.size(font_id, font_size)
-            blf.color(font_id, 0.7,0.2,0.2,1)
+            blf.position(font_id, ERROR_TEXT_X_OFFSET, text_height + ERROR_TEXT_Y_OFFSET, 0)
+            blf.size(font_id, FONT_SIZE)
+            blf.color(font_id, 0.7, 0.2, 0.2, 1)
             for i, line in enumerate(lines):
-                blf.position(font_id, 20, text_height-line_height*i+40, 0)
+                blf.position(font_id, ERROR_TEXT_X_OFFSET, text_height - LINE_HEIGHT * i + ERROR_TEXT_Y_OFFSET, 0)
                 blf.draw(font_id, f"{line}")
 
         # Execute the draw calls
         self.uiview.render()
   
-    # GETTERS / SETTERS
-    def get_reference_distance_point(self, 
-        vl_settings) -> Tuple[float, float]:
-        """Get the reference distance point based on origin and reference distance."""
-
-        Ox, Oy = vl_settings.origin
-        O = mathutils.Vector((Ox, Oy))
-
-        if vl_settings.scene_scale_mode in {'SCREEN', 'ORIGIN'}:
-            rd = vl_settings.reference_distance
-            return (O.x + rd, O.y)
-
-        match vl_settings.scene_scale_mode:
-            case 'X_AXIS':
-                axis_vector = (1,0,0)
-            case 'Y_AXIS':
-                axis_vector = (0,1,0)
-            case 'Z_AXIS':
-                axis_vector = (0,0,1)
-
-        R = view3d_utils.location_3d_to_region_2d(self._region, self._region_data, axis_vector)
-        
-        R = self.unproject_compute_from_region((R.x, R.y))
-
-        R = mathutils.Vector((R[0], R[1]))
-        
-        d = vl_settings.reference_distance
-        n = (R - O).normalized()
-        v = n*d
-        R = O + v
-        return (R.x, R.y)
-        
-    def set_reference_distance_point(self, 
-        vl_settings, point:Tuple[float, float]) -> None:
-        """Set the reference distance based on a point and the origin."""
-
-        Ox, Oy = vl_settings.origin
-        O = mathutils.Vector((Ox, Oy))
-
-        if vl_settings.scene_scale_mode in {'SCREEN', 'ORIGIN'}:
-            Px, Py = point
-            vl_settings.reference_distance = math.sqrt((Px - Ox) ** 2 + (Py - Oy) ** 2)
-        
-        else:
-            match vl_settings.scene_scale_mode:
-                case 'X_AXIS':
-                    axis_vector = (1,0,0)
-                case 'Y_AXIS':
-                    axis_vector = (0,1,0)
-                case 'Z_AXIS':
-                    axis_vector = (0,0,1)
-
-            R = view3d_utils.location_3d_to_region_2d(self._region, self._region_data, axis_vector)
-            R = self.unproject_compute_from_region((R.x, R.y))
-            R = mathutils.Vector((R[0], R[1]))
-            l = (R - O).magnitude
-            n = (R - O) / l
-            P = mathutils.Vector((point[0], point[1]))
-            d = (P - O).dot(n)
-            vl_settings.reference_distance = d
         
     def get_compute_space(self) -> solver.types.Rect:
         """compute space is a normalized square"""
-        # for now this is hardcoded. TODO: make this user definable
-        return solver.types.Rect(-1,-1,2,2)
+        # TODO: make this user definable
+        return solver.types.Rect(-1, -1, 2, 2)
+    
 
-    def get_sensor_size(self) -> Tuple[float, float]:
-        return get_sensor_size(
-            self._active_camera.data.sensor_fit,
-            (self._active_camera.data.sensor_width, self._active_camera.data.sensor_height))
+class VIEW_OT_VanishingLinesStopOperator(bpy.types.Operator):
+    bl_idname = "view.vanishing_lines_stop_operator"
+    bl_label = "Stop Vanishing Lines Operator"
+    bl_description  = "Stop calibrating the active camera."
 
-    # # Coordinate Mapping
-    # def _project_output_to_region(self, output_coords: Tuple[float, float]) -> Tuple[float, float]:
-    #     """Convert output frame coordinates to region space using cached viewport state"""
-    #     assert self._output_size is not None, "Viewport state not initialized"
+    def execute(self, context):
+        for op in bpy.context.window.modal_operators:
+            if op.bl_idname == 'VIEW_OT_vanishing_lines_operator':
+                op.cancel(context)
+                return {'FINISHED'}
+        self.report({'WARNING'}, "No active Vanishing Lines Operator found")
+        return {'CANCELLED'}
 
-    #     return project_output_to_region(
-    #         fit_mode=self._active_camera.data.sensor_fit,
-    #         output_size = self._output_size,
-    #         region_size = self._region_size,
-    #         view_camera_zoom = self._view_camera_zoom,
-    #         view_camera_offset = self._view_camera_offset,
-    #         output_coords=output_coords)
+class CAMERA_OT_add_bg_image(bpy.types.Operator):
+    bl_idname = "camera.add_bg_image"
+    bl_label = "Add Background Image"
 
-    # def _unproject_output_from_region(self, region_coords: Tuple[float, float]) -> Tuple[float, float]:
-    #     """Convert region coordinates to output frame space using cached viewport state"""
-    #     assert self._output_size is not None, "Viewport state not initialized"
+    def execute(self, context):
+        cam = vl_utils.get_scene_camera(context)
+        cam.data.background_images.new()
 
-    #     return unproject_output_from_region(
-    #         fit_mode=self._active_camera.data.sensor_fit,
-    #         output_size = self._output_size,
-    #         region_size = self._region_size,
-    #         view_camera_zoom = self._view_camera_zoom,
-    #         view_camera_offset = self._view_camera_offset,
-    #         region_coords=region_coords)
+        # This forces the current area (the panel) to refresh immediately
+        for area in context.screen.areas:
+            if area.type == 'PROPERTIES':
+                area.tag_redraw()
 
-    # def project_sensor_to_region(self, sensor_coord:Tuple[float, float]) -> Tuple[float, float]:
-    #     """Project from sensor space to region space (uses cached viewport state)"""
-    #     assert self._output_size is not None, "Viewport state not initialized"
+        return {'FINISHED'}
 
-    #     sensor_size = self.get_sensor_size()
-    #     sensor_rect = solver.types.Rect(
-    #         x=0,
-    #         y=0,
-    #         width=sensor_size[0],
-    #         height=sensor_size[1])
+class CAMERA_OT_remove_bg_image(bpy.types.Operator):
+    """Remove a specific background image from the camera"""
+    bl_idname = "camera.remove_bg_image"
+    bl_label = "Remove Background Image"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # This property will hold the index of the image to remove
+    index: bpy.props.IntProperty()
+
+    def execute(self, context):
+        cam_data = vl_utils.get_scene_camera(context).data
         
-    #     return project_sensor_to_region(
-    #         fit_mode=self._active_camera.data.sensor_fit,
-    #         sensor_size = (sensor_rect.width, sensor_rect.height),
-    #         output_size = self._output_size,
-    #         region_size = self._region_size,
-    #         view_camera_zoom = self._view_camera_zoom,
-    #         view_camera_offset = self._view_camera_offset,
-    #         sensor_coords=sensor_coord)
-    
-    # def unproject_sensor_from_region(self, coord: Tuple[float, float]) -> Tuple[float, float]:
-    #     raise NotImplementedError("unproject_sensor_from_region not implemented yet")
+        # Check if the index is valid before trying to remove
+        try:
+            cam_data.background_images.remove(cam_data.background_images[self.index])
 
-    # def project_compute_to_region(self, coord:Tuple[float, float]) -> Tuple[float, float]:
-    #     """Project from computation viewport to region space (uses cached viewport state)"""
-    #     x, y = coord
-    #     assert isinstance(x, (int, float)), f"got: {x}"
-    #     assert isinstance(y, (int, float)), f"got: {y}"
-    #     assert self._output_size is not None, "Viewport state not initialized"
-
-    #     x, y, w, h = self.get_compute_space()
-    #     return project_compute_to_region(
-    #         fit_mode=self._active_camera.data.sensor_fit,
-    #         compute_rect = (x, y, w, h),
-    #         output_size = self._output_size,
-    #         region_size = self._region_size,
-    #         view_camera_zoom = self._view_camera_zoom,
-    #         view_camera_offset = self._view_camera_offset,
-    #         compute_coords=coord
-    #     )
-
-    # def unproject_compute_from_region(self, coord: Tuple[float, float]) -> Tuple[float, float]:
-    #     """Map from region space to computation viewport (uses cached viewport state)"""
-    #     x, y = coord
-    #     assert isinstance(x, (int, float)), f"got: {x}"
-    #     assert isinstance(y, (int, float)), f"got: {y}"
-    #     assert self._output_size is not None, "Viewport state not initialized"
-
-    #     x, y, w, h = self.get_compute_space()
-    #     return unproject_compute_from_region(
-    #         fit_mode=self._active_camera.data.sensor_fit,
-    #         compute_rect = (x, y, w, h),
-    #         output_size = self._output_size,
-    #         region_size = self._region_size,
-    #         view_camera_zoom = self._view_camera_zoom,
-    #         view_camera_offset = self._view_camera_offset,
-    #         region_coords=coord
-    #     )
-    
-
+            # This forces the current area (the panel) to refresh immediately
+            for area in context.screen.areas:
+                if area.type == 'PROPERTIES':
+                    area.tag_redraw()
+        except IndexError:
+            self.report({'WARNING'}, "Invalid background image index")
+            
+        return {'FINISHED'}
 
 ######################
 # REGISTER FUNCTIONS #
 ######################
 def view_menu_func(self, context):
-    self.layout.operator(VIEW_OT_VanishingLinesOperator.bl_idname, text="Vanishing Lines Modal Operator")
+    self.layout.operator(VIEW_OT_VanishingLinesStartOperator.bl_idname, text="Vanishing Lines Modal Operator")
 
 def view_draw_func():
     # global draw_list
@@ -747,15 +522,19 @@ def on_depsgraph_update(scene, depsgraph):
 draw_handler = None
 def register():
     global draw_handler
-    bpy.utils.register_class(VIEW_OT_VanishingLinesOperator)
+    bpy.utils.register_class(CAMERA_OT_add_bg_image)
+    bpy.utils.register_class(CAMERA_OT_remove_bg_image)
+    bpy.utils.register_class(VIEW_OT_VanishingLinesStartOperator)
+    bpy.utils.register_class(VIEW_OT_VanishingLinesStopOperator)
+
     draw_handler = bpy.types.SpaceView3D.draw_handler_add(
             view_draw_func, 
             (), 
             'WINDOW', 
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
         )
+    
     bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update)
-
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
 def unregister():
@@ -766,38 +545,7 @@ def unregister():
         draw_handler = None
 
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
-    bpy.utils.unregister_class(VIEW_OT_VanishingLinesOperator)
-
-
-# TODO:
-# consider using a message bus to trigger updates instead of depsgraph updates
-# import bpy
-
-# # 1. Define the function that should run when the property changes
-# def notify_test(context):
-#     print("VL Settings changed!")
-#     # Force a redraw of all 3D views
-#     for area in context.screen.areas:
-#         if area.type == 'VIEW_3D':
-#             area.tag_redraw()
-
-# # We need a persistent reference to the handle
-# subscription_handle = object()
-
-# def register():
-#     # ... your existing registration ...
-    
-#     # 2. Subscribe to the 'vl_settings' property on any Camera
-#     subscribe_to = (bpy.types.Camera, "vl_settings")
-    
-#     bpy.msgbus.subscribe_rna(
-#         key=subscribe_to,
-#         owner=subscription_handle,
-#         args=(bpy.context,),
-#         notify=notify_test,
-#     )
-
-# def unregister():
-#     # 3. Clean up the subscription
-#     bpy.msgbus.clear_by_owner(subscription_handle)
-#     # ... your existing unregistration ...
+    bpy.utils.unregister_class(VIEW_OT_VanishingLinesStopOperator)
+    bpy.utils.unregister_class(VIEW_OT_VanishingLinesStartOperator)
+    bpy.utils.unregister_class(CAMERA_OT_remove_bg_image)
+    bpy.utils.unregister_class(CAMERA_OT_add_bg_image)
