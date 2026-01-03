@@ -46,7 +46,7 @@ if __name__ == "__main__":
     project_root = Path(__file__).parent.parent
     sys.path.insert(0, str(project_root / "vanishing_lines_for_blender"))
 
-import vl_coord_utils
+from vanishing_lines_for_blender import vl_coord_utils
 
 wide_output = (1920, 1080)
 tall_output = (1080, 1920)
@@ -270,6 +270,60 @@ def test_unproject_compute_from_region(
 
     assert pytest.approx(unproject_result[0], rel=1e-3) == compute_coords[0]
     assert pytest.approx(unproject_result[1], rel=1e-3) == compute_coords[1]
+
+class MockContext:
+    """Mock Blender context for testing"""
+    def __init__(self, region_size, output_size, sensor_fit):
+        # Create nested mock structure
+        self.region = type('Region', (), {
+            'width': region_size[0],
+            'height': region_size[1]
+        })()
+        
+        self.scene = type('Scene', (), {
+            'render': type('Render', (), {
+                'resolution_x': output_size[0],
+                'resolution_y': output_size[1]
+            })()
+        })()
+        
+        self.space_data = type('SpaceData', (), {
+            'region_3d': type('RegionView3D', (), {
+                'view_camera_zoom': -6.109,
+                'view_camera_offset': (-0.07, -0.03)
+            })(),
+            'camera': type('Object', (), {
+                'data': type('Camera', (), {
+                    'sensor_fit': sensor_fit,
+                    'sensor_width': 36.0,
+                    'sensor_height': 24.0
+                })()
+            })()
+        })()
+
+# from vanishing_lines_for_blender import uiview3d
+# from vanishing_lines_for_blender import vl_coord_utils
+
+# @pytest.mark.parametrize("fit_mode, region_size, output_size, sensor_size, compute_coords, region_coords",
+#   compute_combinations)
+# def test_project_compute_to_region(
+#     fit_mode:Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+#     region_size, 
+#     output_size,
+#     sensor_size,
+#     compute_coords,
+#     region_coords):
+    
+#     # Create mock context
+#     context = MockContext(region_size, output_size, fit_mode)
+    
+#     uiview = uiview3d.UIView3D()
+#     uiview.set_coordinate_system_to_camera_frame(context)
+
+#     result = uiview.project(compute_coords)
+    
+#     assert pytest.approx(result[0], rel=1e-3) == region_coords[0]
+#     assert pytest.approx(result[1], rel=1e-3) == region_coords[1]
 
   
 

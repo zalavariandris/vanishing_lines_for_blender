@@ -3,7 +3,7 @@ import math
 import mathutils
 from typing import Tuple, Iterable, cast
 from . import solver
-import glm
+from pyglm import glm
 import warnings
 ####################
 # HELPER FUNCTIONS #

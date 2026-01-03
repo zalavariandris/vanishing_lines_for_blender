@@ -27,9 +27,14 @@ __work in progress__
 - [ ] test with blender's python.
       add to 'settings.json': "python.defaultInterpreterPath": "C:\\Program Files\\Blender Foundation\\Blender 4.5\\4.5\\python\\bin\\python.exe"
 
-### 
+### Comprehensive testing
 - [ ] create a user test documentation, for to test user interface and find bugs
 - [ ] see what else can be tested without blender
+- [ ] test with the actual blender python: https://github.com/mondeja/pytest-blender
+- [ ] mock bpy: fake-bpy-module
+- [ ] implement UNOD? One thing pytest often misses is how an addon affects Blender's Undo Stack.
+
+### 
 - [x] On the Sidepanel clearly indicate which camera-object, the solver is working on.
 - [ ] ~~consider calibrating the view's local matrices if no camera is available, or no camera is activated, and add an option to create one.  -> In practice i dont think this would have any usefulness. Instead make it clear which camera a view is adjustin.~~
 

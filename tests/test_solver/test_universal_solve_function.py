@@ -4,7 +4,7 @@ import numpy as np
 import sys
 from pathlib import Path
 from typing import Literal
-import solver
+from vanishing_lines_for_blender import solver
 
 
 ############################
