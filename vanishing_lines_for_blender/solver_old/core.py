@@ -1,5 +1,5 @@
 # standard library
-from typing import List, Tuple, Literal
+from typing import List, Tuple
 import warnings
 
 # third party library
@@ -51,8 +51,7 @@ def solve(
         reference_world_size:float,
 
         first_axis:Axis,
-        second_axis:Axis,
-        handedness:Literal['right-handed', 'left-handed']="right-handed" 
+        second_axis:Axis
     )->Tuple[glm.mat4, glm.mat4]:
 
     match mode:
@@ -107,8 +106,7 @@ def solve(
     view = adjust_axis_assignment(
         first_axis,
         second_axis,
-        view,
-        handedness
+        view
     )    
     
     if reference_axis is not None:
@@ -444,14 +442,13 @@ def adjust_scale_to_reference_distance(
 def adjust_axis_assignment(
         first_axis: Axis, 
         second_axis: Axis,
-        view_matrix:glm.mat4,
-        handedness:Literal['right-handed', 'left-handed']='right-handed'
+        view_matrix:glm.mat4
     )->glm.mat4:
     """adjust a view matrix to match user-specified axis assignment. when used as a trasform matrix.
     create_axis_assignment_matrix crates a native transform matrix"""
-    return view_matrix * glm.inverse(glm.mat4(create_axis_assignment_matrix(first_axis, second_axis, handedness))) # type: ignore[return-value] # PyGLM type stubs incorrectly infer mat4x2
+    return view_matrix * glm.inverse(glm.mat4(create_axis_assignment_matrix(first_axis, second_axis))) # type: ignore[return-value] # PyGLM type stubs incorrectly infer mat4x2
 
-def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis, handedness:Literal['right-handed', 'left-handed']='right-handed') -> glm.mat3:
+def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.mat3:
     """
     Creates an axis assignment matrix that maps vanishing point directions to user-specified world axes.
     
@@ -494,7 +491,7 @@ def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis, handednes
     # Get the unit vectors for the specified axes
     forward = helpers.vector_from_axis(first_axis)
     right = helpers.vector_from_axis(second_axis)
-    up = helpers.third_axis_vector(first_axis, second_axis, handedness=handedness) # Todo: make sure this is correct
+    up = helpers.third_axis_vector(first_axis, second_axis, handedness="right") # Todo: make sure this is correct
     
     # Build the matrix with each row representing the target world axis
     axis_assignment_matrix = glm.mat3( # Note: this is the inverse of the mat3_from_directions

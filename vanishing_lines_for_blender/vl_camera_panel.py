@@ -21,6 +21,7 @@ class CAMERA_PT_custom_panel(bpy.types.Panel):
         vl_panel_components.draw_reference_distance_panel(layout, context.active_object)
         vl_panel_components.draw_axis_assignment_panel(layout, context.active_object)
         vl_panel_components.draw_coordinates_panel(layout, context.active_object)
+        vl_panel_components.draw_experimental_panel(layout, context.active_object)
 
 def register():
     bpy.utils.register_class(CAMERA_PT_custom_panel)

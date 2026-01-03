@@ -43,7 +43,6 @@ def apply_solver_results_to_blender_camera(
         view: glm.mat4, 
         camera_object: bpy.types.Object,
         compute_space: solver.types.Rect,
-        output_size: Tuple[float, float],
         fit_mode: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']
     ) -> None:
     """
@@ -66,6 +65,9 @@ def apply_solver_results_to_blender_camera(
     if not isinstance(camera_object.data, bpy.types.Camera):
         raise TypeError("Expected a Camera data-block")
     
+    if tuple(compute_space) != (-1, -1, 2, 2):
+        raise ValueError(f"Compute space other than [-1,-1,2,2] is not supported; got {compute_space}.")
+    
     # Apply transform
     transform = glm.inverse(view)
     transform_list = [[v for v in row] for row in glm.transpose(transform)]
@@ -77,19 +79,18 @@ def apply_solver_results_to_blender_camera(
     camera_data.sensor_fit = fit_mode
 
     # Calculate the aspect ratio correction factor
-    compute_aspect = compute_space.width / compute_space.height
-    output_aspect = output_size[0] / output_size[1]
-
     match fit_mode:
         case 'AUTO':
-            if compute_aspect >= output_aspect:
-                effective_sensor_size = max(camera_data.sensor_width, camera_data.sensor_height)
-                focal_length = f / compute_space.width * effective_sensor_size
-                camera_data.lens = focal_length
-            else:
-                effective_sensor_size = max(camera_data.sensor_width, camera_data.sensor_height)
-                focal_length = f / compute_space.height * effective_sensor_size
-                camera_data.lens = focal_length
+            effective_sensor_size = camera_data.sensor_width # when sensor_fit is AUTO, blender uses the _sensor_width_ parameter as sensor effective size for both dimensions.
+            focal_length = f / compute_space.width * effective_sensor_size
+            camera_data.lens = focal_length
+            # effective_sensor_size = camera_data.sensor_width # when sensor_fit is AUTO, blender uses the _sensor_width_ parameter as sensor effective size for both dimensions.
+            # if compute_aspect >= output_aspect:
+            #     focal_length = f / compute_space.width * effective_sensor_size
+            #     camera_data.lens = focal_length
+            # else:
+            #     focal_length = f / compute_space.height * effective_sensor_size
+            #     camera_data.lens = focal_length
 
         case 'HORIZONTAL':
             focal_length = f / compute_space.width * camera_data.sensor_width

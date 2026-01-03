@@ -42,7 +42,11 @@ class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
         else:
             control_row.operator(OPERATOR_ID_STOP, text="Stop", icon='SNAP_FACE')
 
-        self.layout.prop(camera.data.vl_settings, "solver_is_paused", text="Pause Solver", icon='PAUSE')
+        # col = self.layout.column()
+        # col.use_property_split = True
+        # col.use_property_decorate = False
+        
+        # col.prop(camera.data.vl_settings, "update_strategy", text="Update")
         
         self.layout.separator()
         

@@ -28,18 +28,22 @@ __work in progress__
       add to 'settings.json': "python.defaultInterpreterPath": "C:\\Program Files\\Blender Foundation\\Blender 4.5\\4.5\\python\\bin\\python.exe"
 
 ### 
-- [x] active camera selection, must be obvious in the sidepanel. All panels operators must woirk on the active camera. we have to store the working camera somewhere, so all the ui panels can access it and work on the same one.
-  - in the ui we could select options to determine the active amera, or for now, experience with them: 
-    - scene.camera
-    - get the camera if the viewer is looking throiugh one
-    - select a camera from a list of cameras to work on, than make sure, the viewer is looking through.
-    - what i fmultiple cameras or multiple viewers are on the screen? !!!
-
 - [ ] create a user test documentation, for to test user interface and find bugs
 - [ ] see what else can be tested without blender
+- [x] On the Sidepanel clearly indicate which camera-object, the solver is working on.
+- [ ] ~~consider calibrating the view's local matrices if no camera is available, or no camera is activated, and add an option to create one.  -> In practice i dont think this would have any usefulness. Instead make it clear which camera a view is adjustin.~~
 
-### !!!
-- [!] solver now only support right-handed coordinate systems. implement _left handed_ as well.
+
+### FIX bugs
+- [x] FIX when camera sensor fit set to auto and sensor_width is less than sensor_height there is a mismatch! TODO: this bug was not caught by the tests
+
+###
+- [ ] update strategy: update on dependency graph change | update on user interaction
+- [ ] implement Manual solve
+- [x] solve camera calibration on depsgruph update, even if operator is not running
+  -> [x] to do so, the update_solve should not be dependent on the output resolution.
+- [x] solver now only support right-handed coordinate systems. implement _left handed_ as well.
+
 
 ###
 REVIEW

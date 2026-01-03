@@ -29,6 +29,89 @@ ERROR_TEXT_Y_OFFSET = 40
 ###############
 # VL OPERATOR #
 ###############
+# commands
+def update_solve(camera_object:bpy.types.Object, compute_space:solver.types.Rect = solver.types.Rect(-1, -1, 2, 2)):
+    vl_settings = camera_object.data.vl_settings
+
+    if not vl_settings.enable_manual_principal:
+        vl_settings.principal = compute_space.center
+
+    try:
+        mode = {"ONE_POINT":   solver.types.SolverMode.OneVP,
+                "TWO_POINT":   solver.types.SolverMode.TwoVP,
+                "THREE_POINT": solver.types.SolverMode.ThreeVP
+        }[vl_settings.mode]
+
+        reference_axis = {
+            'ORIGIN': None,# TODO: ORIGIN option
+            'SCREEN': solver.types.ReferenceAxis.Screen,
+            'X_AXIS': solver.types.ReferenceAxis.X_Axis,
+            'Y_AXIS': solver.types.ReferenceAxis.Y_Axis,
+            'Z_AXIS': solver.types.ReferenceAxis.Z_Axis
+        }[vl_settings.scene_scale_mode]
+
+        first_axis = {
+            'X+': solver.types.Axis.PositiveX,
+            'Y+': solver.types.Axis.PositiveY,
+            'Z+': solver.types.Axis.PositiveZ,
+            'X-': solver.types.Axis.NegativeX,
+            'Y-': solver.types.Axis.NegativeY,
+            'Z-': solver.types.Axis.NegativeZ
+        }[vl_settings.first_axis]
+
+        second_axis = {
+            'X+': solver.types.Axis.PositiveX,
+            'Y+': solver.types.Axis.PositiveY,
+            'Z+': solver.types.Axis.PositiveZ,
+            'X-': solver.types.Axis.NegativeX,
+            'Y-': solver.types.Axis.NegativeY,
+            'Z-': solver.types.Axis.NegativeZ
+        }[vl_settings.second_axis]
+
+        second_vanishing_lines = [(line.start, line.end) for line in vl_settings.second_vanishing_lines]
+        if vl_settings.quad_mode and mode in {solver.types.SolverMode.TwoVP, solver.types.SolverMode.ThreeVP}:
+            first_line = vl_settings.first_vanishing_lines[ 0]
+            last_line =  vl_settings.first_vanishing_lines[-1]
+
+            second_vanishing_lines = [
+                (first_line.start, last_line.start), (first_line.end, last_line.end)
+            ]
+        
+        projection, view = solver.core.solve(
+            mode = mode,
+            viewport=compute_space,
+            first_vanishing_lines= [(line.start, line.end) for line in  vl_settings.first_vanishing_lines],
+            second_vanishing_lines=second_vanishing_lines,
+            third_vanishing_lines= [(line.start, line.end) for line in  vl_settings.third_vanishing_lines],
+
+            f = camera_object.data.lens / camera_object.data.sensor_width * compute_space.height,
+            P = (vl_settings.principal[0], vl_settings.principal[1]), # TODO: is [0], [1] necessary?
+            O = (vl_settings.origin[0], vl_settings.origin[1]),
+
+            reference_axis=reference_axis, # TODO: make configurable
+            reference_distance_segment=(vl_settings.reference_distance_segment[0], vl_settings.reference_distance_segment[1]-vl_settings.reference_distance_segment[0]), # TODO: make fist value configurable
+            reference_world_size=vl_settings.scene_scale,
+
+            first_axis=first_axis,
+            second_axis=second_axis
+        )
+
+        vl_utils.apply_solver_results_to_blender_camera(
+            projection=projection, 
+            view=view, 
+            camera_object=camera_object, 
+            compute_space=compute_space, 
+            fit_mode=camera_object.data.sensor_fit
+        )
+
+        vl_settings.error_message = ""
+                
+    except Exception as e:
+        error_type = type(e).__name__  # Gets 'ValueError' as a string
+        error_message = str(e)         # Gets the actual message you wrote in 'raise'
+        vl_settings.error_message = f"{error_type}\n{error_message}"
+        import traceback
+        traceback.print_exc()
 
 
 class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
@@ -69,7 +152,6 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
             return {'CANCELLED'}
         
         vl_utils.set_view_camera(context, self._active_camera)
-
         
         # Setup controls layer
         self.uiview = UIView3D()
@@ -79,7 +161,7 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
         initialize_vl_settings(vl_settings)
 
         # Initial Solve
-        self.update_solve(context)
+        update_solve(self._active_camera)
 
         # # trigger redraw
         if area.type == 'VIEW_3D':
@@ -105,118 +187,12 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
             if context.area and context.area.type == 'VIEW_3D':
                 context.area.tag_redraw()
             return {'FINISHED'}
-        return self.uiview.event(context, event)
-
-    def _on_deps_graph_update(self, scene, depsgraph:bpy.types.Depsgraph):
-        """when the depsgraph changes, regarding the active camera, 
-        or the output resolution, we update the solve."""
         
-        updates:bpy.types.bpy_prop_collection[bpy.types.DepsgraphUpdate] = depsgraph.updates
-        for update in updates:
-            # print("Depsgraph update:", update.id)
-            if isinstance(update.id, bpy.types.Camera):
-                self.update_solve(bpy.context)
-
-    # commands
-    def update_solve(self, context):
-        # print("update solve called")
-        # region = context.region
-        # rv3d = context.space_data.region_3d
-        if self._active_camera is None:
-            self.report({'ERROR'}, "Scene has no active camera set")
-            return
-        
-        camera_object: bpy.types.Object = self._active_camera
-        if camera_object.type != 'CAMERA':
-            self.report({'ERROR'}, "Active camera is not a camera object")
-            return
-
-        vl_settings = camera_object.data.vl_settings
-        
-        if vl_settings.solver_is_paused:
-            return
-
-        if not vl_settings.enable_manual_principal:
-            vl_settings.principal = self.get_compute_space().center
-
-        try:
-            mode = {"ONE_POINT":   solver.types.SolverMode.OneVP,
-                    "TWO_POINT":   solver.types.SolverMode.TwoVP,
-                    "THREE_POINT": solver.types.SolverMode.ThreeVP
-            }[vl_settings.mode]
-
-            reference_axis = {
-                'ORIGIN': None,# TODO: ORIGIN option
-                'SCREEN': solver.types.ReferenceAxis.Screen,
-                'X_AXIS': solver.types.ReferenceAxis.X_Axis,
-                'Y_AXIS': solver.types.ReferenceAxis.Y_Axis,
-                'Z_AXIS': solver.types.ReferenceAxis.Z_Axis
-            }[vl_settings.scene_scale_mode]
-
-            first_axis = {
-                'X+': solver.types.Axis.PositiveX,
-                'Y+': solver.types.Axis.PositiveY,
-                'Z+': solver.types.Axis.PositiveZ,
-                'X-': solver.types.Axis.NegativeX,
-                'Y-': solver.types.Axis.NegativeY,
-                'Z-': solver.types.Axis.NegativeZ
-            }[vl_settings.first_axis]
-
-            second_axis = {
-                'X+': solver.types.Axis.PositiveX,
-                'Y+': solver.types.Axis.PositiveY,
-                'Z+': solver.types.Axis.PositiveZ,
-                'X-': solver.types.Axis.NegativeX,
-                'Y-': solver.types.Axis.NegativeY,
-                'Z-': solver.types.Axis.NegativeZ
-            }[vl_settings.second_axis]
-
-            
-            second_vanishing_lines = [(line.start, line.end) for line in vl_settings.second_vanishing_lines]
-            if vl_settings.quad_mode and mode in {solver.types.SolverMode.TwoVP, solver.types.SolverMode.ThreeVP}:
-                first_line = vl_settings.first_vanishing_lines[ 0]
-                last_line =  vl_settings.first_vanishing_lines[-1]
-
-                second_vanishing_lines = [
-                    (first_line.start, last_line.start), (first_line.end, last_line.end)
-                ]
-            
-            projection, view = solver.core.solve(
-                mode = mode,
-                viewport=self.get_compute_space(),
-                first_vanishing_lines= [(line.start, line.end) for line in  vl_settings.first_vanishing_lines],
-                second_vanishing_lines=second_vanishing_lines,
-                third_vanishing_lines= [(line.start, line.end) for line in  vl_settings.third_vanishing_lines],
-
-                f = camera_object.data.lens / camera_object.data.sensor_width * self.get_compute_space().height,
-                P = (vl_settings.principal[0], vl_settings.principal[1]), # TODO: is [0], [1] necessary?
-                O = (vl_settings.origin[0], vl_settings.origin[1]),
-
-                reference_axis=reference_axis, # TODO: make configurable
-                reference_distance_segment=(vl_settings.reference_distance_segment[0], vl_settings.reference_distance_segment[1]-vl_settings.reference_distance_segment[0]), # TODO: make fist value configurable
-                reference_world_size=vl_settings.scene_scale,
-
-                first_axis=first_axis,
-                second_axis=second_axis
-            )
-
-            vl_utils.apply_solver_results_to_blender_camera(
-                projection=projection, 
-                view=view, 
-                camera_object=camera_object, 
-                compute_space=self.get_compute_space(), 
-                output_size=(context.scene.render.resolution_x, context.scene.render.resolution_y),
-                fit_mode=camera_object.data.sensor_fit
-            )
-
-            vl_settings.error_message = ""
-                    
-        except Exception as e:
-            error_type = type(e).__name__  # Gets 'ValueError' as a string
-            error_message = str(e)         # Gets the actual message you wrote in 'raise'
-            vl_settings.error_message = f"{error_type}\n{error_message}"
-            import traceback
-            traceback.print_exc()
+        result = self.uiview.event(context, event)
+        if self._active_camera.data.vl_settings.update_strategy == 'ON_UI_CHANGE':
+            if result & {'RUNNING_MODAL', 'FINISHED'}:
+                update_solve(self._active_camera)
+        return result
 
     def draw_view(self, context):
         try:
@@ -345,7 +321,6 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
                 warnings.warn(f"Could not compute VP1: {e}")
 
         if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
-            
             if vl_settings.quad_mode:
                 try:
                     first_line = vl_settings.first_vanishing_lines[ 0]
@@ -463,6 +438,7 @@ class VIEW_OT_VanishingLinesStopOperator(bpy.types.Operator):
         self.report({'WARNING'}, "No active Vanishing Lines Operator found")
         return {'CANCELLED'}
 
+
 class CAMERA_OT_add_bg_image(bpy.types.Operator):
     bl_idname = "camera.add_bg_image"
     bl_label = "Add Background Image"
@@ -478,6 +454,7 @@ class CAMERA_OT_add_bg_image(bpy.types.Operator):
 
         return {'FINISHED'}
 
+
 class CAMERA_OT_remove_bg_image(bpy.types.Operator):
     """Remove a specific background image from the camera"""
     bl_idname = "camera.remove_bg_image"
@@ -485,7 +462,7 @@ class CAMERA_OT_remove_bg_image(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     # This property will hold the index of the image to remove
-    index: bpy.props.IntProperty()
+    index: bpy.props.IntProperty() # type: ignore
 
     def execute(self, context):
         cam_data = vl_utils.get_scene_camera(context).data
@@ -516,8 +493,14 @@ def view_draw_func():
         op.draw_view(bpy.context)
 
 def on_depsgraph_update(scene, depsgraph):
-    if op:=vl_utils.get_running_operator_by_idname("VIEW_OT_vanishing_lines_operator"):
-        op._on_deps_graph_update(scene, depsgraph)
+    """when the depsgraph changes, regarding the active camera, 
+    or the output resolution, we update the solve."""
+    for update in depsgraph.updates:
+        if isinstance(update.id, bpy.types.Camera):
+            if update.id.vl_settings.update_strategy == 'ON_DEPSGRAPH_UPDATE':
+                camera_objects = [obj for obj in bpy.data.objects if obj.data.name == update.id.name and obj.type == 'CAMERA']
+                for camera_object in camera_objects:
+                    update_solve(camera_object)
 
 draw_handler = None
 def register():
@@ -534,15 +517,16 @@ def register():
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
         )
     
-    bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update)
+    bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update) #TODO: this might supposed to be _pre_ update?
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
 def unregister():
     global draw_handler
-    bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
     if draw_handler is not None:
         bpy.types.SpaceView3D.draw_handler_remove(draw_handler, 'WINDOW')
         draw_handler = None
+
+    bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
 
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesStopOperator)

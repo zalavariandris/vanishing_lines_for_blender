@@ -177,14 +177,13 @@ def axis_positive_vector(axis: Axis)->glm.vec3:
         case Axis.PositiveZ | Axis.NegativeZ:
             return glm.vec3(0, 0, 1)
         
-def third_axis_vector(axis1:Axis, axis2:Axis, handedness:Literal["left-handed", "right-handed"]="right-handed")->glm.vec3:
+def third_axis_vector(axis1:Axis, axis2:Axis, handedness:Literal["left", "right"]="right")->glm.vec3:
     """get the vector of the third, perpendicular axis given two axes"""
     vec1 = vector_from_axis(axis1)
     vec2 = vector_from_axis(axis2)
-    return glm.normalize(glm.cross(vec1, vec2)) if handedness=="right-handed" else glm.normalize(glm.cross(vec2, vec1))
+    return glm.normalize(glm.cross(vec1, vec2)) if handedness=="right" else glm.normalize(glm.cross(vec2, vec1))
 
-
-def third_axis(axis1:Axis, axis2:Axis, handedness:Literal["left-handed", "right-handed"]="right-handed")->Axis:
+def third_axis(axis1:Axis, axis2:Axis, handedness:Literal["left", "right"]="right")->Axis:
     """Get the primary axis enum of the third, perpendicular axis given two axes.
     
     Args:

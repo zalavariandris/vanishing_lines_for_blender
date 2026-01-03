@@ -69,13 +69,6 @@ class VLSettings(bpy.types.PropertyGroup):
         default=False, 
         options={'HIDDEN'}
     ) # type: ignore
-    
-    solver_is_paused: bpy.props.BoolProperty(
-        name="Paused", 
-        default=False,
-        update=update_camera_vl,
-        description="Pause the vanishing lines solver. Allows editing points without recalculation."
-    ) # type: ignore
 
     mode: bpy.props.EnumProperty(
         name="Perspective Mode",
@@ -86,21 +79,24 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='THREE_POINT',
         update=update_camera_vl,
-        description="Number of vanishing points to use for camera calibration"
+        description="Number of vanishing points to use for camera calibration", 
+        options=set()
     ) # type: ignore
 
     enable_manual_principal: bpy.props.BoolProperty(
         name="Manual Principal Point",
         default=False,
         update=update_camera_vl,
-        description="Manually set the principal point instead of using the image center"
+        description="Manually set the principal point instead of using the image center", 
+        options=set()
     ) # type: ignore
 
     quad_mode: bpy.props.BoolProperty(
         name="Quad Mode",
         default=False,
         update=update_camera_vl,
-        description="Use quadrilateral corners to define second vanishing point"
+        description="Use quadrilateral corners to define second vanishing point", 
+        options=set()
     ) # type: ignore
 
     scene_scale_mode: bpy.props.EnumProperty(
@@ -114,7 +110,8 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='X_AXIS',
         update=update_camera_vl,
-        description="Method for determining scene scale reference"
+        description="Method for determining scene scale reference", 
+        options=set()
     ) # type: ignore
 
     scene_scale: bpy.props.FloatProperty(
@@ -125,7 +122,8 @@ class VLSettings(bpy.types.PropertyGroup):
         update=update_camera_vl,
         unit='LENGTH',
         subtype='DISTANCE',
-        description="Real-world size of the reference measurement for scale calibration"
+        description="Real-world size of the reference measurement for scale calibration", 
+        options=set()
     ) # type: ignore
 
     reference_distance_segment: bpy.props.FloatVectorProperty(
@@ -133,7 +131,8 @@ class VLSettings(bpy.types.PropertyGroup):
         size=2,
         default=(0.0, 0.5),
         update=update_camera_vl,
-        description="Start and end points of the reference distance segment for scale measurement"
+        description="Start and end points of the reference distance segment for scale measurement", 
+        options=set()
     ) # type: ignore
 
     first_axis: bpy.props.EnumProperty(
@@ -148,7 +147,8 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='Y+',
         update=update_camera_vl,
-        description="First vanishing point axis orientation"
+        description="First vanishing point axis orientation", 
+        options=set()
     ) # type: ignore
 
     second_axis: bpy.props.EnumProperty(
@@ -163,7 +163,8 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='X-',
         update=update_camera_vl,
-        description="Second vanishing point axis orientation"
+        description="Second vanishing point axis orientation", 
+        options=set()
     ) # type: ignore
 
     origin: bpy.props.FloatVectorProperty(
@@ -171,7 +172,8 @@ class VLSettings(bpy.types.PropertyGroup):
         size=2,
         default=(0.0, 0.0),
         update=update_camera_vl,
-        description="Origin point for reference measurements in normalized image space"
+        description="Origin point for reference measurements in normalized image space", 
+        options=set()
     ) # type: ignore
     
     principal: bpy.props.FloatVectorProperty(
@@ -179,20 +181,42 @@ class VLSettings(bpy.types.PropertyGroup):
         size=2,
         default=(0.0, 0.0),
         update=update_camera_vl,
-        description="Principal point (optical center) in normalized image space"
+        description="Principal point (optical center) in normalized image space", 
+        options=set()
     ) # type: ignore
 
     # Collections: Note that 'update' on the collection itself 
     # only fires if the collection pointer changes.
     # The actual updates are driven by the 'Line' properties above.
-    first_vanishing_lines: bpy.props.CollectionProperty(type=Line) # type: ignore
-    second_vanishing_lines: bpy.props.CollectionProperty(type=Line) # type: ignore
-    third_vanishing_lines: bpy.props.CollectionProperty(type=Line) # type: ignore
+    first_vanishing_lines: bpy.props.CollectionProperty(
+        type=Line, 
+        options=set()) # type: ignore
+    second_vanishing_lines: bpy.props.CollectionProperty(
+        type=Line, 
+        options=set()) # type: ignore
+    third_vanishing_lines: bpy.props.CollectionProperty(
+        type=Line, 
+        options=set()) # type: ignore
+
+    update_strategy: bpy.props.EnumProperty(
+        name="Update Strategy",
+        items=[
+            # ('MANUAL', "Manual", "Update manually"),
+            ('ON_UI_CHANGE', "UI", "Update on user interface events"),
+            ('ON_DEPSGRAPH_UPDATE', "Depsgraph", "Update on dependency graph changes")
+            
+        ],
+        default='ON_UI_CHANGE',
+        update=update_camera_vl, # TODO: this probably shoudl be empty
+        description="Strategy for updating the solver when changes occur", 
+        options=set()
+    ) # type: ignore
 
     error_message: bpy.props.StringProperty(
         name="Error Message",
         default="",
-        update=update_camera_vl
+        update=update_camera_vl, 
+        options=set()
     ) # type: ignore
 ######################
 # REGISTER FUNCTIONS #
