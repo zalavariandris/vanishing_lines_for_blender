@@ -263,3 +263,4 @@ def draw_all_icons(layout):
             col.label(text=icon, icon=icon)
         except TypeError as e:
             print(f"Icon '{icon}' not found.")
+

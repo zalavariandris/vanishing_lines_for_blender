@@ -27,9 +27,11 @@ class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
 
         if camera is None:
             self.layout.label(text="Calibration uses the view's local camera or the active scene camera, but none is set.", icon='ERROR')
-            return 
+            return
+        
         elif context.scene.camera == camera:
             self.layout.label(text=f"Using scene's camera: {camera.name}", icon='CAMERA_DATA')
+
         elif vl_utils.get_view_camera(context) == camera:
             self.layout.label(text=f"Using view's local camera: {camera.name}", icon='CAMERA_DATA')
         
@@ -39,6 +41,7 @@ class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
         control_row = self.layout.row()
         if not is_modal_running:
             control_row.operator(OPERATOR_ID_START, text=f"Start Calibrating '{camera.name}'", icon='PLAY')
+            return
         else:
             control_row.operator(OPERATOR_ID_STOP, text="Stop", icon='SNAP_FACE')
 

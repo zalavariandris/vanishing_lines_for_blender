@@ -2,7 +2,7 @@
 import bpy
 
 
-def update_camera_vl(self, context):
+def trigger_update(self, context):
     """
     Triggers a Depsgraph update by tagging the ID block (the Camera) as dirty.
     'self' refers to the PropertyGroup instance. 
@@ -18,7 +18,7 @@ class Line(bpy.types.PropertyGroup):
         name="Start",
         size=2,
         default=(0.0, 0.0),
-        update=update_camera_vl,
+        update=trigger_update,
         description="Start point of the line."
     ) # type: ignore
 
@@ -26,7 +26,7 @@ class Line(bpy.types.PropertyGroup):
         name="End",
         size=2,
         default=(0.0, 0.0),
-        update=update_camera_vl,
+        update=trigger_update,
         description="End point of the line."
     ) # type: ignore
 
@@ -78,7 +78,7 @@ class VLSettings(bpy.types.PropertyGroup):
             ('THREE_POINT', "3-Point", "Use the third vanishing point to find the principal point.")
         ],
         default='THREE_POINT',
-        update=update_camera_vl,
+        update=trigger_update,
         description="Number of vanishing points to use for camera calibration", 
         options=set()
     ) # type: ignore
@@ -86,7 +86,7 @@ class VLSettings(bpy.types.PropertyGroup):
     enable_manual_principal: bpy.props.BoolProperty(
         name="Manual Principal Point",
         default=False,
-        update=update_camera_vl,
+        update=trigger_update,
         description="Manually set the principal point instead of using the image center", 
         options=set()
     ) # type: ignore
@@ -94,7 +94,7 @@ class VLSettings(bpy.types.PropertyGroup):
     quad_mode: bpy.props.BoolProperty(
         name="Quad Mode",
         default=False,
-        update=update_camera_vl,
+        update=trigger_update,
         description="Use quadrilateral corners to define second vanishing point", 
         options=set()
     ) # type: ignore
@@ -109,7 +109,7 @@ class VLSettings(bpy.types.PropertyGroup):
             ('Z_AXIS', "Z Axis", "Scale along world Z axis")
         ],
         default='X_AXIS',
-        update=update_camera_vl,
+        update=trigger_update,
         description="Method for determining scene scale reference", 
         options=set()
     ) # type: ignore
@@ -119,7 +119,7 @@ class VLSettings(bpy.types.PropertyGroup):
         default=10.0,
         min=0.01,
         max=99999.0,
-        update=update_camera_vl,
+        update=trigger_update,
         unit='LENGTH',
         subtype='DISTANCE',
         description="Real-world size of the reference measurement for scale calibration", 
@@ -130,7 +130,7 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Reference Distance Segment",
         size=2,
         default=(0.0, 0.5),
-        update=update_camera_vl,
+        update=trigger_update,
         description="Start and end points of the reference distance segment for scale measurement", 
         options=set()
     ) # type: ignore
@@ -146,7 +146,7 @@ class VLSettings(bpy.types.PropertyGroup):
             ('Z-', "Z-", "Negative Z axis direction")
         ],
         default='Y+',
-        update=update_camera_vl,
+        update=trigger_update,
         description="First vanishing point axis orientation", 
         options=set()
     ) # type: ignore
@@ -162,7 +162,7 @@ class VLSettings(bpy.types.PropertyGroup):
             ('Z-', "Z-", "Negative Z axis direction")
         ],
         default='X-',
-        update=update_camera_vl,
+        update=trigger_update,
         description="Second vanishing point axis orientation", 
         options=set()
     ) # type: ignore
@@ -171,7 +171,7 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Origin",
         size=2,
         default=(0.0, 0.0),
-        update=update_camera_vl,
+        update=trigger_update,
         description="Origin point for reference measurements in normalized image space", 
         options=set()
     ) # type: ignore
@@ -180,7 +180,7 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Principal",
         size=2,
         default=(0.0, 0.0),
-        update=update_camera_vl,
+        update=trigger_update,
         description="Principal point (optical center) in normalized image space", 
         options=set()
     ) # type: ignore
@@ -207,7 +207,7 @@ class VLSettings(bpy.types.PropertyGroup):
             
         ],
         default='ON_UI_CHANGE',
-        update=update_camera_vl, # TODO: this probably shoudl be empty
+        update=trigger_update, # TODO: this probably shoudl be empty
         description="Strategy for updating the solver when changes occur", 
         options=set()
     ) # type: ignore
@@ -215,9 +215,10 @@ class VLSettings(bpy.types.PropertyGroup):
     error_message: bpy.props.StringProperty(
         name="Error Message",
         default="",
-        update=update_camera_vl, 
+        update=trigger_update, 
         options=set()
     ) # type: ignore
+
 ######################
 # REGISTER FUNCTIONS #
 ######################
