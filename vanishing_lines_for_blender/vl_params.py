@@ -30,38 +30,38 @@ class Line(bpy.types.PropertyGroup):
         description="End point of the line."
     ) # type: ignore
 
-def initialize_vl_settings(vl_settings: 'VLSettings')->None:
-    if not vl_settings.initialized:
-        vl_settings.origin =    (0.0, -0.25)
-        vl_settings.principal = (0.0,  0.0)
-        vl_settings.initialized = True
+def set_defaults(vl_settings: 'VLSettings')->None:
+    # if not vl_settings.initialized:
+    vl_settings.origin =    (0.0, -0.25)
+    vl_settings.principal = (0.0,  0.0)
+        # vl_settings.initialized = True
 
-    if len(vl_settings.first_vanishing_lines) == 0:
-        item = vl_settings.first_vanishing_lines.add()
-        item.start = (-0.2, -0.53)
-        item.end =   ( 0.6,  0.12)
+    vl_settings.first_vanishing_lines.clear()
+    item = vl_settings.first_vanishing_lines.add()
+    item.start = (-0.2, -0.53)
+    item.end =   ( 0.6,  0.12)
 
-        item = vl_settings.first_vanishing_lines.add()
-        item.start = (-0.88, 0.0)
-        item.end =   ( 0.09, 0.20)
+    item = vl_settings.first_vanishing_lines.add()
+    item.start = (-0.88, 0.0)
+    item.end =   ( 0.09, 0.20)
 
-    if len(vl_settings.second_vanishing_lines) == 0:
-        item = vl_settings.second_vanishing_lines.add()
-        item.start =  (0.22, -0.48)
-        item.end =   (-0.80,  0.05)
+    vl_settings.second_vanishing_lines.clear()
+    item = vl_settings.second_vanishing_lines.add()
+    item.start =  (0.22, -0.48)
+    item.end =   (-0.80,  0.05)
 
-        item = vl_settings.second_vanishing_lines.add()
-        item.start =  (0.65, 0.05)
-        item.end =   (-0.10, 0.20)
+    item = vl_settings.second_vanishing_lines.add()
+    item.start =  (0.65, 0.05)
+    item.end =   (-0.10, 0.20)
 
-    if len(vl_settings.third_vanishing_lines) == 0:
-        item = vl_settings.third_vanishing_lines.add()
-        item.start = (-0.3, -0.52)
-        item.end =   (-0.4, 0.5)
+    vl_settings.third_vanishing_lines.clear()
+    item = vl_settings.third_vanishing_lines.add()
+    item.start = (-0.3, -0.52)
+    item.end =   (-0.4, 0.5)
 
-        item = vl_settings.third_vanishing_lines.add()
-        item.start = (0.3, -0.52)
-        item.end =   (0.4, 0.5)
+    item = vl_settings.third_vanishing_lines.add()
+    item.start = (0.3, -0.52)
+    item.end =   (0.4, 0.5)
 
 class VLSettings(bpy.types.PropertyGroup):
     initialized: bpy.props.BoolProperty(

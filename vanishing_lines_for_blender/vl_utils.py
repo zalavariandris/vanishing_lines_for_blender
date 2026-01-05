@@ -32,11 +32,51 @@ def flatten(xss):
 # BLENDER HELPERS #
 ###################
 
+
+def projection_matrix_from_fov(
+    fov_y: float,
+    aspect_ratio: float,
+    near: float = 0.01,
+    far: float = 1000.0
+) -> glm.mat4:
+    """
+    Create a perspective projection matrix from vertical field of view.
+    
+    Args:
+        fov_y: Vertical field of view in radians
+        aspect_ratio: Width / Height ratio
+        near: Near clipping plane distance
+        far: Far clipping plane distance
+    
+    Returns:
+        A 4x4 perspective projection matrix
+    """
+    f = 1.0 / math.tan(fov_y / 2.0)
+    
+    return glm.mat4(
+        f / aspect_ratio, 0.0, 0.0, 0.0,
+        0.0, f, 0.0, 0.0,
+        0.0, 0.0, (far + near) / (near - far), (2.0 * far * near) / (near - far),
+        0.0, 0.0, -1.0, 0.0
+    )
+
 def get_running_operator_by_idname(op_idname):
     for op in bpy.context.window.modal_operators:
+        # print(f"Checking operator: {op.bl_idname!r}")
         if op and op.bl_idname == op_idname:
             return op
     return None
+
+def glm_to_blender_mat(glm_mat:glm.mat4) -> mathutils.Matrix:
+    """
+    Converts a glm.mat4 object to a Blender mathutils.Matrix (4x4).
+    
+    PyGLM matrices are column-major iterables. 
+    Blender's Matrix((...)) constructor expects rows.
+    """
+    # 1. Feed the 4 columns of the glm.mat4 into the constructor
+    # 2. Transpose the result to flip it from column-major to row-major
+    return mathutils.Matrix(tuple(glm_mat)).transposed()
 
 def apply_solver_results_to_blender_camera(
         projection: glm.mat4,

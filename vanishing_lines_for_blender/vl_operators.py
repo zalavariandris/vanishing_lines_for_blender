@@ -17,7 +17,7 @@ from . import solver
 from . import vl_utils
 from . import vl_coord_utils
 from . uiview3d import UIView3D
-from . vl_params import initialize_vl_settings
+from . vl_params import set_defaults
 
 
 # Constants
@@ -158,7 +158,9 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
         
         # Setup default props if not initialized
         vl_settings = self._active_camera.data.vl_settings # type: ignore
-        initialize_vl_settings(vl_settings)
+        if vl_settings.initialized is False:
+            set_defaults(vl_settings)
+            vl_settings.initialized = True
 
         # Initial Solve
         update_solve(self._active_camera)
@@ -193,7 +195,7 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
                 update_solve(self._active_camera)
         return result
 
-    def draw_view(self, context):
+    def view3d_draw(self, context):
         try:
             if self.uiview is None:
                 warnings.warn("Draw layer not initialized. Skipping draw.")
@@ -203,10 +205,8 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
             return
         
         # self.uiview.update_viewport_state(context)
-        self.uiview._draw_layer.clear()
-        self.uiview._controls.clear()
+        self.uiview.begin()
         
-
         # set UIVIEW projection and viewport
         camera_frame = vl_coord_utils.get_view_camera_frame_rect(context)
         if not camera_frame:
@@ -253,6 +253,7 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
         _ = self.uiview.prop_point(vl_settings, "principal", 
             text="P",
             color=YELLOW)
+        
         def get_axis_color(axis:solver.types.Axis) -> Tuple[float, float, float, float]:
             match axis:
                 case solver.types.Axis.PositiveX | solver.types.Axis.NegativeX:
@@ -415,7 +416,7 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
                 blf.draw(font_id, f"{line}")
 
         # Execute the draw calls
-        self.uiview.render()
+        self.uiview.end()
   
         
     def get_compute_space(self) -> solver.types.Rect:
@@ -438,8 +439,6 @@ class VIEW_OT_VanishingLinesStopOperator(bpy.types.Operator):
         return {'CANCELLED'}
 
 
-
-
 ######################
 # REGISTER FUNCTIONS #
 ######################
@@ -448,9 +447,9 @@ def view_menu_func(self, context):
 
 def view_draw_func():
     # global draw_list
-    """Wrapper function to call the draw_view method of the operator instance."""
+    """Wrapper function to call the view3d_draw method of the operator instance."""
     if op:=vl_utils.get_running_operator_by_idname("VIEW_OT_vanishing_lines_operator"):
-        op.draw_view(bpy.context)
+        op.view3d_draw(bpy.context)
 
 def on_depsgraph_update(scene, depsgraph):
     """when the depsgraph changes, regarding the active camera, 

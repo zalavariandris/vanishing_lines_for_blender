@@ -81,7 +81,12 @@ class UIView3D:
         self._projection: glm.mat4 = glm.mat4(1.0)
         self._viewport: Tuple[int, int, int, int] = (0, 0, 1, 1)
 
-    def render(self):
+    def begin(self):
+        # self.uiview.update_viewport_state(context)
+        self._draw_layer.clear()
+        self._controls.clear()
+
+    def end(self):
         self._draw_layer.draw()
     
     # Coordinate system
@@ -284,7 +289,7 @@ class UIView3D:
 
     # Widgets
     def prop_point(self, data:'bpy.types.ID', prop:str, index:int|None=None, *,
-        text:str="",
+        text:str|None=None,
         color=(1.0,0.5,0.0,1.0),
         set_transform:Callable|None=None, 
         get_transform:Callable|None=None
@@ -294,6 +299,7 @@ class UIView3D:
         if control_id not in self._controls:
             self._controls[control_id] = _ControlPoint(data, prop, index=index, setter=set_transform, getter=get_transform)
 
+        text = text if text is not None else f"{prop}"
         cp = self._controls[control_id]
         P = self.project(cp.value)
         is_active = (self._active_id == control_id)
@@ -311,6 +317,7 @@ class UIView3D:
             P,
             point_render_color)
 
+        
         self._draw_layer.add_annotation(
             (P[0] + ANNOTATION_OFFSET_X, P[1] + TEXT_OFFSET_Y_ABOVE),
             text,

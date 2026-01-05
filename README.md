@@ -32,12 +32,20 @@ __work in progress__
 - [ ] see what else can be tested without blender
 - [ ] test with the actual blender python: https://github.com/mondeja/pytest-blender
 - [ ] mock bpy: fake-bpy-module
-- [ ] implement UNOD? One thing pytest often misses is how an addon affects Blender's Undo Stack.
+
+
+
+
+### 
+- [ ] calibrate the view instead of an actual camera, with an operator, using keystrokes. more blenderish? lets see...
+      this way we dont store the vanishing line parameters on each camera, only keep those setting for the actual session.
+- [ ] implement UNDO? One thing pytest often misses is how an addon affects Blender's Undo Stack.
 
 ### 
 - [x] On the Sidepanel clearly indicate which camera-object, the solver is working on.
 - [ ] ~~consider calibrating the view's local matrices if no camera is available, or no camera is activated, and add an option to create one.  -> In practice i dont think this would have any usefulness. Instead make it clear which camera a view is adjustin.~~
 
+- [x] set default for uiview view_matrix, projection matrix and viewport. TODO: needs testing
 
 ### FIX bugs
 - [x] FIX when camera sensor fit set to auto and sensor_width is less than sensor_height there is a mismatch! TODO: this bug was not caught by the tests
