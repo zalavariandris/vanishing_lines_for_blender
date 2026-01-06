@@ -48,7 +48,9 @@ __work in progress__
 - [x] set default for uiview view_matrix, projection matrix and viewport. TODO: needs testing
 
 ### FIX bugs
+- [ ] this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS
 - [x] FIX when camera sensor fit set to auto and sensor_width is less than sensor_height there is a mismatch! TODO: this bug was not caught by the tests
+
 
 ###
 - [ ] update strategy: update on dependency graph change | update on user interaction
@@ -56,7 +58,6 @@ __work in progress__
 - [x] solve camera calibration on depsgruph update, even if operator is not running
   -> [x] to do so, the update_solve should not be dependent on the output resolution.
 - [x] solver now only support right-handed coordinate systems. implement _left handed_ as well.
-
 
 ###
 REVIEW
@@ -69,7 +70,7 @@ REVIEW
 - [x] vl_utils
 - [x] vl_panel_components
 - [x] solver
-
+  
 ### **0.7..**
 - [ ] ~~REFACTOR coordinate space conversion~~
 - [ ] ~~better handle warnings.warn in the UI?~~

@@ -26,7 +26,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             ('TWO_POINT',   "2-Point", "Compute focal length from second vanishing point."),
             ('THREE_POINT', "3-Point", "Use the third vanishing point to find the principal point.")
         ],
-        default='ONE_POINT',
+        default='TWO_POINT',
         description="Number of vanishing points to use for camera calibration", 
         options=set()
     ) # type: ignore
@@ -154,6 +154,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         self.uiview.begin()
         x, y = 0, 0
         w, h = context.region.width, context.region.height
+        region_aspect = w / h
 
         # get SpaceView3D
         space = context.space_data
@@ -163,7 +164,10 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
 
         self.uiview.set_view(glm.mat4(1.0))
-        self.uiview.set_projection(glm.ortho(-1, 1, -1, 1, -1000.0, 1000.0))
+        if region_aspect >= 1.0:
+            self.uiview.set_projection(glm.ortho(-1, 1, -1/region_aspect, 1/region_aspect, -1000.0, 1000.0))
+        else:
+            self.uiview.set_projection(glm.ortho(-1*region_aspect, 1*region_aspect, -1, 1, -1000.0, 1000.0))
         self.uiview.set_viewport((0, 0, w, h))
         ##
 
@@ -213,19 +217,25 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         if self.mode in {'ONE_POINT'}:
             # Draw the horizontal line for the vp1 mode:
             self.uiview.prop_line(self.second_vanishing_lines[0], color=get_axis_color(second_axis))
-        
-        ##
-        coord = self.uiview.project((0,0))
-        self.uiview._draw_layer.add_annotation( 
-            pos=coord,
-            text="Projected (1,1)",
-            color=glm.vec4(0.0, 1.0, 0.0, 1.0)
-        )
-        self.uiview._draw_layer.add_annotation(
-            pos=glm.vec2(100, 100),
-            text="Info",
-            color=glm.vec4(1.0, 1.0, 0.0, 1.0)
-        )
+
+        if self.mode in {'TWO_POINT', 'THREE_POINT'}:
+            if self.quad_mode:
+                first_line = self.first_vanishing_lines[ 0]
+                last_line =  self.first_vanishing_lines[-1]
+                
+                for line_start, line_end in [(first_line.start, last_line.start), (first_line.end, last_line.end)]:
+                    self.uiview._draw_layer.add_line(
+                        self.uiview.project(line_start), 
+                        self.uiview.project(line_end), 
+                        get_axis_color(second_axis))
+                    
+            else:
+                for line in self.second_vanishing_lines:
+                    self.uiview.prop_line(line, color=get_axis_color(second_axis))
+
+        if self.mode in {'THREE_POINT'}:
+            for line in self.third_vanishing_lines:
+                self.uiview.prop_line(line, color=get_axis_color(third_axis))
 
         ## draw compute space
         x_min, y_min = self.uiview.project((-1,-1))
@@ -235,6 +245,14 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             (x_max - x_min-20, y_max - y_min-20),
             color=(0,1,1,1.0)
         )
+
+        ## draw info
+        self.uiview._draw_layer.add_annotation(
+            pos=glm.vec2(100, 100),
+            text="Info",
+            color=glm.vec4(1.0, 1.0, 0.0, 1.0)
+        )
+
         self.uiview.end()
 
         self.update_solve(context)
@@ -293,7 +311,13 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                     focal_length = camera_object.data.lens / camera_object.data.sensor_width * compute_space.height
 
                 case 'PERSP':
-                    focal_length = context.space_data.lens / 36.0 * compute_space.height
+                    # print("compute for PERSP view")
+                    region_aspect = context.region.width / context.region.height
+                    if region_aspect >= 1.0:
+                        focal_length = context.space_data.lens / 36.0 * compute_space.width
+                    else:
+                        print("compute for PERSP view - height")
+                        focal_length = context.space_data.lens / 24.0 * compute_space.height
 
                 case 'ORTHO':
                     context.space_data.region_3d.view_perspective = 'PERSP'
@@ -301,7 +325,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
             if not self.enable_manual_principal:
                 self.principal = compute_space.center
-            
+            # print("compute:", compute_space)
             projection, view = solver.core.solve(
                 mode = mode,
                 viewport=compute_space,
@@ -338,6 +362,8 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                     w = context.region.width
                     h = context.region.height
 
+                    region_aspect = context.region.width / context.region.height
+
                     # projection = glm.perspective(math.radians(60.0), w/h, 0.1, 1000.0)
                     # view = glm.lookAt(
                     #     glm.vec3(1.0, -3.0, 1.0),
@@ -346,16 +372,23 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                     # )
                     
                     principal, focal_length = solver.utils.decompose_intrinsics((-1,-1,w,h), projection)
-                    context.space_data.lens = focal_length*36 / h
+
+                    if region_aspect >= 1.0:
+                        context.space_data.lens = focal_length*36 / context.region.width * 2 * region_aspect
+                    else:
+                        context.space_data.lens = focal_length*36 / context.region.height * 2
+
                     # # projection = glm.perspective(math.radians(10.0), w/h, 0.1, 1000.0)
                     context.space_data.region_3d.view_matrix = vl_utils.glm_to_blender_mat(view)
                     # context.space_data.region_3d.window_matrix = vl_utils.glm_to_blender_mat(projection)
                     # context.space_data.region_3d.perspective_matrix = vl_utils.glm_to_blender_mat(projection)
-
+                    # context.space_data.region_3d.view_camera_offset = (100,1)
+                    # context.space_data.region_3d.view_camera_zoom = 6
                 case 'ORTHO':
                     assert False, "Should not reach here, ORTHO case handled above."
 
             self.error_message = ""
+            # print(context.space_data.region_3d.view_camera_zoom)
             # space = context.space_data
             # assert space and space.type == 'VIEW_3D', "Context is not a 3D Viewport!"
 

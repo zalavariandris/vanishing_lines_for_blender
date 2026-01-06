@@ -9,7 +9,7 @@ from . import vl_utils
 
 OPERATOR_ID_START = "view.vanishing_lines_operator"
 OPERATOR_ID_STOP = "view.vanishing_lines_stop_operator"
-OPERATOR_CLASS_NAME = "VIEW_OT_vanishing_lines_operator"
+OPERATOR_CLASS_NAME = "VIEW_OT_VanishingLinesStartOperator"
 
 class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
     """Creates a Panel in the 3D Viewport sidebar"""
@@ -25,22 +25,31 @@ class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
         #################
         camera = vl_utils.get_calibration_camera(context)
 
-        if camera is None:
-            self.layout.label(text="Calibration uses the view's local camera or the active scene camera, but none is set.", icon='ERROR')
-            return
-        
-        elif context.scene.camera == camera:
-            self.layout.label(text=f"Using scene's camera: {camera.name}", icon='CAMERA_DATA')
+        col = self.layout.column()
+        col.use_property_split = True
+        col.use_property_decorate = False
+        row = col.row(heading="Local Camera")
+        row.prop(context.space_data, 'use_local_camera', text="")
+        camera_dropdown = row.row()
+        camera_dropdown.enabled = context.space_data.use_local_camera
+        camera_dropdown.prop(context.space_data, "camera", text="")
 
-        elif vl_utils.get_view_camera(context) == camera:
-            self.layout.label(text=f"Using view's local camera: {camera.name}", icon='CAMERA_DATA')
+        # if camera is None:
+        #     self.layout.label(text="Calibration uses the view's local camera or the active scene camera, but none is set.", icon='ERROR')
+        #     return
+        
+        # elif context.scene.camera == camera:
+        #     self.layout.label(text=f"Using scene's camera: {camera.name}", icon='CAMERA_DATA')
+
+        # elif vl_utils.get_view_camera(context) == camera:
+        #     self.layout.label(text=f"Using view's local camera: {camera.name}", icon='CAMERA_DATA')
         
     
-        is_modal_running = vl_utils.is_operator_running(OPERATOR_CLASS_NAME)
+        is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")
 
         control_row = self.layout.row()
         if not is_modal_running:
-            control_row.operator(OPERATOR_ID_START, text=f"Start Calibrating '{camera.name}'", icon='PLAY')
+            control_row.operator(OPERATOR_ID_START, text=f"Calibrate '{camera.name}'", icon='PLAY')
             return
         else:
             control_row.operator(OPERATOR_ID_STOP, text="Stop", icon='SNAP_FACE')

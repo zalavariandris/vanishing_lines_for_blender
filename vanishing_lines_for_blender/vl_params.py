@@ -8,8 +8,10 @@ def trigger_update(self, context):
     'self' refers to the PropertyGroup instance. 
     'self.id_data' refers to the Camera data-block it is attached to.
     """
-    if self.id_data:
-        self.id_data.update_tag()
+    None
+    # if self.id_data and context.view_layer:
+    #     self.id_data.update_tag()
+    #     context.view_layer.update()
 
 class Line(bpy.types.PropertyGroup):
     """A line defined by start and end points in normalized image space."""
@@ -207,14 +209,14 @@ class VLSettings(bpy.types.PropertyGroup):
             
         ],
         default='ON_UI_CHANGE',
-        update=trigger_update, # TODO: this probably shoudl be empty
+        # update=trigger_update, # TODO: this probably shoudl be empty
         description="Strategy for updating the solver when changes occur", 
         options=set()
     ) # type: ignore
 
     error_message: bpy.props.StringProperty(
         name="Error Message",
-        default="",
+        default="", 
         update=trigger_update, 
         options=set()
     ) # type: ignore

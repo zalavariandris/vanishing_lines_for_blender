@@ -11,7 +11,9 @@ import warnings
 from typing import Literal
 
 def is_operator_running(op_idname):
-    for op in bpy.context.window.modal_operators:
+    modal_operators = bpy.context.window.modal_operators
+    print([op.bl_idname if op else None for op in modal_operators])
+    for op in modal_operators:
         if op.bl_idname == op_idname:
             return True
     return False

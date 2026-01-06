@@ -187,13 +187,23 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
         if self._active_camera != vl_utils.get_view_camera(context): 
             if context.area and context.area.type == 'VIEW_3D':
                 context.area.tag_redraw()
+            self.cleanup()
             return {'FINISHED'}
         
         result = self.uiview.event(context, event)
-        if self._active_camera.data.vl_settings.update_strategy == 'ON_UI_CHANGE':
-            if result & {'RUNNING_MODAL', 'FINISHED'}:
-                update_solve(self._active_camera)
+        # if self._active_camera.data.vl_settings.update_strategy == 'ON_UI_CHANGE':
+        #     if result & {'RUNNING_MODAL', 'FINISHED'}:
+        #         update_solve(self._active_camera)
+
+        if result & {'CANCEL', 'FINISHED'}:
+            self.cleanup()
+
+
         return result
+    
+    def cleanup(self):
+        if on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
+            bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
 
     def view3d_draw(self, context):
         try:
@@ -214,7 +224,7 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
             w, h = context.region.width, context.region.height
             self.uiview.set_projection(glm.ortho(x, w, 0.0, h, -1000.0, 1000.0))
             self.uiview.set_viewport((0, 0, w, h))
-            self.uiview.render()
+            self.uiview.end()
             return
         
         # match UIVIEW layout frame to camera frame
@@ -474,7 +484,8 @@ def register():
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
         )
     
-    bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update) #TODO: this might supposed to be _pre_ update?
+    if on_depsgraph_update not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update) #TODO: this might supposed to be _pre_ update?
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
 def unregister():
@@ -483,8 +494,9 @@ def unregister():
         bpy.types.SpaceView3D.draw_handler_remove(draw_handler, 'WINDOW')
         draw_handler = None
 
-    bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
-
+    if on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
+    # bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesStopOperator)
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesStartOperator)
