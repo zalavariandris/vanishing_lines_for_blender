@@ -30,11 +30,15 @@ ERROR_TEXT_Y_OFFSET = 40
 # VL OPERATOR #
 ###############
 # commands
-def update_solve(camera_object:bpy.types.Object, compute_space:solver.types.Rect = solver.types.Rect(-1, -1, 2, 2)):
+def update_solve(camera_object:bpy.types.Object, compute_space:Tuple[float, float, float, float]=(-1, -1, 2, 2)):
     vl_settings = camera_object.data.vl_settings
 
+    print("Updating vanishing lines solve...", compute_space)
+
     if not vl_settings.enable_manual_principal:
-        vl_settings.principal = compute_space.center
+        Cx = compute_space[0] + compute_space[2] / 2
+        Cy = compute_space[1] + compute_space[3] / 2
+        vl_settings.principal = Cx, Cy
 
     try:
         mode = {"ONE_POINT":   solver.types.SolverMode.OneVP,
@@ -79,12 +83,12 @@ def update_solve(camera_object:bpy.types.Object, compute_space:solver.types.Rect
         
         projection, view = solver.core.solve(
             mode = mode,
-            viewport=compute_space,
+            viewport=solver.types.Rect(*compute_space),
             first_vanishing_lines= [(line.start, line.end) for line in  vl_settings.first_vanishing_lines],
             second_vanishing_lines=second_vanishing_lines,
             third_vanishing_lines= [(line.start, line.end) for line in  vl_settings.third_vanishing_lines],
 
-            f = camera_object.data.lens / camera_object.data.sensor_width * compute_space.height,
+            f = camera_object.data.lens / camera_object.data.sensor_width * compute_space[3],
             P = (vl_settings.principal[0], vl_settings.principal[1]), # TODO: is [0], [1] necessary?
             O = (vl_settings.origin[0], vl_settings.origin[1]),
 
@@ -95,6 +99,7 @@ def update_solve(camera_object:bpy.types.Object, compute_space:solver.types.Rect
             first_axis=first_axis,
             second_axis=second_axis
         )
+
 
         vl_utils.apply_solver_results_to_blender_camera(
             projection=projection, 
@@ -163,7 +168,7 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
             vl_settings.initialized = True
 
         # Initial Solve
-        update_solve(self._active_camera)
+        update_solve(self._active_camera, (-1,-1,2,2))
 
         # # trigger redraw
         if area.type == 'VIEW_3D':
@@ -187,23 +192,11 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
         if self._active_camera != vl_utils.get_view_camera(context): 
             if context.area and context.area.type == 'VIEW_3D':
                 context.area.tag_redraw()
-            self.cleanup()
+            # self.cleanup()
             return {'FINISHED'}
         
         result = self.uiview.event(context, event)
-        # if self._active_camera.data.vl_settings.update_strategy == 'ON_UI_CHANGE':
-        #     if result & {'RUNNING_MODAL', 'FINISHED'}:
-        #         update_solve(self._active_camera)
-
-        if result & {'CANCEL', 'FINISHED'}:
-            self.cleanup()
-
-
         return result
-    
-    def cleanup(self):
-        if on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
-            bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
 
     def view3d_draw(self, context):
         try:
@@ -466,10 +459,9 @@ def on_depsgraph_update(scene, depsgraph):
     or the output resolution, we update the solve."""
     for update in depsgraph.updates:
         if isinstance(update.id, bpy.types.Camera):
-            if update.id.vl_settings.update_strategy == 'ON_DEPSGRAPH_UPDATE':
-                camera_objects = [obj for obj in bpy.data.objects if obj.data.name == update.id.name and obj.type == 'CAMERA']
-                for camera_object in camera_objects:
-                    update_solve(camera_object)
+            camera_objects = [obj for obj in bpy.data.objects if obj.data.name == update.id.name and obj.type == 'CAMERA']
+            for camera_object in camera_objects:
+                update_solve(camera_object)
 
 draw_handler = None
 def register():
@@ -484,8 +476,8 @@ def register():
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
         )
     
-    if on_depsgraph_update not in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update) #TODO: this might supposed to be _pre_ update?
+
+    bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update) #TODO: this might supposed to be _pre_ update?
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
 def unregister():
@@ -494,10 +486,12 @@ def unregister():
         bpy.types.SpaceView3D.draw_handler_remove(draw_handler, 'WINDOW')
         draw_handler = None
 
-    if on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
+
+    bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
     # bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesStopOperator)
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesStartOperator)
+    
+
     

@@ -57,8 +57,7 @@ class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
         # col = self.layout.column()
         # col.use_property_split = True
         # col.use_property_decorate = False
-        
-        # col.prop(camera.data.vl_settings, "update_strategy", text="Update")
+    
         
         self.layout.separator()
         

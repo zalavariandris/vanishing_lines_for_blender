@@ -84,7 +84,7 @@ def apply_solver_results_to_blender_camera(
         projection: glm.mat4,
         view: glm.mat4, 
         camera_object: bpy.types.Object,
-        compute_space: solver.types.Rect,
+        compute_space: Tuple[float, float, float, float],
         fit_mode: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']
     ) -> None:
     """
@@ -116,7 +116,7 @@ def apply_solver_results_to_blender_camera(
     camera_object.matrix_world = mathutils.Matrix(transform_list)
 
     # Apply focal length
-    P, f = solver.utils.decompose_intrinsics(compute_space, projection)
+    P, f = solver.utils.decompose_intrinsics(solver.types.Rect(*compute_space), projection)
     camera_data: bpy.types.Camera = cast(bpy.types.Camera, camera_object.data)
     camera_data.sensor_fit = fit_mode
 
@@ -124,7 +124,7 @@ def apply_solver_results_to_blender_camera(
     match fit_mode:
         case 'AUTO':
             effective_sensor_size = camera_data.sensor_width # when sensor_fit is AUTO, blender uses the _sensor_width_ parameter as sensor effective size for both dimensions.
-            focal_length = f / compute_space.width * effective_sensor_size
+            focal_length = f / compute_space[2] * effective_sensor_size
             camera_data.lens = focal_length
             # effective_sensor_size = camera_data.sensor_width # when sensor_fit is AUTO, blender uses the _sensor_width_ parameter as sensor effective size for both dimensions.
             # if compute_aspect >= output_aspect:
@@ -135,18 +135,18 @@ def apply_solver_results_to_blender_camera(
             #     camera_data.lens = focal_length
 
         case 'HORIZONTAL':
-            focal_length = f / compute_space.width * camera_data.sensor_width
+            focal_length = f / compute_space[2] * camera_data.sensor_width
             camera_data.lens = focal_length
             
         case 'VERTICAL':
-            focal_length = f / compute_space.height * camera_data.sensor_height
+            focal_length = f / compute_space[3] * camera_data.sensor_height
             camera_data.lens = focal_length
 
     # Apply lens shift
-    center_x = compute_space.x + compute_space.width / 2
-    center_y = compute_space.y + compute_space.height / 2
-    shift_x =  (P.x - center_x) / (compute_space.width / 2)
-    shift_y = -(P.y - center_y) / (compute_space.height / 2)
+    center_x = compute_space[0] + compute_space[2] / 2
+    center_y = compute_space[1] + compute_space[3] / 2
+    shift_x =  (P.x - center_x) / (compute_space[2] / 2)
+    shift_y = -(P.y - center_y) / (compute_space[3] / 2)
     camera_data.shift_x = shift_x/2
     camera_data.shift_y = shift_y/2
 

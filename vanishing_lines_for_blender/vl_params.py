@@ -200,20 +200,6 @@ class VLSettings(bpy.types.PropertyGroup):
         type=Line, 
         options=set()) # type: ignore
 
-    update_strategy: bpy.props.EnumProperty(
-        name="Update Strategy",
-        items=[
-            # ('MANUAL', "Manual", "Update manually"),
-            ('ON_UI_CHANGE', "UI", "Update on user interface events"),
-            ('ON_DEPSGRAPH_UPDATE', "Depsgraph", "Update on dependency graph changes")
-            
-        ],
-        default='ON_UI_CHANGE',
-        # update=trigger_update, # TODO: this probably shoudl be empty
-        description="Strategy for updating the solver when changes occur", 
-        options=set()
-    ) # type: ignore
-
     error_message: bpy.props.StringProperty(
         name="Error Message",
         default="", 
