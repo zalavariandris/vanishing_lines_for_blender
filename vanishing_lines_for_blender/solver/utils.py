@@ -441,14 +441,13 @@ def decompose_intrinsics(viewport:Rect, projection:glm.mat4)->Tuple[glm.vec2, fl
     
     """ 
     left, right, top, bottom, near, far = decompose_frustum(projection)
-    Ppx = ((right + left) / (top - bottom)) * near
+    Ppx = ((right + left) / (right - left)) * near
     Ppy = ((top + bottom) / (top - bottom)) * near
-    Cx, Cy, w, h = viewport
     P = glm.vec2(
-        Cx - (Ppx / near) * (h / 2),
-        Cy + (Ppy / near) * (h / 2)
+        viewport.center[0] - (Ppx / near) * (viewport.height / 2),
+        viewport.center[1] + (Ppy / near) * (viewport.height / 2)
     )
-    f = near/(bottom-top) * h
+    f = near/(bottom-top) * viewport.height
     return P, f
 
 def decompose_extrinsics(view)->Tuple[glm.vec3, glm.quat]:

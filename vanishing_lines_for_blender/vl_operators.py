@@ -99,8 +99,8 @@ def update_solve(camera_object:bpy.types.Object, compute_space:Tuple[float, floa
             first_axis=first_axis,
             second_axis=second_axis
         )
-
-
+        
+        P, f = solver.utils.decompose_intrinsics(solver.types.Rect(*compute_space), projection)
         vl_utils.apply_solver_results_to_blender_camera(
             projection=projection, 
             view=view, 

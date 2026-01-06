@@ -142,11 +142,13 @@ def apply_solver_results_to_blender_camera(
             focal_length = f / compute_space[3] * camera_data.sensor_height
             camera_data.lens = focal_length
 
+
     # Apply lens shift
     center_x = compute_space[0] + compute_space[2] / 2
     center_y = compute_space[1] + compute_space[3] / 2
-    shift_x =  (P.x - center_x) / (compute_space[2] / 2)
+    shift_x = -(P.x - center_x) / (compute_space[2] / 2)
     shift_y = -(P.y - center_y) / (compute_space[3] / 2)
+
     camera_data.shift_x = shift_x/2
     camera_data.shift_y = shift_y/2
 
