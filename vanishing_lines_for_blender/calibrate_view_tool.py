@@ -1,18 +1,71 @@
 from typing import Tuple, Callable
 import math
+import warnings
 
+# Blender
 import bpy
+
+import blf
+import mathutils
+from bpy_extras import view3d_utils
 
 from . import vl_params
 from . import solver
 from .  import vl_params
 from . import vl_utils
 
-from . uiview3d import UIView3D
-
+# third party
 from pyglm import glm
 
-import warnings
+# local
+from . uiview3d import UIView3D
+from . import vl_utils
+
+# Constants
+FONT_SIZE = 16
+LINE_HEIGHT = 18
+ERROR_TEXT_X_OFFSET = 20
+ERROR_TEXT_Y_OFFSET = 40
+
+
+class MODAL_MT_RightClickMenu(bpy.types.Menu):
+    bl_label = "Vanishig Lines"
+    bl_idname = "MODAL_MT_right_click_menu"
+
+    def draw(self, context):
+        layout = self.layout.column()
+        
+        
+
+        if op:=vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
+            layout.prop_tabs_enum(op, 'mode')
+
+            row = layout.row()
+            row.enabled = op.mode in {'ONE_POINT'}
+            row.prop(context.space_data.camera.data, 'lens')
+            
+            layout.prop(op, 'quad_mode')
+            row = layout.row()
+            row.enabled = op.mode in {'ONE_POINT', 'TWO_POINT'}
+            row.prop(op, 'enable_manual_principal')
+            layout.prop_menu_enum(op, 'first_axis')
+            layout.prop_menu_enum(op, 'second_axis')
+            layout.prop_menu_enum(op, 'scene_scale_mode')
+
+            layout.prop(op, 'scene_scale')
+            col = layout.column()
+            col.enabled = op.scene_scale_mode != 'ORIGIN'
+            col.prop(op, 'reference_distance_segment', index=0)
+            col.prop(op, 'reference_distance_segment', index=1)
+            
+            
+            
+        # op.data_path = "scene.modal_bridge"
+        # op.value = "RESET"
+        
+        # op = layout.operator("wm.context_set_string", text="Finish Tool")
+        # op.data_path = "scene.modal_bridge"
+        # op.value = "FINISH"
 
 
 class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
@@ -138,44 +191,132 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         type=vl_params.Line, 
         options=set()) # type: ignore
     
+    error_message: str = ""
+    
     def invoke(self, context, event):
         vl_params.set_defaults(self)
         self.uiview = UIView3D()
+        self.middle_mouse_pressed = False
 
         context.space_data.region_3d.view_perspective = 'CAMERA'
         context.window_manager.modal_handler_add(self)
+        bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
+
+        self.update_solve(context)
         return {'RUNNING_MODAL'}
     
+    def status_text(self, header, context) -> str:
+        header.layout.label(text="vanishing point", icon='EVENT_ONEKEY')
+        header.layout.label(text="vanishing points", icon='EVENT_TWOKEY')
+        header.layout.label(text="vanishing points", icon='EVENT_THREEKEY')
+        header.layout.label(text="cycle scale mode", icon='EVENT_R')
+        header.layout.label(text="cancel", icon='EVENT_ESC')
+        header.layout.label(text="finish", icon='EVENT_RETURN')
+        
+    def cancel(self, context):
+        bpy.context.workspace.status_text_set(None)
+        return {'CANCELLED'}
+    
+    def finish(self, context):
+        bpy.context.workspace.status_text_set(None)
+        return {'FINISHED'}
+    
     def modal(self, context, event):
-        if event.type in {'RIGHTMOUSE', 'ESC'}:
-            return {'CANCELLED'}
-        # print("modal", event.type)
+        if event.type in {'ESC'}:
+            return self.cancel(context)
+        # print("modal", event.type, event.value)
 
         # capture key events
-        context.workspace.status_text_set(
-            "LMB: Confirm | RMB / Esc: Cancel | Adjusting..."
-        )
-        print(event.type, event.value)
-        if event.type in {'ONE', 'TWO', 'THREE'} and event.value == 'PRESS':
+        # context.workspace.status_text_set(
+        #     "LMB: Confirm | RMB / Esc: Cancel | Adjusting..."
+        # )
+        # print(event.type, event.value)
+
+        # repimplement camera offset
+        if event.type == 'MIDDLEMOUSE':
+            if event.value == 'PRESS':
+                self.middle_mouse_pressed = True
+            elif event.value == 'RELEASE':
+                self.middle_mouse_pressed = False
+
+        if event.type == 'MOUSEMOVE' and self.middle_mouse_pressed:
+            ## if CTRL and SHIFT ARE PRESSED, ZOOM else PAN
+            if event.ctrl:
+                delta = event.mouse_prev_y - event.mouse_y
+                self.scene_scale *= math.pow(1.1, delta * 0.03)
+                return {'RUNNING_MODAL'}
+            else:
+                delta_x = event.mouse_prev_x - event.mouse_x
+                delta_y = event.mouse_prev_y - event.mouse_y
+                region = context.region
+
+                # Calculate offset delta that matches projection formula:
+                # x -= offset_x * 4.0 * zoom_fac (in NDC)
+                # Then converts to pixels: x = (x / 2.0 + 0.5) * region_size
+                # Therefore: offset_delta = delta_pixels / (2.0 * zoom_fac * region_dimension)
+            
+                # Get zoom factor to match coordinate projection
+                view_camera_zoom = context.space_data.region_3d.view_camera_zoom
+                zoom_fac = ((math.sqrt(2.0) + view_camera_zoom / 50.0) ** 2) / 4.0 # matches Blender magic zoom formula
+
+                offset_delta_x = delta_x / (2.0 * zoom_fac * region.width)
+                offset_delta_y = delta_y / (2.0 * zoom_fac * region.height)
+                if event.shift:
+                    context.space_data.region_3d.view_camera_offset[0] += offset_delta_x
+                    context.space_data.region_3d.view_camera_offset[1] += offset_delta_y
+                    return {'RUNNING_MODAL'}
+                else:
+                    proj_mouse_x, proj_mouse_y = self.uiview.unproject((event.mouse_x, event.mouse_y))         # to update internal matrices
+                    proj_mouse_prev_x, proj_mouse_prev_y = self.uiview.unproject((event.mouse_prev_x, event.mouse_prev_y)) # to update internal matrices
+                    proj_mouse_delta_x = proj_mouse_prev_x - proj_mouse_x
+                    proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
+                    self.origin[0] -=   proj_mouse_delta_x
+                    self.origin[1] -=   proj_mouse_delta_y
+                    self.update_solve(context)
+                    return {'RUNNING_MODAL'}
+
+
+        if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
+            # This triggers the menu at the mouse location
+            bpy.ops.wm.call_menu(name=MODAL_MT_RightClickMenu.bl_idname)
+            return {'RUNNING_MODAL'}
+
+        if event.type in {'ONE', 'TWO', 'THREE', 'NUMPAD_1', 'NUMPAD_2', 'NUMPAD_3'} and event.value == 'PRESS':
             match event.type:
-                case 'ONE':
+                case 'ONE' | 'NUMPAD_1':
                     self.mode = 'ONE_POINT'
-                case 'TWO':
+                case 'TWO' | 'NUMPAD_2':
                     self.mode = 'TWO_POINT'
-                case 'THREE':
+                case 'THREE' | 'NUMPAD_3':
                     self.mode = 'THREE_POINT'
             self.update_solve(context)
             return {'RUNNING_MODAL'}
 
-        # capture mouse events
-        if event.type in {'LEFTMOUSE', 'MIDDLEMOUSE', 'RIGHTMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} or event.value in {'PRESS', 'RELEASE', 'CLICK_DRAG'}:
-            ...
+        # capture wheel events
+        if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+            if event.shift:
+                context.space_data.region_3d.view_camera_zoom += (1 if event.type == 'WHEELUPMOUSE' else -1) * 6
+            else:
+                delta = (1 if event.type == 'WHEELDOWNMOUSE' else -1) * 50
+                self.scene_scale *= math.pow(1.1, delta * 0.03)
+            
+            return {'RUNNING_MODAL'}
 
         # captrure ui controls events
         result =  self.uiview.event(context, event)
         if result & {'RUNNING_MODAL', 'FINISHED'}:
             self.update_solve(context)
-        return result
+
+        if result & {'FINISHED'}:
+            return self.finish(context)
+        
+        if result & {'CANCELLED'}:
+            return self.cancel(context)
+        
+        if context.space_data.region_3d.view_perspective != 'CAMERA':
+            return self.cancel(context)
+        
+        return {'RUNNING_MODAL'}
     
     def view3d_draw(self, context):
         self.uiview.begin()
@@ -266,6 +407,59 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             for line in self.third_vanishing_lines:
                 self.uiview.prop_line(line, color=get_axis_color(third_axis))
 
+        ##############################
+        # reference distance segment #
+        ##############################
+        if self.scene_scale_mode != 'ORIGIN':
+            def get_distance_measurement_direction() -> mathutils.Vector:
+                if self.scene_scale_mode == 'SCREEN':
+                    return mathutils.Vector((1,0))
+                else:
+                    axis_vectors = {'X_AXIS': (1, 0, 0), 'Y_AXIS': (0, 1, 0), 'Z_AXIS': (0, 0, 1)}
+                    axis_vector = axis_vectors[self.scene_scale_mode]
+
+                    region = context.region
+                    rv3d = context.space_data.region_3d
+                    R = view3d_utils.location_3d_to_region_2d(region, rv3d, axis_vector)
+                    R = self.uiview.unproject((R.x, R.y))
+                    R = mathutils.Vector((R[0], R[1]))
+                    O = mathutils.Vector((self.origin[0], self.origin[1]))
+                    return (R - O).normalized()
+
+            unit_settings = bpy.context.scene.unit_settings
+            system = unit_settings.system
+            scale = unit_settings.scale_length
+            length_unit = unit_settings.length_unit
+            match length_unit:
+                case 'METERS':
+                    length_unit = "m"
+                case 'CENTIMETERS':
+                    length_unit = "cm"
+                case 'INCHES':
+                    length_unit = "in"
+                
+            self.uiview.prop_distance_segment(self, "reference_distance_segment", 
+                origin=self.origin,
+                direction=get_distance_measurement_direction(),
+                text=f"{self.scene_scale:.2f}{length_unit}",
+                color=ORANGE)
+
+        # Draw error messages
+        if error_msg:=self.error_message:
+            lines = str(error_msg).splitlines()
+            text_block_height = LINE_HEIGHT * len(lines)
+            text_block_width = max([blf.dimensions(0, line)[0] for line in lines])
+            font_id = 0
+            center = context.region.width/2, context.region.height/2
+            blf.size(font_id, FONT_SIZE)
+            blf.color(font_id, 0.7, 0.2, 0.2, 1)
+            for i, line in enumerate(lines):
+                line_width = blf.dimensions(font_id, line)[0]
+
+                blf.position(font_id, center[0] - line_width/2, center[1] + LINE_HEIGHT * i - text_block_height/2, 0)
+                blf.draw(font_id, f"{line}")
+
+
         ## draw compute space
         x_min, y_min = self.uiview.project((-1,-1))
         x_max, y_max = self.uiview.project((1, 1))
@@ -284,9 +478,9 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
         self.uiview.end()
 
-        self.update_solve(context)
+        # self.update_solve(context)
 
-    def update_solve(self, context) -> set:
+    def update_solve(self, context):
         compute_space = solver.types.Rect(-1,-1,2,2)
 
         try:
@@ -345,7 +539,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                     if region_aspect >= 1.0:
                         focal_length = context.space_data.lens / 36.0 * compute_space.width
                     else:
-                        print("compute for PERSP view - height")
+                        # print("compute for PERSP view - height")
                         focal_length = context.space_data.lens / 24.0 * compute_space.height
 
                 case 'ORTHO':
@@ -384,9 +578,6 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             )
 
             self.error_message = ""
-
-
-            
                     
         except Exception as e:
             error_type = type(e).__name__  # Gets 'ValueError' as a string
@@ -394,9 +585,10 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             self.error_message = f"{error_type}\n{error_message}"
             import traceback
             traceback.print_exc()
-            return {'CANCELLED'}
 
-        return {'FINISHED'}
+        if context.area.type == 'VIEW_3D':
+            context.area.tag_redraw()
+
 
     # def execute(self, context):
     #     vl_settings = self
@@ -415,6 +607,7 @@ def rv3d_draw_function():
 
 draw_handler = None
 def register():
+    bpy.utils.register_class(MODAL_MT_RightClickMenu)
     bpy.utils.register_class(VIEW_OT_VanishingLinesViewTool)
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
@@ -432,7 +625,17 @@ def unregister():
         bpy.types.SpaceView3D.draw_handler_remove(draw_handler, 'WINDOW')
         draw_handler = None
 
+    modal_operators = bpy.context.window.modal_operators
+    # print([op.bl_idname if op else None for op in modal_operators])
+    for op in bpy.context.window.modal_operators:
+        if hasattr(op, 'cancel'):
+            op.cancel(bpy.context)
+        if hasattr(op, 'cleanup'):
+            op.cleanup(bpy.context)
+
+
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesViewTool)
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
+    bpy.utils.unregister_class(MODAL_MT_RightClickMenu)
 
     

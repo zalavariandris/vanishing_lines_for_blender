@@ -155,7 +155,6 @@ def apply_solver_results_to_blender_camera(
     camera_data.shift_y = shift_y/2
 
 
-
 def apply_solver_results_to_view3d(
         projection: glm.mat4,
         view: glm.mat4, 
@@ -193,7 +192,7 @@ def apply_solver_results_to_view3d(
 
         case 'PERSP':
             viewport = 0, 0, context.region.width, context.region.height
-            principal, focal_length = solver.utils.decompose_intrinsics(viewport, projection)
+            principal, focal_length = solver.utils.decompose_intrinsics(solver.types.Rect(*viewport), projection)
             region_aspect = context.region.width / context.region.height
             if region_aspect >= 1.0:
                 context.space_data.lens = focal_length*36 / context.region.width * 2 * region_aspect

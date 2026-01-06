@@ -1,6 +1,8 @@
 from typing import Tuple
 import bpy
 from . import solver
+
+
 # commands
 def update_solve(
         camera_object:bpy.types.Object, 
@@ -101,13 +103,13 @@ def trigger_update(self, context):
     'self' refers to the PropertyGroup instance. 
     'self.id_data' refers to the Camera data-block it is attached to.
     """
-    print("Triggering update from vl_params...", self, context)
-    camera_data = self.id_data
+    # print("Triggering update from vl_params...", self, context)
+    # camera_data = self.id_data
 
-    # Find all objects in the blend file using this specific camera data
-    users = [obj for obj in bpy.data.objects if obj.data == camera_data]
+    # # Find all objects in the blend file using this specific camera data
+    # users = [obj for obj in bpy.data.objects if obj.data == camera_data]
 
-    print(users)
+    # print(users)
     
     # for ob in users:
     #     # Perform your solve for each object user

@@ -388,10 +388,12 @@ class UIView3D:
     def prop_distance_segment(self, data:'bpy.types.ID', prop:str, *, 
         origin:Tuple[float, float], 
         direction:Tuple[float, float]=(1,0),
-        text:str="",
+        text:str|None=None,
         color=(0.0,0.5,1.0,1.0),
     ):
 
+        text = text if text is not None else f"{prop}"
+        
         def setter(data:'bpy.types.ID', prop:str, index:int, P:Tuple[float, float]):
             P = glm.vec2(P[0], P[1])
             O = glm.vec2(origin[0], origin[1])
@@ -420,10 +422,10 @@ class UIView3D:
             return Px, Py
         
         highlight = False
-        start_cp = self.prop_point(data, prop, index=0, color=color, set_transform=setter, get_transform=getter)
+        start_cp = self.prop_point(data, prop, index=0, text="", color=color, set_transform=setter, get_transform=getter)
         if self.is_item_active() or self.is_item_hovered():
             highlight = True
-        end_cp =   self.prop_point(data, prop, index=1, color=color, set_transform=setter, get_transform=getter)
+        end_cp =   self.prop_point(data, prop, index=1, text="", color=color, set_transform=setter, get_transform=getter)
         if self.is_item_active() or self.is_item_hovered():
             highlight = True
 

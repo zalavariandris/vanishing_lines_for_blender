@@ -284,6 +284,9 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
             except ValueError as e:
                 warnings.warn(f"Could not compute VP3: {e}")
 
+        ##############################
+        # reference distance segment #
+        ##############################
         if vl_settings.scene_scale_mode != 'ORIGIN':
             def get_distance_measurement_direction() -> mathutils.Vector:
                 if vl_settings.scene_scale_mode == 'SCREEN':
