@@ -1,5 +1,98 @@
-
+from typing import Tuple
 import bpy
+from . import solver
+# commands
+def update_solve(
+        camera_object:bpy.types.Object, 
+        compute_space:Tuple[float, float, float, float]=(-1, -1, 2, 2)
+    ):
+    vl_settings = camera_object.data.vl_settings
+
+    print("Updating vanishing lines solve...", compute_space)
+
+    if not vl_settings.enable_manual_principal:
+        Cx = compute_space[0] + compute_space[2] / 2
+        Cy = compute_space[1] + compute_space[3] / 2
+        vl_settings.principal = Cx, Cy
+
+    try:
+        mode = {"ONE_POINT":   solver.types.SolverMode.OneVP,
+                "TWO_POINT":   solver.types.SolverMode.TwoVP,
+                "THREE_POINT": solver.types.SolverMode.ThreeVP
+        }[vl_settings.mode]
+
+        reference_axis = {
+            'ORIGIN': None,# TODO: ORIGIN option
+            'SCREEN': solver.types.ReferenceAxis.Screen,
+            'X_AXIS': solver.types.ReferenceAxis.X_Axis,
+            'Y_AXIS': solver.types.ReferenceAxis.Y_Axis,
+            'Z_AXIS': solver.types.ReferenceAxis.Z_Axis
+        }[vl_settings.scene_scale_mode]
+
+        first_axis = {
+            'X+': solver.types.Axis.PositiveX,
+            'Y+': solver.types.Axis.PositiveY,
+            'Z+': solver.types.Axis.PositiveZ,
+            'X-': solver.types.Axis.NegativeX,
+            'Y-': solver.types.Axis.NegativeY,
+            'Z-': solver.types.Axis.NegativeZ
+        }[vl_settings.first_axis]
+
+        second_axis = {
+            'X+': solver.types.Axis.PositiveX,
+            'Y+': solver.types.Axis.PositiveY,
+            'Z+': solver.types.Axis.PositiveZ,
+            'X-': solver.types.Axis.NegativeX,
+            'Y-': solver.types.Axis.NegativeY,
+            'Z-': solver.types.Axis.NegativeZ
+        }[vl_settings.second_axis]
+
+        second_vanishing_lines = [(line.start, line.end) for line in vl_settings.second_vanishing_lines]
+        if vl_settings.quad_mode and mode in {solver.types.SolverMode.TwoVP, solver.types.SolverMode.ThreeVP}:
+            first_line = vl_settings.first_vanishing_lines[ 0]
+            last_line =  vl_settings.first_vanishing_lines[-1]
+
+            second_vanishing_lines = [
+                (first_line.start, last_line.start), (first_line.end, last_line.end)
+            ]
+        
+        projection, view = solver.core.solve(
+            mode = mode,
+            viewport=solver.types.Rect(*compute_space),
+            first_vanishing_lines= [(line.start, line.end) for line in  vl_settings.first_vanishing_lines],
+            second_vanishing_lines=second_vanishing_lines,
+            third_vanishing_lines= [(line.start, line.end) for line in  vl_settings.third_vanishing_lines],
+
+            f = camera_object.data.lens / camera_object.data.sensor_width * compute_space[3],
+            P = (vl_settings.principal[0], vl_settings.principal[1]), # TODO: is [0], [1] necessary?
+            O = (vl_settings.origin[0], vl_settings.origin[1]),
+
+            reference_axis=reference_axis, # TODO: make configurable
+            reference_distance_segment=(vl_settings.reference_distance_segment[0], vl_settings.reference_distance_segment[1]-vl_settings.reference_distance_segment[0]), # TODO: make fist value configurable
+            reference_world_size=vl_settings.scene_scale,
+
+            first_axis=first_axis,
+            second_axis=second_axis
+        )
+
+        vl_utils.apply_solver_results_to_blender_camera(
+            projection=projection, 
+            view=view, 
+            camera_object=camera_object, 
+            compute_space=compute_space, 
+            fit_mode=camera_object.data.sensor_fit
+        )
+
+        vl_settings.error_message = ""
+                
+    except Exception as e:
+        error_type = type(e).__name__  # Gets 'ValueError' as a string
+        error_message = str(e)         # Gets the actual message you wrote in 'raise'
+        vl_settings.error_message = f"{error_type}\n{error_message}"
+        import traceback
+        traceback.print_exc()
+
+
 
 
 def trigger_update(self, context):
@@ -8,10 +101,20 @@ def trigger_update(self, context):
     'self' refers to the PropertyGroup instance. 
     'self.id_data' refers to the Camera data-block it is attached to.
     """
-    None
-    # if self.id_data and context.view_layer:
-    #     self.id_data.update_tag()
-    #     context.view_layer.update()
+    print("Triggering update from vl_params...", self, context)
+    camera_data = self.id_data
+
+    # Find all objects in the blend file using this specific camera data
+    users = [obj for obj in bpy.data.objects if obj.data == camera_data]
+
+    print(users)
+    
+    # for ob in users:
+    #     # Perform your solve for each object user
+    #     try:
+    #         update_solve(ob, compute_space=(-1, -1, 2, 2))
+    #     except Exception as e:
+    #         print(f"Error updating solve for object {ob.name}: {e}")
 
 class Line(bpy.types.PropertyGroup):
     """A line defined by start and end points in normalized image space."""
@@ -182,7 +285,7 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Principal",
         size=2,
         default=(0.0, 0.0),
-        update=trigger_update,
+        # update=trigger_update,
         description="Principal point (optical center) in normalized image space", 
         options=set()
     ) # type: ignore

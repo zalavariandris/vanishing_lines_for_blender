@@ -14,6 +14,7 @@ from pyglm import glm
 
 import warnings
 
+
 class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
     bl_idname = "view.vanishing_lines_view_tool"
     bl_label = "Vanishing Lines View Tool"
@@ -141,6 +142,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         vl_params.set_defaults(self)
         self.uiview = UIView3D()
 
+        context.space_data.region_3d.view_perspective = 'CAMERA'
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
     
@@ -148,7 +150,10 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         if event.type in {'RIGHTMOUSE', 'ESC'}:
             return {'CANCELLED'}
         # print("modal", event.type)
-        return self.uiview.event(context, event)
+        result =  self.uiview.event(context, event)
+        if result & {'RUNNING_MODAL', 'FINISHED'}:
+            self.update_solve(context)
+        return result
     
     def view3d_draw(self, context):
         self.uiview.begin()
@@ -346,79 +351,15 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             )
 
             ## apply solver results to blender view
-            match context.space_data.region_3d.view_perspective:
-                case 'CAMERA':
-                    camera_object = context.space_data.camera
-                    vl_utils.apply_solver_results_to_blender_camera(
-                        projection=projection, 
-                        view=view, 
-                        camera_object=camera_object, 
-                        compute_space=compute_space, 
-                        fit_mode=camera_object.data.sensor_fit
-                    )
-
-                case 'PERSP':
-                    # print("apply to PERSP view")
-                    w = context.region.width
-                    h = context.region.height
-
-                    region_aspect = context.region.width / context.region.height
-
-                    # projection = glm.perspective(math.radians(60.0), w/h, 0.1, 1000.0)
-                    # view = glm.lookAt(
-                    #     glm.vec3(1.0, -3.0, 1.0),
-                    #     glm.vec3(0.0, 0.0, 0.0),
-                    #     glm.vec3(0.0, 0.0, 1.0)
-                    # )
-                    
-                    principal, focal_length = solver.utils.decompose_intrinsics((-1,-1,w,h), projection)
-
-                    if region_aspect >= 1.0:
-                        context.space_data.lens = focal_length*36 / context.region.width * 2 * region_aspect
-                    else:
-                        context.space_data.lens = focal_length*36 / context.region.height * 2
-
-                    # # projection = glm.perspective(math.radians(10.0), w/h, 0.1, 1000.0)
-                    context.space_data.region_3d.view_matrix = vl_utils.glm_to_blender_mat(view)
-                    # context.space_data.region_3d.window_matrix = vl_utils.glm_to_blender_mat(projection)
-                    # context.space_data.region_3d.perspective_matrix = vl_utils.glm_to_blender_mat(projection)
-                    # context.space_data.region_3d.view_camera_offset = (100,1)
-                    # context.space_data.region_3d.view_camera_zoom = 6
-                case 'ORTHO':
-                    assert False, "Should not reach here, ORTHO case handled above."
+            vl_utils.apply_solver_results_to_view3d(
+                projection, 
+                view, 
+                context, 
+                compute_space=tuple(compute_space), 
+                fit_mode='COVER'
+            )
 
             self.error_message = ""
-            # print(context.space_data.region_3d.view_camera_zoom)
-            # space = context.space_data
-            # assert space and space.type == 'VIEW_3D', "Context is not a 3D Viewport!"
-
-
-
-            # print(
-                # context.space_data.camera,
-                # context.space_data.lock_camera,
-                # context.space_data.lens,
-                
-                
-                # context.space_data.region_3d.view_matrix,
-                # context.space_data.region_3d.perspective_matrix,
-                # context.space_data.region_3d.window_matrix,
-
-                # context.space_data.region_3d.view_camera_zoom,
-                # context.space_data.region_3d.view_camera_offset
-            # )
-            # context.space_data.camera
-            # context.space_data.lock_camera
-            # context.space_data.lens
-            
-            # context.space_data.region_3d.view_perspective:bool
-            # context.space_data.region_3d.view_matrix
-            # context.space_data.region_3d.perspective_matrix
-            # context.space_data.region_3d.window_matrix
-
-            # context.space_data.region_3d.view_camera_zoom
-            # context.space_data.region_3d.view_camera_offset
-
 
 
             

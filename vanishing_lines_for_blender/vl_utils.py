@@ -5,6 +5,8 @@ from typing import Tuple, Iterable, cast
 from . import solver
 from pyglm import glm
 import warnings
+
+
 ####################
 # HELPER FUNCTIONS #
 ####################
@@ -12,7 +14,7 @@ from typing import Literal
 
 def is_operator_running(op_idname):
     modal_operators = bpy.context.window.modal_operators
-    print([op.bl_idname if op else None for op in modal_operators])
+    # print([op.bl_idname if op else None for op in modal_operators])
     for op in modal_operators:
         if op.bl_idname == op_idname:
             return True
@@ -152,6 +154,57 @@ def apply_solver_results_to_blender_camera(
     camera_data.shift_x = shift_x/2
     camera_data.shift_y = shift_y/2
 
+
+
+def apply_solver_results_to_view3d(
+        projection: glm.mat4,
+        view: glm.mat4, 
+        context: bpy.types.Context,
+        compute_space: Tuple[float, float, float, float],
+        fit_mode: Literal['COVER', 'CONTAIN', 'HORIZONTAL', 'VERTICAL'] = 'COVER'
+    ) -> None:
+    """
+    Apply solver results to Blender 3D Viewport
+    Args:
+        results: Solver results with transform and FOV
+        context: Blender context with 3D Viewport
+        compute_space: The viewport used for computation (e.g., [-1,-1,2,2])
+        fit_mode: How to fit the compute space to the region space
+    1. 'HORIZONTAL': Fit based on horizontal dimension
+    2. 'VERTICAL': Fit based on vertical dimension
+    3. 'CONTAIN': Fit based on larger dimension
+    3. 'COVER': Fit based on larger dimension
+    """
+
+    if fit_mode != 'COVER':
+        raise NotImplementedError("Only 'COVER' fit_mode is implemented for View3D.")
+    
+    ## apply solver results to blender view
+    match context.space_data.region_3d.view_perspective:
+        case 'CAMERA':
+            camera_object = context.space_data.camera
+            apply_solver_results_to_blender_camera(
+                projection=projection, 
+                view=view, 
+                camera_object=camera_object, 
+                compute_space=compute_space, 
+                fit_mode=camera_object.data.sensor_fit
+            )
+
+        case 'PERSP':
+            viewport = 0, 0, context.region.width, context.region.height
+            principal, focal_length = solver.utils.decompose_intrinsics(viewport, projection)
+            region_aspect = context.region.width / context.region.height
+            if region_aspect >= 1.0:
+                context.space_data.lens = focal_length*36 / context.region.width * 2 * region_aspect
+            else:
+                context.space_data.lens = focal_length*36 / context.region.height * 2
+
+            context.space_data.region_3d.view_matrix = glm_to_blender_mat(view)
+
+        case 'ORTHO':
+            assert False, "Should not reach here, ORTHO case handled above."
+    
 def set_view_camera(context, camera_object: bpy.types.Object):
     space = context.space_data
     if not space or space.type != 'VIEW_3D':
