@@ -150,6 +150,28 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         if event.type in {'RIGHTMOUSE', 'ESC'}:
             return {'CANCELLED'}
         # print("modal", event.type)
+
+        # capture key events
+        context.workspace.status_text_set(
+            "LMB: Confirm | RMB / Esc: Cancel | Adjusting..."
+        )
+        print(event.type, event.value)
+        if event.type in {'ONE', 'TWO', 'THREE'} and event.value == 'PRESS':
+            match event.type:
+                case 'ONE':
+                    self.mode = 'ONE_POINT'
+                case 'TWO':
+                    self.mode = 'TWO_POINT'
+                case 'THREE':
+                    self.mode = 'THREE_POINT'
+            self.update_solve(context)
+            return {'RUNNING_MODAL'}
+
+        # capture mouse events
+        if event.type in {'LEFTMOUSE', 'MIDDLEMOUSE', 'RIGHTMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} or event.value in {'PRESS', 'RELEASE', 'CLICK_DRAG'}:
+            ...
+
+        # captrure ui controls events
         result =  self.uiview.event(context, event)
         if result & {'RUNNING_MODAL', 'FINISHED'}:
             self.update_solve(context)
@@ -167,13 +189,15 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             warnings.warn("Context is not a 3D Viewport!")
             return
 
-
-        self.uiview.set_view(glm.mat4(1.0))
-        if region_aspect >= 1.0:
-            self.uiview.set_projection(glm.ortho(-1, 1, -1/region_aspect, 1/region_aspect, -1000.0, 1000.0))
+        if context.space_data.region_3d.view_perspective == 'CAMERA':
+            self.uiview.set_coordinate_system_to_camera_frame(context)
         else:
-            self.uiview.set_projection(glm.ortho(-1*region_aspect, 1*region_aspect, -1, 1, -1000.0, 1000.0))
-        self.uiview.set_viewport((0, 0, w, h))
+            self.uiview.set_view(glm.mat4(1.0))
+            if region_aspect >= 1.0:
+                self.uiview.set_projection(glm.ortho(-1, 1, -1/region_aspect, 1/region_aspect, -1000.0, 1000.0))
+            else:
+                self.uiview.set_projection(glm.ortho(-1*region_aspect, 1*region_aspect, -1, 1, -1000.0, 1000.0))
+            self.uiview.set_viewport((0, 0, w, h))
         ##
 
         GREEN = (0,1,0,1)
