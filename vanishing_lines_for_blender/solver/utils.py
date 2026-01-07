@@ -140,7 +140,7 @@ def intersect_ray_with_plane(ray: Ray3, plane_point: glm.vec3, plane_normal: glm
     Returns:
         The intersection point, or raises exception if no intersection
     """
-    ray_direction = glm.normalize(ray[1] - ray[0])
+    ray_direction = glm.normalize(glm.vec3(ray[1]) - ray[0])
     denom = glm.dot(plane_normal, ray_direction)
     
     if abs(denom) < EPSILON:

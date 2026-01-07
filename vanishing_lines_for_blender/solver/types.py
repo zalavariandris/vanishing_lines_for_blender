@@ -49,11 +49,11 @@ class Rect:
     height: float
 
     @property
-    def size(self) -> Tuple[float, float]:
+    def size(self) -> Point2:
         return self.width, self.height
 
     @property
-    def center(self) -> Tuple[float, float]:
+    def center(self) -> Point2:
         return (self.x + self.width / 2, self.y + self.height / 2)
     
     @property
