@@ -46,7 +46,7 @@ class MODAL_MT_RightClickMenu(bpy.types.Menu):
             layout.prop(vl_settings, 'quad_mode')
             row = layout.row()
             row.enabled = vl_settings.mode in {'ONE_POINT', 'TWO_POINT'}
-            row.prop(vl_settings, 'enable_manual_principal')
+            # row.prop(vl_settings, 'enable_manual_principal')
             layout.prop_menu_enum(vl_settings, 'first_axis')
             layout.prop_menu_enum(vl_settings, 'second_axis')
             layout.prop_menu_enum(vl_settings, 'scene_scale_mode')
@@ -56,6 +56,9 @@ class MODAL_MT_RightClickMenu(bpy.types.Menu):
             col.enabled = vl_settings.scene_scale_mode != 'ORIGIN'
             col.prop(vl_settings, 'reference_distance_segment', index=0)
             col.prop(vl_settings, 'reference_distance_segment', index=1)
+
+            # update solve
+            op.update_solve(context)
         
 
 class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
@@ -289,10 +292,6 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             text="O",
             color=YELLOW)
         
-        _ = self.uiview.prop_point(vl_settings, "principal", 
-            text="P",
-            color=YELLOW)
-        
         def get_axis_color(axis:solver.types.Axis) -> Tuple[float, float, float, float]:
             match axis:
                 case solver.types.Axis.PositiveX | solver.types.Axis.NegativeX:
@@ -447,6 +446,21 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 except ValueError as e:
                     warnings.warn(f"Could not compute VP3: {e}")
 
+                projection, view = vl_utils.get_camera_matrices(camera_object=context.space_data.camera,
+                    compute_space=solver.types.Rect(-1,-1,2,2))
+                principal, f = solver.utils.decompose_intrinsics(solver.types.Rect(-1,-1,2,2), projection)
+                self.uiview._draw_layer.add_point(
+                    pos=self.uiview.project(principal),
+                    color=glm.vec4(1.0, 0.7, 0.0, 1.0),
+                    shape='X',
+                )
+
+                self.uiview._draw_layer.add_annotation(
+                    pos=self.uiview.project(principal),
+                    text="P",
+                    color=glm.vec4(1.0, 0.7, 0.0, 1.0)
+                )
+
         # Draw error messages
         if error_msg:=vl_settings.error_message:
             lines = str(error_msg).splitlines()
@@ -548,8 +562,8 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                     context.space_data.region_3d.view_perspective = 'PERSP'
                     focal_length = context.space_data.lens / 36.0 * compute_space.height
 
-            if not vl_settings.enable_manual_principal:
-                vl_settings.principal = compute_space.center
+            # if not vl_settings.enable_manual_principal:
+            #     vl_settings.principal = compute_space.center
 
             # print("compute:", compute_space)
             projection, view = solver.core.solve(
@@ -560,7 +574,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 third_vanishing_lines= [(line.start, line.end) for line in  vl_settings.third_vanishing_lines],
 
                 f = focal_length,
-                P = (vl_settings.principal[0], vl_settings.principal[1]), # TODO: is [0], [1] necessary?
+                P = (0,0), # TODO: is [0], [1] necessary?
                 O = (vl_settings.origin[0],    vl_settings.origin[1]),
                 reference_axis=reference_axis, # TODO: make configurable
                 reference_distance_segment=(vl_settings.reference_distance_segment[0], vl_settings.reference_distance_segment[1]-vl_settings.reference_distance_segment[0]), # TODO: make fist value configurable
@@ -596,7 +610,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
 ######################
 def view_menu_func(self, context):
-    self.layout.operator(VIEW_OT_VanishingLinesViewTool.bl_idname, text="Calibrate View with Vanishing Lines")
+    self.layout.operator(VIEW_OT_VanishingLinesViewTool.bl_idname, text="Vanishing Lines")
 
 def rv3d_draw_function():
     # global draw_list

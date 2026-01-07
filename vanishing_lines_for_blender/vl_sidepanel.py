@@ -67,14 +67,6 @@ class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
         vl_panel_components.draw_axis_assignment_panel(self.layout, camera)
         vl_panel_components.draw_coordinates_panel(self.layout, camera)
 
-
-
-        # header, coordinates_panel = self.layout.panel("all_icons", default_closed=True)
-        # header.label(text="blender Icons")
-        # if coordinates_panel:
-        #     vl_panel_components.draw_all_icons(coordinates_panel)
-
-
 ######################
 # REGISTER FUNCTIONS #
 ######################

@@ -12,10 +12,10 @@ def update_solve(
 
     print("Updating vanishing lines solve...", compute_space)
 
-    if not vl_settings.enable_manual_principal:
-        Cx = compute_space[0] + compute_space[2] / 2
-        Cy = compute_space[1] + compute_space[3] / 2
-        vl_settings.principal = Cx, Cy
+    # if not vl_settings.enable_manual_principal:
+    #     Cx = compute_space[0] + compute_space[2] / 2
+    #     Cy = compute_space[1] + compute_space[3] / 2
+    #     vl_settings.principal = Cx, Cy
 
     try:
         mode = {"ONE_POINT":   solver.types.SolverMode.OneVP,
@@ -190,13 +190,13 @@ class VLSettings(bpy.types.PropertyGroup):
         options=set()
     ) # type: ignore
 
-    enable_manual_principal: bpy.props.BoolProperty(
-        name="Manual Principal Point",
-        default=False,
-        update=trigger_update,
-        description="Manually set the principal point instead of using the image center", 
-        options=set()
-    ) # type: ignore
+    # enable_manual_principal: bpy.props.BoolProperty(
+    #     name="Manual Principal Point",
+    #     default=False,
+    #     update=trigger_update,
+    #     description="Manually set the principal point instead of using the image center", 
+    #     options=set()
+    # ) # type: ignore
 
     quad_mode: bpy.props.BoolProperty(
         name="Quad Mode",

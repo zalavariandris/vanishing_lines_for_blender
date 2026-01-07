@@ -157,7 +157,7 @@ def apply_solver_results_to_view3d(
         case 'ORTHO':
             assert False, "Should not reach here, ORTHO case handled above."
 
-def get_camera_intrinsics(
+def get_camera_matrices(
     camera_object: bpy.types.Object,
     compute_space: solver.types.Rect
 ) -> Tuple[glm.mat4, glm.mat4]:

@@ -1,6 +1,7 @@
 import math
 import bpy
 import gpu
+from typing import Literal
 from gpu_extras.batch import batch_for_shader
 
 from typing import List, Tuple
@@ -56,9 +57,17 @@ class DrawLayer:
         self.add_line((x1, y1), (x0, y1), color)  # bottom
         self.add_line((x0, y1), (x0, y0), color)  # left
 
-    def add_point(self, pos: Tuple[float, float], color: Tuple[float, float, float, float]) -> None:
-        self._point_attributes['pos'].append(pos)
-        self._point_attributes['color'].append(color)
+    def add_point(self, pos: Tuple[float, float], color: Tuple[float, float, float, float], shape:Literal['.', 'X'] = '.') -> None:
+        match shape:
+            case 'X' | 'x':
+                offset = DEFAULT_FONT_SIZE / 3
+                self.add_line(pos, (pos[0] + offset, pos[1] + offset), color)  # to top-right
+                self.add_line(pos, (pos[0] - offset, pos[1] - offset), color)  # to bottom-left
+                self.add_line(pos, (pos[0] + offset, pos[1] - offset), color)  # to bottom-right
+                self.add_line(pos, (pos[0] - offset, pos[1] + offset), color)  # to top-left
+            case '.':
+                self._point_attributes['pos'].append(pos)
+                self._point_attributes['color'].append(color)
 
     def add_annotation(self, pos: Tuple[float, float], text: str, color: Tuple[float, float, float, float], angle: float = 0.0) -> None:
         self._annotations.append((pos, text, color, angle))
