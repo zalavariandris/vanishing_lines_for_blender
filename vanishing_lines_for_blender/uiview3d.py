@@ -147,18 +147,12 @@ class UIView3D:
         # print("Event:", event.type, event.value)
         area: 'bpy.types.Area'|None = context.area
         if area is None:
-            return {'PASS_THROUGH'}
+            return False
         
         region: 'bpy.types.Region'|None = context.region
         if region is None:
-            return {'PASS_THROUGH'}
+            return False
 
-        """Cancel on ESC or camera change"""
-        if event.type in {'ESC'}:
-            if area.type == 'VIEW_3D':
-                area.tag_redraw()
-            return {'FINISHED'}
-        
         ###
         #  HANDLE MOUSE EVENTS
         ###
@@ -177,13 +171,13 @@ class UIView3D:
         """Mouse Events"""
         if not MouseIsInRegion:
             # self.report({'INFO'}, "mouse is not in area")
-            return {'PASS_THROUGH'}
+            return False
         
         if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             """Wheel Events"""
             if area.type == 'VIEW_3D':
                 area.tag_redraw()
-            return {'PASS_THROUGH'}
+            return False
 
         if MouseIsInRegion and event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             self._is_left_mouse_down = True
@@ -204,9 +198,9 @@ class UIView3D:
 
             if self._active_id is not None:
 
-                return {'RUNNING_MODAL'}
+                return False
             else:
-                return {'PASS_THROUGH'}
+                return False
         
         elif MouseIsInRegion and event.type == 'MOUSEMOVE':
             if not self._is_left_mouse_down:
@@ -221,9 +215,9 @@ class UIView3D:
                         area.tag_redraw()
 
                 if self._hovered_id is not None:
-                    return {'RUNNING_MODAL'}
+                    return False
                 else:
-                    return {'PASS_THROUGH'}
+                    return False
 
             elif self._active_id is not None:
                 """Mouse Drag"""
@@ -245,9 +239,9 @@ class UIView3D:
                 if area.type == 'VIEW_3D':
                     area.tag_redraw()
                 
-                return {'RUNNING_MODAL'}
+                return True
             else:
-                return {'PASS_THROUGH'}
+                return False
             
         elif self._is_left_mouse_down and event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self._is_left_mouse_down = False
@@ -259,11 +253,11 @@ class UIView3D:
                 if area.type == 'VIEW_3D':
                     area.tag_redraw()
                 
-                return {'RUNNING_MODAL'}
+                return False
             else:
-                return {'PASS_THROUGH'}
+                return False
 
-        return {'PASS_THROUGH'}
+        return False
 
     # GUI
     def get_closest_id(self, mouse_region_x: float, mouse_region_y: float, threshold:float=DEFAULT_CLICK_THRESHOLD) -> ControlIdType|None:

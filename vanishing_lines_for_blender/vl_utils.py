@@ -36,52 +36,6 @@ def flatten(xss):
 # BLENDER HELPERS #
 ###################
 
-
-def projection_matrix_from_fov(
-    fov_y: float,
-    aspect_ratio: float,
-    near: float = 0.01,
-    far: float = 1000.0
-) -> glm.mat4:
-    """
-    Create a perspective projection matrix from vertical field of view.
-    
-    Args:
-        fov_y: Vertical field of view in radians
-        aspect_ratio: Width / Height ratio
-        near: Near clipping plane distance
-        far: Far clipping plane distance
-    
-    Returns:
-        A 4x4 perspective projection matrix
-    """
-    f = 1.0 / math.tan(fov_y / 2.0)
-    
-    return glm.mat4(
-        f / aspect_ratio, 0.0, 0.0, 0.0,
-        0.0, f, 0.0, 0.0,
-        0.0, 0.0, (far + near) / (near - far), (2.0 * far * near) / (near - far),
-        0.0, 0.0, -1.0, 0.0
-    )
-
-def get_running_operator_by_idname(op_idname):
-    for op in bpy.context.window.modal_operators:
-        # print(f"Checking operator: {op.bl_idname!r}")
-        if op and op.bl_idname == op_idname:
-            return op
-    return None
-
-def glm_to_blender_mat(glm_mat:glm.mat4) -> mathutils.Matrix:
-    """
-    Converts a glm.mat4 object to a Blender mathutils.Matrix (4x4).
-    
-    PyGLM matrices are column-major iterables. 
-    Blender's Matrix((...)) constructor expects rows.
-    """
-    # 1. Feed the 4 columns of the glm.mat4 into the constructor
-    # 2. Transpose the result to flip it from column-major to row-major
-    return mathutils.Matrix(tuple(glm_mat)).transposed()
-
 def apply_solver_results_to_blender_camera(
         projection: glm.mat4,
         view: glm.mat4, 
@@ -154,7 +108,6 @@ def apply_solver_results_to_blender_camera(
     camera_data.shift_x = shift_x/2
     camera_data.shift_y = shift_y/2
 
-
 def apply_solver_results_to_view3d(
         projection: glm.mat4,
         view: glm.mat4, 
@@ -203,7 +156,96 @@ def apply_solver_results_to_view3d(
 
         case 'ORTHO':
             assert False, "Should not reach here, ORTHO case handled above."
+
+def get_camera_intrinsics(
+    camera_object: bpy.types.Object,
+    compute_space: solver.types.Rect
+) -> Tuple[glm.mat4, glm.mat4]:
+    """
+    Extract projection and view matrices from a Blender camera.
     
+    Args:
+        camera_object: Blender camera object
+        compute_space: The viewport rectangle used for computation (e.g., Rect(-1, -1, 2, 2))
+    
+    Returns:
+        Tuple of (projection_matrix, view_matrix) as glm.mat4
+    """
+    camera_data = camera_object.data
+    
+    # Calculate focal length in compute space units
+    focal_length = camera_data.lens / camera_data.sensor_width * compute_space.height
+    
+    # Extract principal point from camera shift (reverse of apply_solver_results_to_blender_camera)
+    center_x = compute_space.x + compute_space.width / 2
+    center_y = compute_space.y + compute_space.height / 2
+    # Reverse the operations: shift_x = -(P.x - center_x) / (compute_space.width / 2) / 2
+    # So: P.x = center_x - shift_x * 2 * (compute_space.width / 2)
+    P_x = center_x - camera_data.shift_x * 2 * (compute_space.width / 2)
+    P_y = center_y - camera_data.shift_y * 2 * (compute_space.height / 2)
+    principal_point = glm.vec2(P_x, P_y)
+    
+    # Build projection matrix
+    projection = solver.utils.compose_intrinsics(
+        viewport=compute_space,
+        f=focal_length,
+        P=principal_point,
+        near=camera_data.clip_start,
+        far=camera_data.clip_end
+    )
+    
+    # Build view matrix from camera transform
+    view = glm.mat4(*[v for col in camera_object.matrix_world.inverted().transposed() for v in col])
+    
+    return projection, view
+
+
+
+def projection_matrix_from_fov(
+    fov_y: float,
+    aspect_ratio: float,
+    near: float = 0.01,
+    far: float = 1000.0
+) -> glm.mat4:
+    """
+    Create a perspective projection matrix from vertical field of view.
+    
+    Args:
+        fov_y: Vertical field of view in radians
+        aspect_ratio: Width / Height ratio
+        near: Near clipping plane distance
+        far: Far clipping plane distance
+    
+    Returns:
+        A 4x4 perspective projection matrix
+    """
+    f = 1.0 / math.tan(fov_y / 2.0)
+    
+    return glm.mat4(
+        f / aspect_ratio, 0.0, 0.0, 0.0,
+        0.0, f, 0.0, 0.0,
+        0.0, 0.0, (far + near) / (near - far), (2.0 * far * near) / (near - far),
+        0.0, 0.0, -1.0, 0.0
+    )
+
+def get_running_operator_by_idname(op_idname):
+    for op in bpy.context.window.modal_operators:
+        # print(f"Checking operator: {op.bl_idname!r}")
+        if op and op.bl_idname == op_idname:
+            return op
+    return None
+
+def glm_to_blender_mat(glm_mat:glm.mat4) -> mathutils.Matrix:
+    """
+    Converts a glm.mat4 object to a Blender mathutils.Matrix (4x4).
+    
+    PyGLM matrices are column-major iterables. 
+    Blender's Matrix((...)) constructor expects rows.
+    """
+    # 1. Feed the 4 columns of the glm.mat4 into the constructor
+    # 2. Transpose the result to flip it from column-major to row-major
+    return mathutils.Matrix(tuple(glm_mat)).transposed()
+
 def set_view_camera(context, camera_object: bpy.types.Object):
     space = context.space_data
     if not space or space.type != 'VIEW_3D':

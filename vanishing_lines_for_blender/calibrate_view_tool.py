@@ -9,16 +9,13 @@ import blf
 import mathutils
 from bpy_extras import view3d_utils
 
-from . import vl_params
-from . import solver
-from .  import vl_params
-from . import vl_utils
-
 # third party
 from pyglm import glm
 
 # local
 from . uiview3d import UIView3D
+from . import vl_params
+from . import solver
 from . import vl_utils
 
 # Constants
@@ -35,8 +32,6 @@ class MODAL_MT_RightClickMenu(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout.column()
         
-        
-
         if op:=vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
             layout.prop_tabs_enum(op, 'mode')
 
@@ -193,17 +188,35 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
     
     error_message: str = ""
     
+    # Store initial camera state for restoration on cancel
+    _initial_camera_matrix: mathutils.Matrix = None  # type: ignore
+    _initial_camera_lens: float = 0.0
+    _initial_camera_shift_x: float = 0.0
+    _initial_camera_shift_y: float = 0.0
+    
     def invoke(self, context, event):
         vl_params.set_defaults(self)
         self.uiview = UIView3D()
         self.middle_mouse_pressed = False
 
         context.space_data.region_3d.view_perspective = 'CAMERA'
+        
+        # Save initial camera state for restoration on cancel
+        if context.space_data.camera:
+            camera_object = context.space_data.camera
+            self._initial_camera_matrix = camera_object.matrix_world.copy()
+            self._initial_camera_lens = camera_object.data.lens
+            self._initial_camera_shift_x = camera_object.data.shift_x
+            self._initial_camera_shift_y = camera_object.data.shift_y
+        
         context.window_manager.modal_handler_add(self)
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
 
         self.update_solve(context)
         return {'RUNNING_MODAL'}
+    
+    def get_vl_params(self, context):
+        return self
     
     def status_text(self, header, context) -> str:
         header.layout.label(text="vanishing point", icon='EVENT_ONEKEY')
@@ -214,6 +227,15 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         header.layout.label(text="finish", icon='EVENT_RETURN')
         
     def cancel(self, context):
+        # Restore previous camera state
+        # if context.space_data.camera and self._initial_camera_matrix is not None:
+        #     camera_object = context.space_data.camera
+        #     camera_object.matrix_world = self._initial_camera_matrix
+        #     camera_object.data.lens = self._initial_camera_lens
+        #     camera_object.data.shift_x = self._initial_camera_shift_x
+        #     camera_object.data.shift_y = self._initial_camera_shift_y
+
+        context.area.tag_redraw()
         bpy.context.workspace.status_text_set(None)
         return {'CANCELLED'}
     
@@ -222,99 +244,100 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         return {'FINISHED'}
     
     def modal(self, context, event):
+        print("modal", event.type, event.value)
         if event.type in {'ESC'}:
+            context.area.tag_redraw()
+            return self.finish(context)
+        
+        if event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
+            context.area.tag_redraw()
+            return self.finish(context)
+        ##################
+        # Control params #
+        ##################
+        vl_params = self.get_vl_params(context)
+        if event.type in {'ONE', 'TWO', 'THREE', 'NUMPAD_1', 'NUMPAD_2', 'NUMPAD_3'} and event.value == 'PRESS':
+            match event.type:
+                case 'ONE' | 'NUMPAD_1':
+                    vl_params.mode = 'ONE_POINT'
+                case 'TWO' | 'NUMPAD_2':
+                    vl_params.mode = 'TWO_POINT'
+                case 'THREE' | 'NUMPAD_3':
+                    vl_params.mode = 'THREE_POINT'
+            self.update_solve(context)
+            return {'RUNNING_MODAL'}
+        
+        if context.space_data.region_3d.view_perspective != 'CAMERA':
             return self.cancel(context)
-        # print("modal", event.type, event.value)
 
-        # capture key events
-        # context.workspace.status_text_set(
-        #     "LMB: Confirm | RMB / Esc: Cancel | Adjusting..."
-        # )
-        # print(event.type, event.value)
-
-        # repimplement camera offset
+        
         if event.type == 'MIDDLEMOUSE':
             if event.value == 'PRESS':
                 self.middle_mouse_pressed = True
             elif event.value == 'RELEASE':
                 self.middle_mouse_pressed = False
 
-        if event.type == 'MOUSEMOVE' and self.middle_mouse_pressed:
-            ## if CTRL and SHIFT ARE PRESSED, ZOOM else PAN
-            if event.ctrl:
-                delta = event.mouse_prev_y - event.mouse_y
-                self.scene_scale *= math.pow(1.1, delta * 0.03)
+
+        if event.shift:
+            # move region 3d
+            if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+                context.space_data.region_3d.view_camera_zoom += (1 if event.type == 'WHEELUPMOUSE' else -1) * 6
                 return {'RUNNING_MODAL'}
-            else:
-                delta_x = event.mouse_prev_x - event.mouse_x
-                delta_y = event.mouse_prev_y - event.mouse_y
+            
+            elif event.type == 'MOUSEMOVE' and self.middle_mouse_pressed:
+                # repimplement camera offset
+                mouse_delta_x = event.mouse_prev_x - event.mouse_x
+                mouse_delta_y = event.mouse_prev_y - event.mouse_y
                 region = context.region
 
-                # Calculate offset delta that matches projection formula:
-                # x -= offset_x * 4.0 * zoom_fac (in NDC)
-                # Then converts to pixels: x = (x / 2.0 + 0.5) * region_size
-                # Therefore: offset_delta = delta_pixels / (2.0 * zoom_fac * region_dimension)
-            
                 # Get zoom factor to match coordinate projection
                 view_camera_zoom = context.space_data.region_3d.view_camera_zoom
                 zoom_fac = ((math.sqrt(2.0) + view_camera_zoom / 50.0) ** 2) / 4.0 # matches Blender magic zoom formula
 
-                offset_delta_x = delta_x / (2.0 * zoom_fac * region.width)
-                offset_delta_y = delta_y / (2.0 * zoom_fac * region.height)
-                if event.shift:
-                    context.space_data.region_3d.view_camera_offset[0] += offset_delta_x
-                    context.space_data.region_3d.view_camera_offset[1] += offset_delta_y
+                offset_delta_x = mouse_delta_x / (2.0 * zoom_fac * region.width)
+                offset_delta_y = mouse_delta_y / (2.0 * zoom_fac * region.height)
+                context.space_data.region_3d.view_camera_offset[0] += offset_delta_x
+                context.space_data.region_3d.view_camera_offset[1] += offset_delta_y
+                return {'RUNNING_MODAL'}
+        else:
+            # adjust parameters
+            if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+                # delta = (1 if event.type == 'WHEELDOWNMOUSE' else -1) * 50
+                # vl_params.scene_scale *= math.pow(1.1, delta * 0.03)
+                distance_length = vl_params.reference_distance_segment[1] - vl_params.reference_distance_segment[0]
+                distance_length*= (0.9 if event.type == 'WHEELUPMOUSE' else 1.1)
+                vl_params.reference_distance_segment[1] = vl_params.reference_distance_segment[0] + distance_length
+                self.update_solve(context)
+                return {'RUNNING_MODAL'}
+            
+            elif event.type == 'MOUSEMOVE' and self.middle_mouse_pressed:
+                if event.ctrl:
+                    delta = event.mouse_prev_y - event.mouse_y
+                    # vl_params.scene_scale *= math.pow(1.1, delta * 0.03)
+                    distance_length = vl_params.reference_distance_segment[1] - vl_params.reference_distance_segment[0]
+                    distance_length*=  math.pow(1.1, delta * 0.03)
+                    vl_params.reference_distance_segment[1] = vl_params.reference_distance_segment[0] + distance_length
+                    self.update_solve(context)
                     return {'RUNNING_MODAL'}
                 else:
                     proj_mouse_x, proj_mouse_y = self.uiview.unproject((event.mouse_x, event.mouse_y))         # to update internal matrices
                     proj_mouse_prev_x, proj_mouse_prev_y = self.uiview.unproject((event.mouse_prev_x, event.mouse_prev_y)) # to update internal matrices
                     proj_mouse_delta_x = proj_mouse_prev_x - proj_mouse_x
                     proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
-                    self.origin[0] -=   proj_mouse_delta_x
-                    self.origin[1] -=   proj_mouse_delta_y
+                    vl_params.origin[0] -=   proj_mouse_delta_x
+                    vl_params.origin[1] -=   proj_mouse_delta_y
                     self.update_solve(context)
                     return {'RUNNING_MODAL'}
-
 
         if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
             # This triggers the menu at the mouse location
             bpy.ops.wm.call_menu(name=MODAL_MT_RightClickMenu.bl_idname)
             return {'RUNNING_MODAL'}
 
-        if event.type in {'ONE', 'TWO', 'THREE', 'NUMPAD_1', 'NUMPAD_2', 'NUMPAD_3'} and event.value == 'PRESS':
-            match event.type:
-                case 'ONE' | 'NUMPAD_1':
-                    self.mode = 'ONE_POINT'
-                case 'TWO' | 'NUMPAD_2':
-                    self.mode = 'TWO_POINT'
-                case 'THREE' | 'NUMPAD_3':
-                    self.mode = 'THREE_POINT'
+        # capture ui controls events
+        changed = self.uiview.event(context, event)
+        if changed:
             self.update_solve(context)
-            return {'RUNNING_MODAL'}
-
-        # capture wheel events
-        if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
-            if event.shift:
-                context.space_data.region_3d.view_camera_zoom += (1 if event.type == 'WHEELUPMOUSE' else -1) * 6
-            else:
-                delta = (1 if event.type == 'WHEELDOWNMOUSE' else -1) * 50
-                self.scene_scale *= math.pow(1.1, delta * 0.03)
-            
-            return {'RUNNING_MODAL'}
-
-        # captrure ui controls events
-        result =  self.uiview.event(context, event)
-        if result & {'RUNNING_MODAL', 'FINISHED'}:
-            self.update_solve(context)
-
-        if result & {'FINISHED'}:
-            return self.finish(context)
-        
-        if result & {'CANCELLED'}:
-            return self.cancel(context)
-        
-        if context.space_data.region_3d.view_perspective != 'CAMERA':
-            return self.cancel(context)
         
         return {'RUNNING_MODAL'}
     
@@ -350,11 +373,12 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         ###########################
         # Vanishing Line CONTROLS #
         ###########################
-        _ = self.uiview.prop_point(self, "origin",    
+        vl_params = self.get_vl_params(context)
+        _ = self.uiview.prop_point(vl_params, "origin",    
             text="O",
             color=YELLOW)
         
-        _ = self.uiview.prop_point(self, "principal", 
+        _ = self.uiview.prop_point(vl_params, "principal", 
             text="P",
             color=YELLOW)
         
@@ -375,23 +399,23 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             'Y-': solver.types.Axis.NegativeY,
             'Z-': solver.types.Axis.NegativeZ
         }
-        first_axis = axes_mapping[self.first_axis]
-        second_axis = axes_mapping[self.second_axis]
+        first_axis = axes_mapping[vl_params.first_axis]
+        second_axis = axes_mapping[vl_params.second_axis]
         third_axis = solver.helpers.third_axis(first_axis, second_axis) # find third axis based on the first two
 
-        if self.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
+        if vl_params.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
             # Draw first vanishing lines
             for line in self.first_vanishing_lines:
                 self.uiview.prop_line(line, color=get_axis_color(first_axis))
 
-        if self.mode in {'ONE_POINT'}:
+        if vl_params.mode in {'ONE_POINT'}:
             # Draw the horizontal line for the vp1 mode:
-            self.uiview.prop_line(self.second_vanishing_lines[0], color=get_axis_color(second_axis))
+            self.uiview.prop_line(vl_params.second_vanishing_lines[0], color=get_axis_color(second_axis))
 
-        if self.mode in {'TWO_POINT', 'THREE_POINT'}:
+        if vl_params.mode in {'TWO_POINT', 'THREE_POINT'}:
             if self.quad_mode:
-                first_line = self.first_vanishing_lines[ 0]
-                last_line =  self.first_vanishing_lines[-1]
+                first_line = vl_params.first_vanishing_lines[ 0]
+                last_line =  vl_params.first_vanishing_lines[-1]
                 
                 for line_start, line_end in [(first_line.start, last_line.start), (first_line.end, last_line.end)]:
                     self.uiview._draw_layer.add_line(
@@ -400,30 +424,30 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                         get_axis_color(second_axis))
                     
             else:
-                for line in self.second_vanishing_lines:
+                for line in vl_params.second_vanishing_lines:
                     self.uiview.prop_line(line, color=get_axis_color(second_axis))
 
-        if self.mode in {'THREE_POINT'}:
-            for line in self.third_vanishing_lines:
+        if vl_params.mode in {'THREE_POINT'}:
+            for line in vl_params.third_vanishing_lines:
                 self.uiview.prop_line(line, color=get_axis_color(third_axis))
 
-        ##############################
-        # reference distance segment #
-        ##############################
-        if self.scene_scale_mode != 'ORIGIN':
+        ###############################
+        # reference distance CONTROLS #
+        ###############################
+        if vl_params.scene_scale_mode != 'ORIGIN':
             def get_distance_measurement_direction() -> mathutils.Vector:
-                if self.scene_scale_mode == 'SCREEN':
+                if vl_params.scene_scale_mode == 'SCREEN':
                     return mathutils.Vector((1,0))
                 else:
                     axis_vectors = {'X_AXIS': (1, 0, 0), 'Y_AXIS': (0, 1, 0), 'Z_AXIS': (0, 0, 1)}
-                    axis_vector = axis_vectors[self.scene_scale_mode]
+                    axis_vector = axis_vectors[vl_params.scene_scale_mode]
 
                     region = context.region
                     rv3d = context.space_data.region_3d
                     R = view3d_utils.location_3d_to_region_2d(region, rv3d, axis_vector)
                     R = self.uiview.unproject((R.x, R.y))
                     R = mathutils.Vector((R[0], R[1]))
-                    O = mathutils.Vector((self.origin[0], self.origin[1]))
+                    O = mathutils.Vector((vl_params.origin[0], vl_params.origin[1]))
                     return (R - O).normalized()
 
             unit_settings = bpy.context.scene.unit_settings
@@ -443,9 +467,33 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 direction=get_distance_measurement_direction(),
                 text=f"{self.scene_scale:.2f}{length_unit}",
                 color=ORANGE)
+            
+        # draw vanishing points
+        if context.space_data.region_3d.view_perspective == 'CAMERA':
+            camera_object = context.space_data.camera
+            compute_space = solver.types.Rect(-1, -1, 2, 2)
+            
+            # Get camera intrinsics
+            projection, view = vl_utils.get_camera_intrinsics(camera_object, compute_space)
+            vp1, vp2, vp3 = solver.helpers.vanishing_points_from_camera(projection, view)
 
+
+            nr_of_vps = {'ONE_POINT': 1,'TWO_POINT': 2,'THREE_POINT': 3}[vl_params.mode]
+            for vp, color in [(vp1, RED), (vp2, GREEN), (vp3, BLUE)][:nr_of_vps]:
+                x, y = self.uiview.project((vp.x, vp.y))
+                self.uiview._draw_layer.add_point(
+                    (x, y),
+                    color=color
+                )
+
+                # for P, Q in vl_params.first_vanishing_lines:
+                #     self.uiview._draw_layer.add_line(
+                #         self.uiview.project(vl_utils.closest_point_to_target([P, Q], vp1)), 
+                #         self.uiview.project(vp1), 
+                #         vl_utils.dim_color(RED))
+                
         # Draw error messages
-        if error_msg:=self.error_message:
+        if error_msg:=vl_params.error_message:
             lines = str(error_msg).splitlines()
             text_block_height = LINE_HEIGHT * len(lines)
             text_block_width = max([blf.dimensions(0, line)[0] for line in lines])
@@ -455,18 +503,16 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             blf.color(font_id, 0.7, 0.2, 0.2, 1)
             for i, line in enumerate(lines):
                 line_width = blf.dimensions(font_id, line)[0]
-
                 blf.position(font_id, center[0] - line_width/2, center[1] + LINE_HEIGHT * i - text_block_height/2, 0)
                 blf.draw(font_id, f"{line}")
-
 
         ## draw compute space
         x_min, y_min = self.uiview.project((-1,-1))
         x_max, y_max = self.uiview.project((1, 1))
         self.uiview._draw_layer.add_rect(
-            (x_min+10, y_min+10),
-            (x_max - x_min-20, y_max - y_min-20),
-            color=(0,1,1,1.0)
+            (x_min, y_min),
+            (x_max - x_min, y_max - y_min),
+            color=(0,1,1,0.1)
         )
 
         ## draw info
@@ -483,13 +529,14 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
     def update_solve(self, context):
         compute_space = solver.types.Rect(-1,-1,2,2)
 
+        vl_params = self.get_vl_params(context)
         try:
             # map props to solver
             mode = {
                 "ONE_POINT":   solver.types.SolverMode.OneVP,
                 "TWO_POINT":   solver.types.SolverMode.TwoVP,
                 "THREE_POINT": solver.types.SolverMode.ThreeVP
-            }[self.mode]
+            }[vl_params.mode]
 
             reference_axis = {
                 'ORIGIN': None,# TODO: ORIGIN option
@@ -497,7 +544,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 'X_AXIS': solver.types.ReferenceAxis.X_Axis,
                 'Y_AXIS': solver.types.ReferenceAxis.Y_Axis,
                 'Z_AXIS': solver.types.ReferenceAxis.Z_Axis
-            }[self.scene_scale_mode]
+            }[vl_params.scene_scale_mode]
 
             first_axis = {
                 'X+': solver.types.Axis.PositiveX,
@@ -506,7 +553,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 'X-': solver.types.Axis.NegativeX,
                 'Y-': solver.types.Axis.NegativeY,
                 'Z-': solver.types.Axis.NegativeZ
-            }[self.first_axis]
+            }[vl_params.first_axis]
 
             second_axis = {
                 'X+': solver.types.Axis.PositiveX,
@@ -515,12 +562,12 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 'X-': solver.types.Axis.NegativeX,
                 'Y-': solver.types.Axis.NegativeY,
                 'Z-': solver.types.Axis.NegativeZ
-            }[self.second_axis]
+            }[vl_params.second_axis]
 
-            second_vanishing_lines = [(line.start, line.end) for line in self.second_vanishing_lines]
-            if self.quad_mode and mode in {solver.types.SolverMode.TwoVP, solver.types.SolverMode.ThreeVP}:
-                first_line = self.first_vanishing_lines[ 0]
-                last_line =  self.first_vanishing_lines[-1]
+            second_vanishing_lines = [(line.start, line.end) for line in vl_params.second_vanishing_lines]
+            if vl_params.quad_mode and mode in {solver.types.SolverMode.TwoVP, solver.types.SolverMode.ThreeVP}:
+                first_line = vl_params.first_vanishing_lines[ 0]
+                last_line =  vl_params.first_vanishing_lines[-1]
 
                 second_vanishing_lines = [
                     (first_line.start, last_line.start), (first_line.end, last_line.end)
@@ -577,12 +624,12 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 fit_mode='COVER'
             )
 
-            self.error_message = ""
+            vl_params.error_message = ""
                     
         except Exception as e:
             error_type = type(e).__name__  # Gets 'ValueError' as a string
             error_message = str(e)         # Gets the actual message you wrote in 'raise'
-            self.error_message = f"{error_type}\n{error_message}"
+            vl_params.error_message = f"{error_type}\n{error_message}"
             import traceback
             traceback.print_exc()
 
@@ -593,7 +640,8 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
     # def execute(self, context):
     #     vl_settings = self
     #     ...
-    
+
+
 ######################
 def view_menu_func(self, context):
     self.layout.operator(VIEW_OT_VanishingLinesViewTool.bl_idname, text="Calibrate View with Vanishing Lines")

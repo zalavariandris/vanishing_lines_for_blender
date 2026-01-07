@@ -183,7 +183,6 @@ def third_axis_vector(axis1:Axis, axis2:Axis, handedness:Literal["left-handed", 
     vec2 = vector_from_axis(axis2)
     return glm.normalize(glm.cross(vec1, vec2)) if handedness=="right-handed" else glm.normalize(glm.cross(vec2, vec1))
 
-
 def third_axis(axis1:Axis, axis2:Axis, handedness:Literal["left-handed", "right-handed"]="right-handed")->Axis:
     """Get the primary axis enum of the third, perpendicular axis given two axes.
     
@@ -197,24 +196,6 @@ def third_axis(axis1:Axis, axis2:Axis, handedness:Literal["left-handed", "right-
     """
     vec = third_axis_vector(axis1, axis2, handedness)
     return primary_axis_from_vector(vec)
-
-
-# def primary_axis_from_vector(vector: glm.vec3)->Axis:
-#     """
-#     Determine the primary axis (positive or negative) that the given vector aligns with.
-#     """
-    
-#     # TODO: handle any vector, not just primary axes
-#     if vector.x == 0 and vector.y == 0:
-#       return Axis.PositiveZ if vector.z > 0 else Axis.NegativeZ
-    
-#     elif vector.x == 0 and vector.z == 0:
-#       return Axis.PositiveY if vector.y > 0 else Axis.NegativeY
-    
-#     elif vector.y == 0 and vector.z == 0:
-#       return Axis.PositiveX if vector.x > 0 else Axis.NegativeX
-    
-#     raise ValueError('The axis vector must align with a primary axis.')
 
 def primary_axis_from_vector(vector: glm.vec3) -> Axis:
     """Determine the primary axis (positive or negative) that best aligns with the given vector.
@@ -323,3 +304,38 @@ def adjust_vanishing_lines_by_rotation(
         new_vanishing_lines.append((new_P, new_Q))
     
     return new_vanishing_lines
+
+def vanishing_points_from_camera(projection: glm.mat4, view: glm.mat4) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
+    """Extract vanishing points from camera projection and view matrices.
+    
+    Vanishing points are where parallel lines in world space converge in the image.
+    For each world axis, we project a point at a very large distance along that axis.
+    """
+    # Use a very large but finite value to represent "infinity"
+    MAX_DIST = 1e10
+    
+    # World space basis vectors (X, Y, Z directions)
+    # These are points at very large distances along each axis
+    far_points = [
+        glm.vec3(MAX_DIST, 0, 0), # X-axis
+        glm.vec3(0, MAX_DIST, 0), # Y-axis
+        glm.vec3(0, 0, MAX_DIST)  # Z-axis
+    ]
+    
+    vanishing_points = []
+    
+    for far_point in far_points:
+        # Transform to clip space: P * V * point
+        vp_clip = projection * view * glm.vec4(far_point, 1.0)
+        
+        # Check for degenerate case (direction parallel to image plane)
+        if abs(vp_clip.w) < EPSILON:
+            # Point at infinity - use a very large NDC value
+            vanishing_points.append(glm.vec2(vp_clip.x * 1e6, vp_clip.y * 1e6))
+        else:
+            # Perspective divide to get NDC coordinates (normalized device coordinates)
+            # These are in the range [-1, 1] for the viewport
+            ndc = glm.vec2(vp_clip.x / vp_clip.w, vp_clip.y / vp_clip.w)
+            vanishing_points.append(ndc)
+    
+    return tuple(vanishing_points)
