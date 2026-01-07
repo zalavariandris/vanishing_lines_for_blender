@@ -5,7 +5,7 @@ __work in progress__
 
 ![capture](docs/assets/rome_lake_vanishing_lines.gif)
 
-## Usage
+## Usage v0.7
 - when the addon is installed, open the VL sidepanel and click on Start Vanishing Lines Button.
 - add a background to the camera
 - select 1,2 or 3 mode vanishing points
@@ -22,6 +22,7 @@ __work in progress__
 - [ ] ADD align tracked camera
 - [ ] ADD animation
 - [ ] ADD Loupe
+- [ ] Use the blender settings keymap preferences settings in the modal panel
 
 ##
 - [ ] test with blender's python.
@@ -33,19 +34,17 @@ __work in progress__
 - [ ] test with the actual blender python: https://github.com/mondeja/pytest-blender
 - [ ] mock bpy: fake-bpy-module
 
-
-
 ### FIX bugs
-- [ ] this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS
+- [ ] this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS is_operator_running takes bl_id or bl_idname?
 - [ ] 🔥 when camera is too close to the origin (scene scale is small), there is an uncaught error. 
 - [x] FIX when camera sensor fit set to auto and sensor_width is less than sensor_height there is a mismatch! TODO: this bug was not caught by the tests
 
 
-### vanishing lines tool
+### **0.8 vanishing lines tool
 - [x] use edit the camera vl_params instead of the modal parameters
 - [x] prop_line text now never upside down
 - [x] ADD update statusbar for hotkey hints
-- [ ] Use the blender settings keymap preferences settings in the modal panel
+
 - [x] make sure to mimic blender's default viewport navigation.
 - [x] implement UNDO? One thing pytest often misses is how an addon affects Blender's Undo Stack.
 - [x] ADD draw extended vanishing
