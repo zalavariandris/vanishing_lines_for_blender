@@ -169,11 +169,11 @@ def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> Tuple[
     # 2. Analyze the Determinant
     det = S_aa * S_bb - S_ab * S_ab
     
-    if abs(det) < EPSILON:
+    if abs(det) < EPSILON**2:
         p1_x, p1_y = lines[0][0]
         residual = abs(S_aa * p1_x + S_ab * p1_y + S_ac)
         
-        if residual < EPSILON:
+        if residual < EPSILON**2:
             raise VanishingLinesError("All Lines are collinear.")
         else:
             raise VanishingLinesError("All lines are parallel.")
@@ -218,8 +218,9 @@ def orientation_from_one_vanishing_point(
 
     # validate if matrix is a purely rotational matrix
     if utils.validate_orthogonality(glm.mat3(view)) is False:
+        raise VanishingLinesError("Invalid vanishing point configuration: computed view orientation matrix is not orthogonal.")
         view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
-        warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
+        # warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
     
 
     # Adjust Camera Roll to match second vanishing line
@@ -257,8 +258,9 @@ def orientation_from_two_vanishing_points(
         
     # validate if matrix is a purely rotational matrix
     if utils.validate_orthogonality(glm.mat3(view)) is False:
+        raise VanishingLinesError("Invalid vanishing point configuration: computed view orientation matrix is not orthogonal.")
         view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
-        warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
+        # warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
     
 
     return projection, view
@@ -292,8 +294,9 @@ def orientation_from_three_vanishing_points(
         
     # validate if matrix is a purely rotational matrix
     if utils.validate_orthogonality(glm.mat3(view)) is False:
+        raise VanishingLinesError("Invalid vanishing point configuration: computed view orientation matrix is not orthogonal.")
         view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
-        warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
+        # warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
 
     return projection, view
 

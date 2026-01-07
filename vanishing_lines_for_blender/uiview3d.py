@@ -432,8 +432,17 @@ class UIView3D:
             P_end,
             color=render_color)
         
+
+
+        angle = glm.atan2(direction[1], direction[0])
+        # make sure angle is between -pi/2 and pi/2 for better readability
+        if angle > glm.pi()/2:
+            angle -= glm.pi()
+        elif angle < -glm.pi()/2:
+            angle += glm.pi()
+
         self._draw_layer.add_annotation(
             ((P_start[0]+P_end[0])/2 + ANNOTATION_OFFSET_X, (P_start[1]+P_end[1])/2 - ANNOTATION_OFFSET_X),
             text,
             color=render_color,
-            angle=glm.atan2(direction[1], direction[0]))
+            angle=angle)

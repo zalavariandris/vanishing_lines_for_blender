@@ -69,10 +69,10 @@ class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
 
 
 
-        header, coordinates_panel = self.layout.panel("all_icons", default_closed=True)
-        header.label(text="blender Icons")
-        if coordinates_panel:
-            vl_panel_components.draw_all_icons(coordinates_panel)
+        # header, coordinates_panel = self.layout.panel("all_icons", default_closed=True)
+        # header.label(text="blender Icons")
+        # if coordinates_panel:
+        #     vl_panel_components.draw_all_icons(coordinates_panel)
 
 
 ######################

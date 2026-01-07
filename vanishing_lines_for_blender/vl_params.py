@@ -184,7 +184,7 @@ class VLSettings(bpy.types.PropertyGroup):
             ('TWO_POINT',   "2-Point", "Compute focal length from second vanishing point."),
             ('THREE_POINT', "3-Point", "Use the third vanishing point to find the principal point.")
         ],
-        default='THREE_POINT',
+        default='TWO_POINT',
         update=trigger_update,
         description="Number of vanishing points to use for camera calibration", 
         options=set()

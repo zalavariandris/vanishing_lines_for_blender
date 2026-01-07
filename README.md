@@ -34,24 +34,26 @@ __work in progress__
 - [ ] mock bpy: fake-bpy-module
 
 
-### vanishing lines tool
-- [ ] calibrate the view instead of an actual camera, with an operator, using keystrokes. more blenderish? lets see...
-      this way we dont store the vanishing line parameters on each camera, only keep those setting for the actual session.
-- [ ] make sure to mimic blender's viewport navigation.
-- [ ] Use the blender setting keymap preferences settings in the modal panel
-- [ ] implement UNDO? One thing pytest often misses is how an addon affects Blender's Undo Stack.
-
-### 
-- [x] On the Sidepanel clearly indicate which camera-object, the solver is working on.
-- [ ] ~~consider calibrating the view's local matrices if no camera is available, or no camera is activated, and add an option to create one.  -> In practice i dont think this would have any usefulness. Instead make it clear which camera a view is adjustin.~~
-- [x] set default for uiview view_matrix, projection matrix and viewport. TODO: needs testing
-
 
 ### FIX bugs
 - [ ] this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS
 - [ ] 🔥 when camera is too close to the origin (scene scale is small), there is an uncaught error. 
 - [x] FIX when camera sensor fit set to auto and sensor_width is less than sensor_height there is a mismatch! TODO: this bug was not caught by the tests
 
+
+### vanishing lines tool
+- [x] use edit the camera vl_params instead of the modal parameters
+- [x] prop_line text now never upside down
+- [x] ADD update statusbar for hotkey hints
+- [ ] Use the blender settings keymap preferences settings in the modal panel
+- [x] make sure to mimic blender's default viewport navigation.
+- [x] implement UNDO? One thing pytest often misses is how an addon affects Blender's Undo Stack.
+- [x] ADD draw extended vanishing
+
+### 
+- [x] On the Sidepanel clearly indicate which camera-object, the solver is working on.
+- [ ] ~~consider calibrating the view's local matrices if no camera is available, or no camera is activated, and add an option to create one.  -> In practice i dont think this would have any usefulness. Instead make it clear which camera a view is adjustin.~~
+- [x] set default for uiview view_matrix, projection matrix and viewport. TODO: needs testing
 
 ###
 - [ ] ~~update strategy: update on dependency graph change | update on user interaction~~
