@@ -155,6 +155,24 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             context.area.tag_redraw()
             return self.finish(context)
         
+        mouse_is_in_area = (
+            event.mouse_region_x>0 and 
+            event.mouse_region_x<context.area.width and 
+            event.mouse_region_y>0 and 
+            event.mouse_region_y<context.area.height
+        )
+
+        mouse_is_in_region = (
+            0 <= event.mouse_region_x < context.region.width and
+            0 <= event.mouse_region_y < context.region.height
+        )
+
+        if not mouse_is_in_area:
+            # print("mouse out of area", event.type, event.value)
+            # if event.type == 'MOUSEMOVE':
+            #     self.update_solve(context)
+            return {'PASS_THROUGH'}
+        
         ##################
         # Control params #
         ##################
@@ -193,6 +211,42 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 self._middle_mouse_pressed = False
 
         if event.shift:
+            # adjust parameters
+            if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+                # delta = (1 if event.type == 'WHEELDOWNMOUSE' else -1) * 50
+                # vl_params.scene_scale *= math.pow(1.1, delta * 0.03)
+                distance_length = vl_settings.reference_distance_segment[1] - vl_settings.reference_distance_segment[0]
+                distance_length*= (1.1 if event.type == 'WHEELUPMOUSE' else 0.9)
+                vl_settings.reference_distance_segment[1] = vl_settings.reference_distance_segment[0] + distance_length
+                self.update_solve(context)
+                return {'RUNNING_MODAL'}
+            
+            elif event.type == 'MOUSEMOVE' and self._middle_mouse_pressed:
+                if event.ctrl and vl_settings.mode == 'ONE_POINT':
+                    # adjust focal length
+                    delta = event.mouse_prev_x - event.mouse_x
+                    camera_object = context.space_data.camera
+                    camera_object.data.lens *= math.pow(1.1, delta * 0.03)
+                    self.update_solve(context)
+                elif event.alt or (event.ctrl and vl_settings.mode != 'ONE_POINT'):
+                    delta = event.mouse_prev_y - event.mouse_y
+                    # vl_params.scene_scale *= math.pow(1.1, delta * 0.03)
+                    distance_length = vl_settings.reference_distance_segment[1] - vl_settings.reference_distance_segment[0]
+                    distance_length*=  math.pow(1.1, delta * 0.03)
+                    vl_settings.reference_distance_segment[1] = vl_settings.reference_distance_segment[0] + distance_length
+                    self.update_solve(context)
+                    return {'RUNNING_MODAL'}
+                
+                else:
+                    proj_mouse_x, proj_mouse_y = self.uiview.unproject((event.mouse_x, event.mouse_y))         # to update internal matrices
+                    proj_mouse_prev_x, proj_mouse_prev_y = self.uiview.unproject((event.mouse_prev_x, event.mouse_prev_y)) # to update internal matrices
+                    proj_mouse_delta_x = proj_mouse_prev_x - proj_mouse_x
+                    proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
+                    vl_settings.origin[0] -=   proj_mouse_delta_x
+                    vl_settings.origin[1] -=   proj_mouse_delta_y
+                    self.update_solve(context)
+                    return {'RUNNING_MODAL'}
+        else:
             # move region 3d
             if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
                 context.space_data.region_3d.view_camera_zoom += (1 if event.type == 'WHEELUPMOUSE' else -1) * 6
@@ -213,35 +267,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 context.space_data.region_3d.view_camera_offset[0] += offset_delta_x
                 context.space_data.region_3d.view_camera_offset[1] += offset_delta_y
                 return {'RUNNING_MODAL'}
-        else:
-            # adjust parameters
-            if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
-                # delta = (1 if event.type == 'WHEELDOWNMOUSE' else -1) * 50
-                # vl_params.scene_scale *= math.pow(1.1, delta * 0.03)
-                distance_length = vl_settings.reference_distance_segment[1] - vl_settings.reference_distance_segment[0]
-                distance_length*= (1.1 if event.type == 'WHEELUPMOUSE' else 0.9)
-                vl_settings.reference_distance_segment[1] = vl_settings.reference_distance_segment[0] + distance_length
-                self.update_solve(context)
-                return {'RUNNING_MODAL'}
-            
-            elif event.type == 'MOUSEMOVE' and self._middle_mouse_pressed:
-                if event.ctrl:
-                    delta = event.mouse_prev_y - event.mouse_y
-                    # vl_params.scene_scale *= math.pow(1.1, delta * 0.03)
-                    distance_length = vl_settings.reference_distance_segment[1] - vl_settings.reference_distance_segment[0]
-                    distance_length*=  math.pow(1.1, delta * 0.03)
-                    vl_settings.reference_distance_segment[1] = vl_settings.reference_distance_segment[0] + distance_length
-                    self.update_solve(context)
-                    return {'RUNNING_MODAL'}
-                else:
-                    proj_mouse_x, proj_mouse_y = self.uiview.unproject((event.mouse_x, event.mouse_y))         # to update internal matrices
-                    proj_mouse_prev_x, proj_mouse_prev_y = self.uiview.unproject((event.mouse_prev_x, event.mouse_prev_y)) # to update internal matrices
-                    proj_mouse_delta_x = proj_mouse_prev_x - proj_mouse_x
-                    proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
-                    vl_settings.origin[0] -=   proj_mouse_delta_x
-                    vl_settings.origin[1] -=   proj_mouse_delta_y
-                    self.update_solve(context)
-                    return {'RUNNING_MODAL'}
+
 
         if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
             # This triggers the menu at the mouse location
@@ -346,9 +372,9 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         # reference distance CONTROLS #
         ###############################
         if vl_settings.scene_scale_mode != 'ORIGIN':
-            def get_distance_measurement_direction() -> mathutils.Vector:
+            def get_distance_measurement_direction() -> Tuple[float, float]:
                 if vl_settings.scene_scale_mode == 'SCREEN':
-                    return mathutils.Vector((1,0))
+                    return (1.0,0.0)
                 else:
                     axis_vectors = {'X_AXIS': (1, 0, 0), 'Y_AXIS': (0, 1, 0), 'Z_AXIS': (0, 0, 1)}
                     axis_vector = axis_vectors[vl_settings.scene_scale_mode]
@@ -359,7 +385,9 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                     R = self.uiview.unproject((R.x, R.y))
                     R = mathutils.Vector((R[0], R[1]))
                     O = mathutils.Vector((vl_settings.origin[0], vl_settings.origin[1]))
-                    return (R - O).normalized()
+
+                    dir_vector = (R - O).normalized()
+                    return dir_vector.x, dir_vector.y
 
             unit_settings = bpy.context.scene.unit_settings
             system = unit_settings.system
