@@ -35,12 +35,16 @@ __work in progress__
 - [ ] mock bpy: fake-bpy-module
 
 ### FIX bugs
+
 - [ ] this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS is_operator_running takes bl_id or bl_idname?
 - [ ] 🔥 when camera is too close to the origin (scene scale is small), there is an uncaught error. 
 - [x] FIX when camera sensor fit set to auto and sensor_width is less than sensor_height there is a mismatch! TODO: this bug was not caught by the tests
 
 
 ### **0.8 vanishing lines tool
+- [ ] handle multiple view3d-s
+- [ ] handle quad view
+- [x] update solve on fov change!
 - [x] use edit the camera vl_params instead of the modal parameters
 - [x] prop_line text now never upside down
 - [x] ADD update statusbar for hotkey hints

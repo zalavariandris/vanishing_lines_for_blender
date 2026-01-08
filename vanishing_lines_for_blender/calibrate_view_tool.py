@@ -647,7 +647,16 @@ def rv3d_draw_function():
     if op:=vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
         op.view3d_draw(bpy.context)
 
+def camera_lens_changed():
+    """Callback when camera lens changes"""
+    context = bpy.context
+    if op := vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
+        op.update_solve(context)
+        context.area.tag_redraw()
+
 draw_handler = None
+_msgbus_owner = object()
+
 def register():
     bpy.utils.register_class(MODAL_MT_RightClickMenu)
     bpy.utils.register_class(VIEW_OT_VanishingLinesViewTool)
@@ -661,8 +670,19 @@ def register():
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
         )
 
+    # Subscribe to camera lens changes
+    bpy.msgbus.subscribe_rna(
+        key=(bpy.types.Camera, "lens"),
+        owner=_msgbus_owner,
+        args=(),
+        notify=camera_lens_changed,
+    )
+
 def unregister():
     bpy.context.workspace.status_text_set(None)
+
+    # Unsubscribe from msgbus
+    bpy.msgbus.clear_by_owner(_msgbus_owner)
 
     global draw_handler
     if draw_handler is not None:
