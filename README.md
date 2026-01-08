@@ -42,7 +42,8 @@ __work in progress__
 
 
 ### **0.8 vanishing lines tool
-- [ ] handle multiple view3d-s
+- [/] figure out proper mouse and keyboard gesture for editing vl_Settings, and display them in the statusbar
+- [/] handle multiple view3d-s
 - [ ] handle quad view
 - [x] update solve on fov change!
 - [x] use edit the camera vl_params instead of the modal parameters

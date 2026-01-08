@@ -111,7 +111,7 @@ def apply_solver_results_to_blender_camera(
 def apply_solver_results_to_view3d(
         projection: glm.mat4,
         view: glm.mat4, 
-        context: bpy.types.Context,
+        area: bpy.types.Area,
         compute_space: Tuple[float, float, float, float],
         fit_mode: Literal['COVER', 'CONTAIN', 'HORIZONTAL', 'VERTICAL'] = 'COVER'
     ) -> None:
@@ -119,7 +119,7 @@ def apply_solver_results_to_view3d(
     Apply solver results to Blender 3D Viewport
     Args:
         results: Solver results with transform and FOV
-        context: Blender context with 3D Viewport
+        area: Blender 3D Viewport area
         compute_space: The viewport used for computation (e.g., [-1,-1,2,2])
         fit_mode: How to fit the compute space to the region space
     1. 'HORIZONTAL': Fit based on horizontal dimension
@@ -131,10 +131,15 @@ def apply_solver_results_to_view3d(
     if fit_mode != 'COVER':
         raise NotImplementedError("Only 'COVER' fit_mode is implemented for View3D.")
     
+    space = area.spaces.active
+    window_region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+    if not window_region:
+        raise ValueError("No WINDOW region found in area")
+    
     ## apply solver results to blender view
-    match context.space_data.region_3d.view_perspective:
+    match space.region_3d.view_perspective:
         case 'CAMERA':
-            camera_object = context.space_data.camera
+            camera_object = space.camera
             apply_solver_results_to_blender_camera(
                 projection=projection, 
                 view=view, 
@@ -144,15 +149,15 @@ def apply_solver_results_to_view3d(
             )
 
         case 'PERSP':
-            viewport = 0, 0, context.region.width, context.region.height
+            viewport = 0, 0, window_region.width, window_region.height
             principal, focal_length = solver.utils.decompose_intrinsics(solver.types.Rect(*viewport), projection)
-            region_aspect = context.region.width / context.region.height
+            region_aspect = window_region.width / window_region.height
             if region_aspect >= 1.0:
-                context.space_data.lens = focal_length*36 / context.region.width * 2 * region_aspect
+                space.lens = focal_length*36 / window_region.width * 2 * region_aspect
             else:
-                context.space_data.lens = focal_length*36 / context.region.height * 2
+                space.lens = focal_length*36 / window_region.height * 2
 
-            context.space_data.region_3d.view_matrix = glm_to_blender_mat(view)
+            space.region_3d.view_matrix = glm_to_blender_mat(view)
 
         case 'ORTHO':
             assert False, "Should not reach here, ORTHO case handled above."
