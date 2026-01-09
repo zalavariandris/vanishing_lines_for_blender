@@ -140,7 +140,7 @@ class UIView3D:
         return world_space.x, world_space.y
     
     # Event Handling
-    def event(self, context, event:'bpy.types.Event'):
+    def event(self, context, event:'bpy.types.Event')->bool:
         ###
         # Event Helpers
         ###
@@ -156,20 +156,20 @@ class UIView3D:
         ###
         #  HANDLE MOUSE EVENTS
         ###
-        MouseIsInArea = (
+        mouse_is_in_area = (
             event.mouse_region_x>0 and 
             event.mouse_region_x<area.width and 
             event.mouse_region_y>0 and 
             event.mouse_region_y<area.height
         )
 
-        MouseIsInRegion = (
+        mouse_is_in_region = (
             0 <= event.mouse_region_x < region.width and
             0 <= event.mouse_region_y < region.height
         )
 
         """Mouse Events"""
-        if not MouseIsInRegion:
+        if not mouse_is_in_region:
             # self.report({'INFO'}, "mouse is not in area")
             return False
         
@@ -179,7 +179,7 @@ class UIView3D:
                 area.tag_redraw()
             return False
 
-        if MouseIsInRegion and event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+        if mouse_is_in_region and event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             self._is_left_mouse_down = True
             self._mouse_down_pos = (event.mouse_region_x, event.mouse_region_y)
 
@@ -202,7 +202,7 @@ class UIView3D:
             else:
                 return False
         
-        elif MouseIsInRegion and event.type == 'MOUSEMOVE':
+        elif mouse_is_in_region and event.type == 'MOUSEMOVE':
             if not self._is_left_mouse_down:
                 """Mouse Move"""
                 # update hover

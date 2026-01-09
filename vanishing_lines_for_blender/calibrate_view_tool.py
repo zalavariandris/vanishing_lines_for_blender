@@ -56,9 +56,6 @@ class MODAL_MT_RightClickMenu(bpy.types.Menu):
             col.enabled = vl_settings.scene_scale_mode != 'ORIGIN'
             col.prop(vl_settings, 'reference_distance_segment', index=0)
             col.prop(vl_settings, 'reference_distance_segment', index=1)
-
-            # update solve
-            op.update_solve(context)
         
 
 class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
@@ -171,11 +168,31 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             0 <= event.mouse_region_y < context.region.height
         )
 
+        
+
         if not mouse_is_in_area:
-            # print("mouse out of area", event.type, event.value)
-            # if event.type == 'MOUSEMOVE':
-            #     self.update_solve(context)
             return {'PASS_THROUGH'}
+        
+        if not mouse_is_in_region:
+            return {'PASS_THROUGH'}
+        
+        # is_over_panel = False
+        # for reg in self._context_area.regions:
+        #     # We only care about panels that overlap the viewport
+        #     if reg.type in {'HEADER', 'UI'}:
+        #         # Check if mouse is within this region's rectangle
+        #         # Note: region.x/y is also relative to the whole window
+        #         if (reg.x <= event.mouse_x <= reg.x + reg.width and
+        #             reg.y <= event.mouse_y <= reg.y + reg.height):
+        #             is_over_panel = True
+        #             # print(reg.type, "over")
+        #             break
+
+        # # print("mouse in area:", mouse_is_in_area, " mouse in region:", mouse_is_in_region, " over panel:", is_over_panel)
+
+        # if is_over_panel:
+        #     # Mouse is over Toolbar or Sidebar
+        #     return {'PASS_THROUGH'}
         
         ##################
         # Control params #
@@ -194,7 +211,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         
         if event.type == 'R' and event.value == 'PRESS':
             # get prop enumoptions
-            options = [item.identifier for item in self.properties.bl_rna.properties['scene_scale_mode'].enum_items]
+            options = [item.identifier for item in vl_settings.bl_rna.properties['scene_scale_mode'].enum_items]
             current_index = options.index(vl_settings.scene_scale_mode)
             next_index = (current_index + 1) % len(options)
             vl_settings.scene_scale_mode = options[next_index]
@@ -656,15 +673,22 @@ def rv3d_draw_function():
 
 def camera_lens_changed():
     """Callback when camera lens changes"""
-    if op := vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
-        if op._context_area and op._context_area.type == 'VIEW_3D':
-            # Find the window containing the stored area
-            for window in bpy.context.window_manager.windows:
-                if op._context_area in window.screen.areas[:]:
-                    with bpy.context.temp_override(window=window, area=op._context_area):
-                        op.update_solve(bpy.context)
-                    op._context_area.tag_redraw()
-                    return
+    def deferred_update():
+        """Deferred update to run outside msgbus callback context"""
+        if op := vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
+            if op._context_area and op._context_area.type == 'VIEW_3D':
+                # Find the window containing the stored area
+                for window in bpy.context.window_manager.windows:
+                    if op._context_area in window.screen.areas[:]:
+                        with bpy.context.temp_override(window=window, area=op._context_area):
+                            op.update_solve(bpy.context)
+                        op._context_area.tag_redraw()
+                        break
+        return None  # Don't repeat the timer
+    
+    # Schedule update to run outside msgbus callback context
+    bpy.app.timers.register(deferred_update, first_interval=0.0)
+    return
 
 draw_handler = None
 _msgbus_owner = object()
