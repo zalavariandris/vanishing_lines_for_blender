@@ -71,6 +71,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
     _initial_camera_shift_y: float = 0.0
     _middle_mouse_pressed: bool = False
     _context_area = None  # Store the area where operator is running
+    _msgbus_owner = None  # Owner object for msgbus subscription
     
     def invoke(self, context, event):
         # Store the area where this operator is running
@@ -101,7 +102,16 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
 
         # initial solve
-        self.update_solve(context)
+        self.update_solve()
+
+        # Subscribe to camera lens changes for this operator instance
+        self._msgbus_owner = object()
+        bpy.msgbus.subscribe_rna(
+            key=(bpy.types.Camera, "lens"),
+            owner=self._msgbus_owner,
+            args=(),
+            notify=camera_lens_changed,
+        )
 
         # Run the modal operator
         context.window_manager.modal_handler_add(self)
@@ -135,12 +145,22 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         #     camera_object.data.lens = self._initial_camera_lens
         #     camera_object.data.shift_x = self._initial_camera_shift_x
         #     camera_object.data.shift_y = self._initial_camera_shift_y
+        
+        # Unsubscribe from msgbus
+        if self._msgbus_owner is not None:
+            bpy.msgbus.clear_by_owner(self._msgbus_owner)
+            self._msgbus_owner = None
+        
         if self._context_area:
             self._context_area.tag_redraw()
         bpy.context.workspace.status_text_set(None)
-        return {'CANCELLED'}
     
     def finish(self, context):
+        # Unsubscribe from msgbus
+        if self._msgbus_owner is not None:
+            bpy.msgbus.clear_by_owner(self._msgbus_owner)
+            self._msgbus_owner = None
+        
         if self._context_area:
             self._context_area.tag_redraw()
         bpy.context.workspace.status_text_set(None)
@@ -206,7 +226,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                     vl_settings.mode = 'TWO_POINT'
                 case 'THREE' | 'NUMPAD_3':
                     vl_settings.mode = 'THREE_POINT'
-            self.update_solve(context)
+            self.update_solve()
             return {'RUNNING_MODAL'}
         
         if event.type == 'R' and event.value == 'PRESS':
@@ -215,11 +235,11 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             current_index = options.index(vl_settings.scene_scale_mode)
             next_index = (current_index + 1) % len(options)
             vl_settings.scene_scale_mode = options[next_index]
-            self.update_solve(context)
+            self.update_solve()
 
         if event.type == 'Q' and event.value == 'PRESS':
             vl_settings.quad_mode = not vl_settings.quad_mode
-            self.update_solve(context)
+            self.update_solve()
         
         if self._context_area.spaces.active.region_3d.view_perspective != 'CAMERA':
             return self.cancel(context)
@@ -239,7 +259,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 distance_length = vl_settings.reference_distance_segment[1] - vl_settings.reference_distance_segment[0]
                 distance_length*= (1.1 if event.type == 'WHEELUPMOUSE' else 0.9)
                 vl_settings.reference_distance_segment[1] = vl_settings.reference_distance_segment[0] + distance_length
-                self.update_solve(context)
+                self.update_solve()
                 return {'RUNNING_MODAL'}
             
             elif event.type == 'MOUSEMOVE' and self._middle_mouse_pressed:
@@ -248,7 +268,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                     delta = event.mouse_prev_x - event.mouse_x
                     camera_object = self._context_area.spaces.active.camera
                     camera_object.data.lens *= math.pow(1.1, delta * 0.03)
-                    self.update_solve(context)
+                    self.update_solve()
 
                 # elif event.alt or (event.shift and vl_settings.mode != 'ONE_POINT'):
                 #     delta = event.mouse_prev_y - event.mouse_y
@@ -256,7 +276,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 #     distance_length = vl_settings.reference_distance_segment[1] - vl_settings.reference_distance_segment[0]
                 #     distance_length*=  math.pow(1.1, delta * 0.03)
                 #     vl_settings.reference_distance_segment[1] = vl_settings.reference_distance_segment[0] + distance_length
-                #     self.update_solve(context)
+                #     self.update_solve()
                 #     return {'RUNNING_MODAL'}
                 
                 else:
@@ -266,7 +286,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                     proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
                     vl_settings.origin[0] -=   proj_mouse_delta_x
                     vl_settings.origin[1] -=   proj_mouse_delta_y
-                    self.update_solve(context)
+                    self.update_solve()
                     return {'RUNNING_MODAL'}
         else:
             # move region 3d
@@ -299,7 +319,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         # capture ui controls events
         changed = self.uiview.event(context, event)
         if changed:
-            self.update_solve(context)
+            self.update_solve()
         
         return {'RUNNING_MODAL'}
     
@@ -546,7 +566,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
         # self.update_solve(context)
 
-    def update_solve(self, context):
+    def update_solve(self):
         compute_space = solver.types.Rect(-1,-1,2,2)
         vl_settings = self._context_area.spaces.active.camera.data.vl_settings # self.get_vl_settings(context)
         try:
@@ -601,7 +621,10 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
                 case 'PERSP':
                     # print("compute for PERSP view")
-                    region_aspect = context.region.width / context.region.height
+                    # region_aspect = self._context_area.width / self._context_area.height
+                    # get region aspect from context area
+                    region = next((r for r in self._context_area.regions if r.type == 'WINDOW'), None)
+                    region_aspect = region.width / region.height
                     if region_aspect >= 1.0:
                         focal_length = self._context_area.spaces.active.lens / 36.0 * compute_space.width
                     else:
@@ -672,26 +695,36 @@ def rv3d_draw_function():
             op.view3d_draw(bpy.context)
 
 def camera_lens_changed():
+    # print("camera_lens_changed called")
     """Callback when camera lens changes"""
+    # Only proceed if the operator is running
+    op = vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool')
+    if not op:
+        # print("camera_lens_changed: operator not running")
+        return
+    
+    # Only update if the changed camera is the one being used by the operator
+    if not op._context_area or not op._context_area.spaces.active.camera:
+        # print("camera_lens_changed: no context area or camera")
+        return
+    
     def deferred_update():
         """Deferred update to run outside msgbus callback context"""
         if op := vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
-            if op._context_area and op._context_area.type == 'VIEW_3D':
-                # Find the window containing the stored area
-                for window in bpy.context.window_manager.windows:
-                    if op._context_area in window.screen.areas[:]:
-                        with bpy.context.temp_override(window=window, area=op._context_area):
-                            op.update_solve(bpy.context)
-                        op._context_area.tag_redraw()
-                        break
+            # Find the window containing the stored area
+            for window in bpy.context.window_manager.windows:
+                if op._context_area in window.screen.areas[:]:
+                    op.update_solve()
+                    op._context_area.tag_redraw()
+                    # print("camera_lens_changed: updated operator")
+                    break
         return None  # Don't repeat the timer
-    
+    deferred_update()
     # Schedule update to run outside msgbus callback context
-    bpy.app.timers.register(deferred_update, first_interval=0.0)
-    return
+    
+    # bpy.app.timers.register(deferred_update, first_interval=0.0)
 
 draw_handler = None
-_msgbus_owner = object()
 
 def register():
     bpy.utils.register_class(MODAL_MT_RightClickMenu)
@@ -706,19 +739,8 @@ def register():
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
         )
 
-    # Subscribe to camera lens changes
-    bpy.msgbus.subscribe_rna(
-        key=(bpy.types.Camera, "lens"),
-        owner=_msgbus_owner,
-        args=(),
-        notify=camera_lens_changed,
-    )
-
 def unregister():
     bpy.context.workspace.status_text_set(None)
-
-    # Unsubscribe from msgbus
-    bpy.msgbus.clear_by_owner(_msgbus_owner)
 
     global draw_handler
     if draw_handler is not None:
@@ -735,7 +757,6 @@ def unregister():
             op.cancel(bpy.context)
         except AttributeError:
             pass
-
 
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesViewTool)
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)

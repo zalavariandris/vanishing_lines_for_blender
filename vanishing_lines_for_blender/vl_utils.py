@@ -81,7 +81,9 @@ def apply_solver_results_to_blender_camera(
         case 'AUTO':
             effective_sensor_size = camera_data.sensor_width # when sensor_fit is AUTO, blender uses the _sensor_width_ parameter as sensor effective size for both dimensions.
             focal_length = f / compute_space[2] * effective_sensor_size
-            camera_data.lens = focal_length
+            # Only set if value actually changed to avoid triggering msgbus callbacks
+            if abs(camera_data.lens - focal_length) > 0.0000001:
+                camera_data.lens = focal_length
             # effective_sensor_size = camera_data.sensor_width # when sensor_fit is AUTO, blender uses the _sensor_width_ parameter as sensor effective size for both dimensions.
             # if compute_aspect >= output_aspect:
             #     focal_length = f / compute_space.width * effective_sensor_size
@@ -92,11 +94,15 @@ def apply_solver_results_to_blender_camera(
 
         case 'HORIZONTAL':
             focal_length = f / compute_space[2] * camera_data.sensor_width
-            camera_data.lens = focal_length
+            # Only set if value actually changed to avoid triggering msgbus callbacks
+            if abs(camera_data.lens - focal_length) > 0.0000001:
+                camera_data.lens = focal_length
             
         case 'VERTICAL':
             focal_length = f / compute_space[3] * camera_data.sensor_height
-            camera_data.lens = focal_length
+            # Only set if value actually changed to avoid triggering msgbus callbacks
+            if abs(camera_data.lens - focal_length) > 0.0000001:
+                camera_data.lens = focal_length
 
 
     # Apply lens shift
@@ -153,9 +159,13 @@ def apply_solver_results_to_view3d(
             principal, focal_length = solver.utils.decompose_intrinsics(solver.types.Rect(*viewport), projection)
             region_aspect = window_region.width / window_region.height
             if region_aspect >= 1.0:
-                space.lens = focal_length*36 / window_region.width * 2 * region_aspect
+                new_lens = focal_length*36 / window_region.width * 2 * region_aspect
             else:
-                space.lens = focal_length*36 / window_region.height * 2
+                new_lens = focal_length*36 / window_region.height * 2
+            
+            # Only set if value actually changed to avoid triggering msgbus callbacks
+            if abs(space.lens - new_lens) > 0.0000001:
+                space.lens = new_lens
 
             space.region_3d.view_matrix = glm_to_blender_mat(view)
 
