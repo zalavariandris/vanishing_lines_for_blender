@@ -16,10 +16,11 @@ __work in progress__
 
 
 ###
+- [ ] allow setting the height of the camera from the ground.
 - [ ] ADD draw antialiased lines, and circles shader
 
 ###
-- [ ] ADD align tracked camera
+- [ ] ADD align tracked/animated camera at a speciofic frame (with a parent?)
 - [ ] ADD animation
 - [ ] ADD Loupe
 - [ ] Use the blender settings keymap preferences settings in the modal panel
@@ -43,9 +44,10 @@ __work in progress__
 
 
 ### **0.8 vanishing lines tool
-- [ ] allow setting the height of the camera from the ground.
-- [/] figure out proper mouse and keyboard gesture for editing vl_Settings, and display them in the statusbar
-- [/] handle multiple view3d-s
+- [ ] cleanup codebase (remove unnecesary files and components)
+- [ ] consider renaming variable names, classes and attributes
+- [x] figure out proper mouse and keyboard gesture for editing vl_Settings, and display them in the statusbar
+- [x] handle multiple view3d-s
 - [x] handle quad view
 - [x] update solve on fov change!
 - [x] use edit the camera vl_params instead of the modal parameters

@@ -1,3 +1,4 @@
+import math
 from typing import Tuple, Callable
 
 from . import vl_utils
@@ -16,27 +17,39 @@ TEXT_OFFSET_Y_ABOVE = 5
 DIM_FACTOR_ACTIVE = 0.3
 DIM_FACTOR_INACTIVE = 0.1
 
+from typing import Any
+SetterCallbackWithIndexType = Callable[[Any, Any, int,  Any], None]
+SetterCallbackWithoutType =   Callable[[Any, Any, Any],       None]
+
+GetterCallbackWithIndexType = Callable[[Any, Any, int], Tuple[float, float]]
+GetterCallbackWithoutType =   Callable[[Any, Any],      Tuple[float, float]]
+
+SetterCallbackType = SetterCallbackWithIndexType | SetterCallbackWithoutType
+GetterCallbackType = GetterCallbackWithIndexType | GetterCallbackWithoutType
 
 class _ControlPoint():
     def __init__(self, data:'bpy.types.ID', prop:str, index:int|None=None, *, 
-            setter:Callable|None=None, 
-            getter:Callable|None=None):
+            setter:SetterCallbackType|None=None, 
+            getter:GetterCallbackType|None=None):
         self._data = data
         self._prop = prop
         self._index = index
 
+        self._set_transform: SetterCallbackType
         if setter is None:
             if index is None:
                 self._set_transform = lambda data, prop, value: setattr(data, prop, value)
             else:
-                def indexed_setter(data, prop, idx, value):
+                def indexed_setter(data, prop, idx:int, value:Any):
                     seq = list(getattr(data, prop))
                     seq[idx] = value
                     setattr(data, prop, seq)
+
                 self._set_transform = indexed_setter
         else:
             self._set_transform = setter
         
+        self._get_transform: GetterCallbackType
         if getter is None:
             if index is None:
                 self._get_transform = lambda data, prop: getattr(data, prop)
@@ -47,17 +60,18 @@ class _ControlPoint():
         
     @property
     def value(self)->Tuple[float, float]:
-        if self._index is not None:
-            return self._get_transform(self._data, self._prop, self._index)
-        else:
+        if self._index is None:
             return self._get_transform(self._data, self._prop)
+        else:
+            return self._get_transform(self._data, self._prop, self._index)
     
     @value.setter
     def value(self, value:Tuple[float, float] ):
-        if self._index is not None:
-            self._set_transform(self._data, self._prop, self._index, value)
-        else:
+        if self._index is None:
             self._set_transform(self._data, self._prop, value)
+        else:
+            self._set_transform(self._data, self._prop, self._index, value)
+            
 
 
 ControlIdType = Tuple['bpy.types.ID', str, int|None]
@@ -65,7 +79,7 @@ ControlIdType = Tuple['bpy.types.ID', str, int|None]
 class UIView3D:
     def __init__(self):
         self._controls: dict[ControlIdType, _ControlPoint] = dict()
-        self._draw_layer: DrawLayer|None = DrawLayer()
+        self._draw_layer: DrawLayer = DrawLayer()
 
         # interaction
         self._active_id: ControlIdType|None = None
@@ -101,7 +115,7 @@ class UIView3D:
 
     def set_coordinate_system_to_camera_frame(self, context):
         # Set UIVIEW camera, so _compute space_ matches _camera frame_, respect to _sensor fit_
-        camera_frame = vl_coord_utils.get_view_camera_frame_rect(context)
+        camera_frame = vl_coord_utils.get_camera_frame(context)
         output_aspect = context.scene.render.resolution_x / context.scene.render.resolution_y
         sensor_fit = context.space_data.camera.data.sensor_fit
         
@@ -175,9 +189,10 @@ class UIView3D:
 
             if self._active_id is not None:
                 # store a _copy_ of the control position at mouse down
-                self._active_down_pos = tuple(self._controls[self._active_id].value)
-            else:
-                self._active_down_pos = None
+                position:Tuple[float, float] = tuple(self._controls[self._active_id].value)
+                self._active_down_pos = position
+            # else:
+            #     self._active_down_pos = None
 
             # trigger redraw
             if area.type == 'VIEW_3D':
@@ -325,7 +340,7 @@ class UIView3D:
         direction:Tuple[float, float]=(1,0), 
         text:str="",
         color=(0.0,0.5,1.0,1.0),
-    ) -> _ControlPoint:
+    ):
         
         def set_transform(data:'bpy.types.ID', prop:str, P:Tuple[float, float]):
             P = glm.vec2(P[0], P[1])
@@ -363,7 +378,7 @@ class UIView3D:
         self._draw_layer.add_line(
             self.project(origin),
             self.project(get_transform(data, prop)),
-            color=render_color)
+            color=render_color) # type: ignore
     
     def prop_distance_segment(self, data:'bpy.types.ID', prop:str, *, 
         origin:Tuple[float, float], 
@@ -420,12 +435,12 @@ class UIView3D:
         
 
 
-        angle = glm.atan2(direction[1], direction[0])
+        angle = math.atan2(direction[1], direction[0])
         # make sure angle is between -pi/2 and pi/2 for better readability
-        if angle > glm.pi()/2:
-            angle -= glm.pi()
-        elif angle < -glm.pi()/2:
-            angle += glm.pi()
+        if angle > math.pi/2:
+            angle -= math.pi
+        elif angle < -math.pi/2:
+            angle += math.pi
 
         self._draw_layer.add_annotation(
             ((P_start[0]+P_end[0])/2 + ANNOTATION_OFFSET_X, (P_start[1]+P_end[1])/2 - ANNOTATION_OFFSET_X),

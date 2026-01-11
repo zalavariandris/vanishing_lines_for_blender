@@ -1,11 +1,20 @@
 import bpy
 
-from . import vl_panel_components
-from . import vl_utils
-
 #################
 # BLENDER ICONS #
 #################
+def draw_all_icons(layout):
+
+    all_icons = bpy.types.UILayout.bl_rna.functions["label"].parameters["icon"].enum_items.keys()
+
+    col = layout.column()
+    for icon in all_icons:
+        try:
+            col.label(text=icon, icon=icon)
+        except TypeError as e:
+            print(f"Icon '{icon}' not found.")
+
+
 class VIEW_PT_BlenderIcons(bpy.types.Panel):
     """Creates a Panel in the 3D Viewport sidebar"""
     bl_label = "Icons"
@@ -15,10 +24,7 @@ class VIEW_PT_BlenderIcons(bpy.types.Panel):
     bl_category = 'Icons'
 
     def draw(self, context):
-        header, coordinates_panel = self.layout.panel("all_icons", default_closed=True)
-        header.label(text="blender Icons")
-        if coordinates_panel:
-            vl_panel_components.draw_all_icons(coordinates_panel)
+        draw_all_icons(self.layout)
 
 
 ######################

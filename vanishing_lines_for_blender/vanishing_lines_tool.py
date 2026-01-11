@@ -13,7 +13,7 @@ from bpy_extras import view3d_utils
 from pyglm import glm
 
 # local
-from . uiview3d import UIView3D
+from .uiview3d import UIView3D
 from . import vl_params
 from . import solver
 from . import vl_utils
@@ -62,7 +62,10 @@ class MODAL_MT_RightClickMenu(bpy.types.Menu):
             row.enabled = vl_settings.mode in {'ONE_POINT'}
             row.prop(context.area.spaces.active.camera.data, 'lens')
             
-            layout.prop(vl_settings, 'quad_mode')
+            row = layout.row()
+            row.enabled = vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}
+            row.prop(vl_settings, 'quad_mode')
+
             row = layout.row()
             row.enabled = vl_settings.mode in {'ONE_POINT', 'TWO_POINT'}
             # row.prop(vl_settings, 'enable_manual_principal')
@@ -142,11 +145,6 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         return self._context_area.spaces.active.camera.data.vl_settings # view camera
     
     def status_text(self, header, context):
-        # mouse
-        header.layout.label(text="move origin", icon='MOUSE_MMB_DRAG')
-        header.layout.label(text="distance", icon='MOUSE_MMB_SCROLL')
-        header.layout.label(text="options", icon='MOUSE_RMB')
-
         # keyboard
         header.layout.label(text="",  icon='EVENT_ONEKEY')
         header.layout.label(text="", icon='EVENT_TWOKEY')
@@ -156,6 +154,15 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         header.layout.label(text="toggle quad mode", icon='EVENT_Q')
         header.layout.label(text="cancel", icon='EVENT_ESC')
         header.layout.label(text="finish", icon='EVENT_RETURN')
+
+        # mouse
+        header.layout.label(text="", icon='EVENT_CTRL')
+        header.layout.label(text="move origin", icon='MOUSE_MMB_DRAG')
+        header.layout.label(text="", icon='EVENT_CTRL')
+        header.layout.label(text="distance", icon='MOUSE_MMB_SCROLL')
+
+        # context menu
+        header.layout.label(text="options", icon='MOUSE_RMB')
         
     def cancel(self, context):
         # Restore previous camera state
@@ -209,15 +216,17 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             0 <= event.mouse_region_y < context.region.height
         )
 
-        
-
-        # if not mouse_is_in_area:
-        #     print("mouse not in area")
-        #     return {'PASS_THROUGH'}
+        if not mouse_is_in_area:
+            return {'PASS_THROUGH'}
         
         if not mouse_is_in_region:
-            print("mouse not in region")
             return {'PASS_THROUGH'}
+        
+        if event.type == 'MIDDLEMOUSE':
+            if event.value == 'PRESS':
+                self._middle_mouse_pressed = True
+            elif event.value == 'RELEASE':
+                self._middle_mouse_pressed = False
         
         # is_over_panel = False
         # for reg in self._context_area.regions:
@@ -237,9 +246,9 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         #     # Mouse is over Toolbar or Sidebar
         #     return {'PASS_THROUGH'}
         
-        ##################
-        # Control params #
-        ##################
+        ############
+        # Keyboard #
+        ############
         vl_settings = self.get_vl_settings(context)
         if event.type in {'ONE', 'TWO', 'THREE', 'NUMPAD_1', 'NUMPAD_2', 'NUMPAD_3'} and event.value == 'PRESS':
             match event.type:
@@ -259,85 +268,69 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             next_index = (current_index + 1) % len(options)
             vl_settings.scene_scale_mode = options[next_index]
             self.update_solve()
+            return {'RUNNING_MODAL'}
 
         if event.type == 'Q' and event.value == 'PRESS':
             vl_settings.quad_mode = not vl_settings.quad_mode
             self.update_solve()
+            return {'RUNNING_MODAL'}
         
         if self._context_area.spaces.active.region_3d.view_perspective != 'CAMERA':
             return self.cancel(context)
 
-        
-        if event.type == 'MIDDLEMOUSE':
-            if event.value == 'PRESS':
-                self._middle_mouse_pressed = True
-            elif event.value == 'RELEASE':
-                self._middle_mouse_pressed = False
+        if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
+            # This triggers the menu at the mouse location
+            bpy.ops.wm.call_menu(name=MODAL_MT_RightClickMenu.bl_idname)
+            return {'RUNNING_MODAL'}
 
-        if event.ctrl:
-            # adjust parameters
-            if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
-                # delta = (1 if event.type == 'WHEELDOWNMOUSE' else -1) * 50
-                # vl_params.scene_scale *= math.pow(1.1, delta * 0.03)
+        match event.type:
+            case 'WHEELUPMOUSE' | 'WHEELDOWNMOUSE' if event.ctrl:
+                # Adjust reference distance
                 distance_length = vl_settings.reference_distance_segment[1] - vl_settings.reference_distance_segment[0]
-                distance_length*= (1.1 if event.type == 'WHEELUPMOUSE' else 0.9)
+                distance_length *= (1.1 if event.type == 'WHEELUPMOUSE' else 0.9)
                 vl_settings.reference_distance_segment[1] = vl_settings.reference_distance_segment[0] + distance_length
                 self.update_solve()
                 return {'RUNNING_MODAL'}
             
-            elif event.type == 'MOUSEMOVE' and self._middle_mouse_pressed:
-                if event.alt and vl_settings.mode == 'ONE_POINT':
-                    # adjust focal length
-                    delta = event.mouse_prev_x - event.mouse_x
-                    camera_object = self._context_area.spaces.active.camera
-                    camera_object.data.lens *= math.pow(1.1, delta * 0.03)
-                    self.update_solve()
-
-                # elif event.alt or (event.shift and vl_settings.mode != 'ONE_POINT'):
-                #     delta = event.mouse_prev_y - event.mouse_y
-                #     # vl_params.scene_scale *= math.pow(1.1, delta * 0.03)
-                #     distance_length = vl_settings.reference_distance_segment[1] - vl_settings.reference_distance_segment[0]
-                #     distance_length*=  math.pow(1.1, delta * 0.03)
-                #     vl_settings.reference_distance_segment[1] = vl_settings.reference_distance_segment[0] + distance_length
-                #     self.update_solve()
-                #     return {'RUNNING_MODAL'}
-                
-                else:
-                    proj_mouse_x, proj_mouse_y = self.uiview.unproject((event.mouse_x, event.mouse_y))         # to update internal matrices
-                    proj_mouse_prev_x, proj_mouse_prev_y = self.uiview.unproject((event.mouse_prev_x, event.mouse_prev_y)) # to update internal matrices
-                    proj_mouse_delta_x = proj_mouse_prev_x - proj_mouse_x
-                    proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
-                    vl_settings.origin[0] -=   proj_mouse_delta_x
-                    vl_settings.origin[1] -=   proj_mouse_delta_y
-                    self.update_solve()
-                    return {'RUNNING_MODAL'}
-        else:
-            # move region 3d
-            if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+            case 'WHEELUPMOUSE' | 'WHEELDOWNMOUSE':
+                # Adjust camera zoom
                 self._context_area.spaces.active.region_3d.view_camera_zoom += (1 if event.type == 'WHEELUPMOUSE' else -1) * 6
                 return {'RUNNING_MODAL'}
             
-            elif event.type == 'MOUSEMOVE' and self._middle_mouse_pressed:
-                # repimplement camera offset
+            case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl and event.alt and vl_settings.mode == 'ONE_POINT':
+                # Adjust focal length
+                delta = event.mouse_prev_y - event.mouse_y
+                camera_object = self._context_area.spaces.active.camera
+                camera_object.data.lens *= math.pow(1.1, -delta * 0.03)
+                self.update_solve()
+                return {'RUNNING_MODAL'}
+            
+            case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl:
+                # Move origin
+                proj_mouse_x, proj_mouse_y = self.uiview.unproject((event.mouse_x, event.mouse_y))
+                proj_mouse_prev_x, proj_mouse_prev_y = self.uiview.unproject((event.mouse_prev_x, event.mouse_prev_y))
+                proj_mouse_delta_x = proj_mouse_prev_x - proj_mouse_x
+                proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
+                vl_settings.origin[0] -= proj_mouse_delta_x
+                vl_settings.origin[1] -= proj_mouse_delta_y
+                self.update_solve()
+                return {'RUNNING_MODAL'}
+            
+            case 'MOUSEMOVE' if self._middle_mouse_pressed:
+                # Pan camera
                 mouse_delta_x = event.mouse_prev_x - event.mouse_x
                 mouse_delta_y = event.mouse_prev_y - event.mouse_y
                 region = context.region
 
                 # Get zoom factor to match coordinate projection
                 view_camera_zoom = self._context_area.spaces.active.region_3d.view_camera_zoom
-                zoom_fac = ((math.sqrt(2.0) + view_camera_zoom / 50.0) ** 2) / 4.0 # matches Blender magic zoom formula
+                zoom_fac = ((math.sqrt(2.0) + view_camera_zoom / 50.0) ** 2) / 4.0  # Blender magic zoom formula
 
                 offset_delta_x = mouse_delta_x / (2.0 * zoom_fac * region.width)
                 offset_delta_y = mouse_delta_y / (2.0 * zoom_fac * region.height)
                 self._context_area.spaces.active.region_3d.view_camera_offset[0] += offset_delta_x
                 self._context_area.spaces.active.region_3d.view_camera_offset[1] += offset_delta_y
                 return {'RUNNING_MODAL'}
-
-
-        if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
-            # This triggers the menu at the mouse location
-            bpy.ops.wm.call_menu(name=MODAL_MT_RightClickMenu.bl_idname)
-            return {'RUNNING_MODAL'}
 
         # capture ui controls events
         changed = self.uiview.event(context, event)
