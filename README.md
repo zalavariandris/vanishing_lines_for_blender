@@ -46,7 +46,7 @@ __work in progress__
 - [ ] allow setting the height of the camera from the ground.
 - [/] figure out proper mouse and keyboard gesture for editing vl_Settings, and display them in the statusbar
 - [/] handle multiple view3d-s
-- [ ] handle quad view
+- [x] handle quad view
 - [x] update solve on fov change!
 - [x] use edit the camera vl_params instead of the modal parameters
 - [x] prop_line text now never upside down

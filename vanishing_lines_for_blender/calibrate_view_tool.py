@@ -25,6 +25,25 @@ ERROR_TEXT_X_OFFSET = 20
 ERROR_TEXT_Y_OFFSET = 40
 
 
+class VIEW_OT_VanishingLinesViewToolQuad(bpy.types.Operator):
+    """Invoke Vanishing Lines tool in quad[3] (camera view) for quadview layouts"""
+    bl_idname = "view.vanishing_lines_view_tool_quad"
+    bl_label = "Vanishing Lines (Quad Camera)"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def invoke(self, context, event):
+        # Check if quadview is enabled
+        if context.area and context.area.spaces.active.region_quadviews:
+            quad_regions = [r for r in context.area.regions if r.type == 'WINDOW']
+            if len(quad_regions) >= 4:
+                # Invoke the main tool with quad[3] context
+                with context.temp_override(region=quad_regions[3]):
+                    return bpy.ops.view.vanishing_lines_view_tool('INVOKE_DEFAULT')
+        
+        # Fallback to normal invocation if not in quadview
+        return bpy.ops.view.vanishing_lines_view_tool('INVOKE_DEFAULT')
+
+
 class MODAL_MT_RightClickMenu(bpy.types.Menu):
     bl_label = "Vanishig Lines"
     bl_idname = "MODAL_MT_right_click_menu"
@@ -71,11 +90,13 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
     _initial_camera_shift_y: float = 0.0
     _middle_mouse_pressed: bool = False
     _context_area = None  # Store the area where operator is running
+    _context_region = None  # Store the region where operator was invoked
     _msgbus_owner = None  # Owner object for msgbus subscription
     
     def invoke(self, context, event):
-        # Store the area where this operator is running
+        # Store the area and region where this operator is running
         self._context_area = context.area
+        self._context_region = context.region
         
         # Switch to camera view
         self._context_area.spaces.active.region_3d.view_perspective = 'CAMERA'
@@ -190,10 +211,12 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
         
 
-        if not mouse_is_in_area:
-            return {'PASS_THROUGH'}
+        # if not mouse_is_in_area:
+        #     print("mouse not in area")
+        #     return {'PASS_THROUGH'}
         
         if not mouse_is_in_region:
+            print("mouse not in region")
             return {'PASS_THROUGH'}
         
         # is_over_panel = False
@@ -324,6 +347,13 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         return {'RUNNING_MODAL'}
     
     def view3d_draw(self, context):
+        # draw only in the correct region
+        if context.area != self._context_area:
+            return
+        
+        # get the region
+
+
         self.uiview.begin()
         # get SpaceView3D
         if not context.area.spaces.active or context.area.spaces.active.type != 'VIEW_3D':
@@ -683,15 +713,15 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
 ######################
 def view_menu_func(self, context):
-    self.layout.operator(VIEW_OT_VanishingLinesViewTool.bl_idname, text="Vanishing Lines")
+    self.layout.operator(VIEW_OT_VanishingLinesViewToolQuad.bl_idname, text="Vanishing Lines")
 
 def rv3d_draw_function():
     # global draw_list
     """Wrapper function to call the draw_view method of the operator instance."""
     # print("rv3d_draw_function")
     if op:=vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
-        # Only draw in the area where the operator was invoked
-        if bpy.context.area == op._context_area:
+        # Only draw in the area and region where the operator was invoked
+        if bpy.context.area == op._context_area and bpy.context.region == op._context_region:
             op.view3d_draw(bpy.context)
 
 def camera_lens_changed():
@@ -729,6 +759,7 @@ draw_handler = None
 def register():
     bpy.utils.register_class(MODAL_MT_RightClickMenu)
     bpy.utils.register_class(VIEW_OT_VanishingLinesViewTool)
+    bpy.utils.register_class(VIEW_OT_VanishingLinesViewToolQuad)
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
     global draw_handler
@@ -758,6 +789,7 @@ def unregister():
         except AttributeError:
             pass
 
+    bpy.utils.unregister_class(VIEW_OT_VanishingLinesViewToolQuad)
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesViewTool)
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
     bpy.utils.unregister_class(MODAL_MT_RightClickMenu)

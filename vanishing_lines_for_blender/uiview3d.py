@@ -156,30 +156,17 @@ class UIView3D:
         ###
         #  HANDLE MOUSE EVENTS
         ###
-        mouse_is_in_area = (
-            event.mouse_region_x>0 and 
-            event.mouse_region_x<area.width and 
-            event.mouse_region_y>0 and 
-            event.mouse_region_y<area.height
-        )
 
-        mouse_is_in_region = (
-            0 <= event.mouse_region_x < region.width and
-            0 <= event.mouse_region_y < region.height
-        )
 
         """Mouse Events"""
-        if not mouse_is_in_region:
-            # self.report({'INFO'}, "mouse is not in area")
-            return False
-        
+
         if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             """Wheel Events"""
             if area.type == 'VIEW_3D':
                 area.tag_redraw()
             return False
 
-        if mouse_is_in_region and event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             self._is_left_mouse_down = True
             self._mouse_down_pos = (event.mouse_region_x, event.mouse_region_y)
 
@@ -197,12 +184,11 @@ class UIView3D:
                 area.tag_redraw()
 
             if self._active_id is not None:
-
                 return False
             else:
                 return False
         
-        elif mouse_is_in_region and event.type == 'MOUSEMOVE':
+        elif event.type == 'MOUSEMOVE':
             if not self._is_left_mouse_down:
                 """Mouse Move"""
                 # update hover
