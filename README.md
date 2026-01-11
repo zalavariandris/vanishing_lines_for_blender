@@ -35,13 +35,15 @@ __work in progress__
 - [ ] mock bpy: fake-bpy-module
 
 ### FIX bugs
-
+- [ ] FIX: two point mode. first axis i Y second axis is Z adn up. move tha axis when its almost vertical, the up vector flips downwards.
+- [ ] FIX when axis changed on the right mouse context menu, updates are not triggered. 
 - [ ] this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS is_operator_running takes bl_id or bl_idname?
 - [ ] 🔥 when camera is too close to the origin (scene scale is small), there is an uncaught error. 
 - [x] FIX when camera sensor fit set to auto and sensor_width is less than sensor_height there is a mismatch! TODO: this bug was not caught by the tests
 
 
 ### **0.8 vanishing lines tool
+- [ ] allow setting the height of the camera from the ground.
 - [/] figure out proper mouse and keyboard gesture for editing vl_Settings, and display them in the statusbar
 - [/] handle multiple view3d-s
 - [ ] handle quad view
