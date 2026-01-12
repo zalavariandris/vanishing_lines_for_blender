@@ -14,7 +14,7 @@ ANNOTATION_OFFSET_Y = 3
 DEFAULT_FONT_ID = 0
 
 
-class DrawLayer:
+class OverlayPainter:
     def __init__(self):
         self.shader = gpu.shader.from_builtin('FLAT_COLOR')
 

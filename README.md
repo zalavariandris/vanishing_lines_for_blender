@@ -44,8 +44,8 @@ __work in progress__
 
 
 ### **0.8 vanishing lines tool
-- [ ] cleanup codebase (remove unnecesary files and components)
-- [ ] consider renaming variable names, classes and attributes
+- [x] cleanup codebase (remove unnecesary files and components)
+- [x] consider renaming variable names, classes and attributes
 - [x] figure out proper mouse and keyboard gesture for editing vl_Settings, and display them in the statusbar
 - [x] handle multiple view3d-s
 - [x] handle quad view

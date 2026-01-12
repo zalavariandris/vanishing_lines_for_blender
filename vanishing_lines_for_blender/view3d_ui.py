@@ -3,7 +3,7 @@ from typing import Tuple, Callable
 
 from . import vl_utils
 from . import vl_coord_utils
-from . draw_layer import DrawLayer
+from .overlay_painter import OverlayPainter
 from pyglm import glm
 
 
@@ -26,6 +26,10 @@ GetterCallbackWithoutType =   Callable[[Any, Any],      Tuple[float, float]]
 
 SetterCallbackType = SetterCallbackWithIndexType | SetterCallbackWithoutType
 GetterCallbackType = GetterCallbackWithIndexType | GetterCallbackWithoutType
+
+
+ControlIdType = Tuple['bpy.types.ID', str, int|None]
+
 
 class _ControlPoint():
     def __init__(self, data:'bpy.types.ID', prop:str, index:int|None=None, *, 
@@ -73,13 +77,10 @@ class _ControlPoint():
             self._set_transform(self._data, self._prop, self._index, value)
             
 
-
-ControlIdType = Tuple['bpy.types.ID', str, int|None]
-
-class UIView3D:
+class View3DUI:
     def __init__(self):
         self._controls: dict[ControlIdType, _ControlPoint] = dict()
-        self._draw_layer: DrawLayer = DrawLayer()
+        self._painter: OverlayPainter = OverlayPainter()
 
         # interaction
         self._active_id: ControlIdType|None = None
@@ -97,11 +98,11 @@ class UIView3D:
 
     def begin(self):
         # self.uiview.update_viewport_state(context)
-        self._draw_layer.clear()
+        self._painter.clear()
         self._controls.clear()
 
     def end(self):
-        self._draw_layer.draw()
+        self._painter.draw()
     
     # Coordinate system
     def set_view(self, view:glm.mat4):
@@ -289,7 +290,7 @@ class UIView3D:
         set_transform:Callable|None=None, 
         get_transform:Callable|None=None
     ) -> _ControlPoint:
-        assert self._draw_layer is not None, "Draw layer not initialized"
+        assert self._painter is not None, "Draw layer not initialized"
         control_id = (data, prop, index)
         if control_id not in self._controls:
             self._controls[control_id] = _ControlPoint(data, prop, index=index, setter=set_transform, getter=get_transform)
@@ -303,17 +304,17 @@ class UIView3D:
         point_render_color = color
         if is_active or is_hovered:
             point_render_color = (1.0, 1.0, 1.0, 1.0)
-            self._draw_layer.add_annotation(
+            self._painter.add_annotation(
                 (P[0] + ANNOTATION_OFFSET_X, P[1] + TEXT_OFFSET_Y_BELOW), 
                 f"({cp.value[0]:.2f}, {cp.value[1]:.2f})",
                 color=(1,1,1,1))
 
-        self._draw_layer.add_point(
+        self._painter.add_point(
             P,
             point_render_color)
 
         
-        self._draw_layer.add_annotation(
+        self._painter.add_annotation(
             (P[0] + ANNOTATION_OFFSET_X, P[1] + TEXT_OFFSET_Y_ABOVE),
             text,
             color=(1,1,1,1))
@@ -323,14 +324,14 @@ class UIView3D:
     def prop_line(self, data:'bpy.types.ID', *, start_prop:str='start', end_prop:str='end', 
         color=(0.8,0.8,0.8,1.0)
     ):
-        assert self._draw_layer is not None, "Draw layer not initialized"
+        assert self._painter is not None, "Draw layer not initialized"
         start_cp = self.prop_point(data, start_prop, color=color)
         end_cp = self.prop_point(data, end_prop, color=color)
 
         P_start = self.project(start_cp.value)
         P_end = self.project(end_cp.value)
 
-        self._draw_layer.add_line(
+        self._painter.add_line(
             P_start,
             P_end,
             color=color)
@@ -375,7 +376,7 @@ class UIView3D:
         else:
             render_color  = vl_utils.dim_color(color, DIM_FACTOR_INACTIVE)
         
-        self._draw_layer.add_line(
+        self._painter.add_line(
             self.project(origin),
             self.project(get_transform(data, prop)),
             color=render_color) # type: ignore
@@ -428,7 +429,7 @@ class UIView3D:
         P_end =   self.project(end_cp.value)
 
         render_color  = color if highlight else vl_utils.dim_color(color, DIM_FACTOR_ACTIVE)
-        self._draw_layer.add_line(
+        self._painter.add_line(
             P_start,
             P_end,
             color=render_color)
@@ -442,7 +443,7 @@ class UIView3D:
         elif angle < -math.pi/2:
             angle += math.pi
 
-        self._draw_layer.add_annotation(
+        self._painter.add_annotation(
             ((P_start[0]+P_end[0])/2 + ANNOTATION_OFFSET_X, (P_start[1]+P_end[1])/2 - ANNOTATION_OFFSET_X),
             text,
             color=render_color,

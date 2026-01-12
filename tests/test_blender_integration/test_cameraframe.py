@@ -1,99 +1,69 @@
-# import pytest
-# from typing import Literal
+import pytest
+from typing import Literal
 
+from tests.conftest import MockContext
+from vanishing_lines_for_blender import vl_coord_utils
 
-# from vanishing_lines_for_blender import vl_coord_utils
+WIDE_OUTPUT = (1920, 1080)
+TALL_OUTPUT = (1080, 1920)
+WIDE_REGION = (2020, 1500)
+TALL_REGION = (1500, 2020)
+WIDE_SENSOR = (36, 24)
+TALL_SENSOR = (24, 36)
 
-# WIDE_OUTPUT = (1920, 1080)
-# TALL_OUTPUT = (1080, 1920)
-# WIDE_REGION = (2020, 1500)
-# TAL_REGION = (1500, 2020)
-# WIDE_SENSOR = (36, 24)
-# TALL_SENSOR = (24, 36)
+compute_combinations = [
+  ['AUTO',       WIDE_REGION, WIDE_OUTPUT, WIDE_SENSOR, (706.5120379589308, 550.4604209971311, 843.022116780748, 474.19994068917083)],
+  ['AUTO',       TALL_REGION, WIDE_OUTPUT, WIDE_SENSOR, (416.1298547402979, 823.4813566622595, 843.022116780748, 474.1999406891707)],
+  ['AUTO',       WIDE_REGION, TALL_OUTPUT, WIDE_SENSOR, (890.9231260047194, 366.04933295134254, 474.1999406891706, 843.022116780748)],
+  ['AUTO',       TALL_REGION, TALL_OUTPUT, WIDE_SENSOR, (600.5409427860865, 639.0702686164709, 474.1999406891706, 843.0221167807481)],
+  ['HORIZONTAL', WIDE_REGION, WIDE_OUTPUT, WIDE_SENSOR, (706.5120379589308, 550.4604209971311, 843.022116780748, 474.19994068917083)],
+  ['HORIZONTAL', TALL_REGION, WIDE_OUTPUT, WIDE_SENSOR, (524.6376519497011, 884.5169925925488, 626.0065223619416, 352.12866882859225)],
+  ['HORIZONTAL', WIDE_REGION, TALL_OUTPUT, WIDE_SENSOR, (706.5120379589308, 38.20739864771836, 843.022116780748, 1498.7059853879964)],
+  ['HORIZONTAL', TALL_REGION, TALL_OUTPUT, WIDE_SENSOR, (524.6376519497011, 504.13108490734123, 626.0065223619416, 1112.9004841990072)],
+  ['VERTICAL',   WIDE_REGION, WIDE_OUTPUT, WIDE_SENSOR, (571.5728542498011, 474.5571301607457, 1112.9004841990072, 626.0065223619416)],
+  ['VERTICAL',   TALL_REGION, WIDE_OUTPUT, WIDE_SENSOR, (88.28792043667374, 639.0702686164709, 1498.7059853879964, 843.0221167807479)],
+  ['VERTICAL',   WIDE_REGION, TALL_OUTPUT, WIDE_SENSOR, (951.9587619350086, 474.5571301607457, 352.128668828592, 626.0065223619416)],
+  ['VERTICAL',   TALL_REGION, TALL_OUTPUT, WIDE_SENSOR, (600.5409427860865, 639.0702686164709, 474.1999406891706, 843.0221167807481)],
+  ['AUTO',       WIDE_REGION, WIDE_OUTPUT, WIDE_SENSOR, (706.5120379589308, 550.4604209971311, 843.022116780748, 474.19994068917083)],
+  ['AUTO',       TALL_REGION, WIDE_OUTPUT, TALL_SENSOR, (416.1298547402979, 823.4813566622595, 843.022116780748, 474.1999406891707)],
+  ['AUTO',       WIDE_REGION, TALL_OUTPUT, TALL_SENSOR, (890.9231260047194, 366.04933295134254, 474.1999406891706, 843.022116780748)],
+  ['AUTO',       TALL_REGION, TALL_OUTPUT, TALL_SENSOR, (600.5409427860865, 639.0702686164709, 474.1999406891706, 843.0221167807481)],
+  ['HORIZONTAL', WIDE_REGION, WIDE_OUTPUT, TALL_SENSOR, (706.5120379589308, 550.4604209971311, 843.022116780748, 474.19994068917083)],
+  ['HORIZONTAL', TALL_REGION, WIDE_OUTPUT, TALL_SENSOR, (524.6376519497011, 884.5169925925488, 626.0065223619416, 352.12866882859225)],
+  ['HORIZONTAL', WIDE_REGION, TALL_OUTPUT, TALL_SENSOR, (706.5120379589308, 38.20739864771836, 843.022116780748, 1498.7059853879964)],
+  ['HORIZONTAL', TALL_REGION, TALL_OUTPUT, TALL_SENSOR, (524.6376519497011, 504.13108490734123, 626.0065223619416, 1112.9004841990072)],
+  ['VERTICAL',   WIDE_REGION, WIDE_OUTPUT, TALL_SENSOR, (571.5728542498011, 474.5571301607457, 1112.9004841990072, 626.0065223619416)],
+  ['VERTICAL',   TALL_REGION, WIDE_OUTPUT, TALL_SENSOR, (88.28792043667374, 639.0702686164709, 1498.7059853879964, 843.0221167807479)],
+  ['VERTICAL',   WIDE_REGION, TALL_OUTPUT, TALL_SENSOR, (951.9587619350086, 474.5571301607457, 352.128668828592, 626.0065223619416)],
+  ['VERTICAL',   TALL_REGION, TALL_OUTPUT, TALL_SENSOR, (600.5409427860865, 639.0702686164709, 474.1999406891706, 843.0221167807481)]
+]
 
-# compute_combinations = [
-#   ['AUTO',       WIDE_REGION, WIDE_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (1001.5697788321926, 1419.8269789272774)],
-#   ['AUTO',       TAL_REGION,  WIDE_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (711.1875956135596, 1692.8479145924057)],
-#   ['AUTO',       WIDE_REGION, TALL_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (1001.5697788321926, 1419.8269789272774)],
-#   ['AUTO',       TAL_REGION,  TALL_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (711.1875956135596, 1692.8479145924057)],
-#   ['HORIZONTAL', WIDE_REGION, WIDE_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (1001.5697788321926, 1419.8269789272774)],
-#   ['HORIZONTAL', TAL_REGION,  WIDE_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (743.7399347763807, 1530.0862187783011)],
-#   ['HORIZONTAL', WIDE_REGION, TALL_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (1001.5697788321926, 1419.8269789272777)],
-#   ['HORIZONTAL', TAL_REGION,  TALL_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (743.7399347763807, 1530.0862187783011)],
-#   ['VERTICAL',   WIDE_REGION, WIDE_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (1034.1221179950135, 1257.0652831131727)],
-#   ['VERTICAL',   TAL_REGION,  WIDE_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (711.1875956135597, 1692.8479145924057)],
-#   ['VERTICAL',   WIDE_REGION, TALL_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (1034.1221179950135, 1257.0652831131727)],
-#   ['VERTICAL',   TAL_REGION,  TALL_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (711.1875956135596, 1692.8479145924057)],
-#   ['AUTO',       WIDE_REGION, WIDE_OUTPUT, WIDE_SENSOR, (-0.3, 1.5), (1001.5697788321926, 1419.8269789272774)],
-#   ['AUTO',       TAL_REGION,  WIDE_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (711.1875956135596, 1692.8479145924057)],
-#   ['AUTO',       WIDE_REGION, TALL_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (1001.5697788321926, 1419.8269789272774)],
-#   ['AUTO',       TAL_REGION,  TALL_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (711.1875956135596, 1692.8479145924057)],
-#   ['HORIZONTAL', WIDE_REGION, WIDE_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (1001.5697788321926, 1419.8269789272774)],
-#   ['HORIZONTAL', TAL_REGION,  WIDE_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (743.7399347763807, 1530.0862187783011)],
-#   ['HORIZONTAL', WIDE_REGION, TALL_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (1001.5697788321926, 1419.8269789272777)],
-#   ['HORIZONTAL', TAL_REGION,  TALL_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (743.7399347763807, 1530.0862187783011)],
-#   ['VERTICAL',   WIDE_REGION, WIDE_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (1034.1221179950135, 1257.0652831131727)],
-#   ['VERTICAL',   TAL_REGION,  WIDE_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (711.1875956135597, 1692.8479145924057)],
-#   ['VERTICAL',   WIDE_REGION, TALL_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (1034.1221179950135, 1257.0652831131727)],
-#   ['VERTICAL',   TAL_REGION,  TALL_OUTPUT, TALL_SENSOR, (-0.3, 1.5), (711.1875956135596, 1692.8479145924057)]
-# ]
-
-# @pytest.mark.parametrize("fit_mode, region_size, output_size, sensor_size, compute_coords, region_coords",
-#   compute_combinations)
-# def test_cameraframe_to_region(
-#     fit_mode:Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
-#     region_size, 
-#     output_size,
-#     sensor_size,
-#     compute_coords,
-#     region_coords):
+@pytest.mark.parametrize("fit_mode, region_size, output_size, sensor_size, camera_frame_result",
+  compute_combinations)
+def test_cameraframe_to_region(
+    fit_mode:Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+    region_size, 
+    output_size,
+    sensor_size,
+    camera_frame_result):
     
-#     # Mock context
-#     class MockContext:
-#         class Region:
-#             def __init__(self, width, height):
-#                 self.width = width
-#                 self.height = height
-        
-#         class Scene:
-#             class Render:
-#                 def __init__(self, res_x, res_y):
-#                     self.resolution_x = res_x
-#                     self.resolution_y = res_y
-            
-#             def __init__(self, res_x, res_y):
-#                 self.render = self.Render(res_x, res_y)
-        
-#         class SpaceData:
-#             class Camera:
-#                 class Data:
-#                     def __init__(self, sensor_fit, sensor_width, sensor_height):
-#                         self.sensor_fit = sensor_fit
-#                         self.sensor_width = sensor_width
-#                         self.sensor_height = sensor_height
-                
-#                 def __init__(self, sensor_fit, sensor_width, sensor_height):
-#                     self.data = self.Data(sensor_fit, sensor_width, sensor_height)
-            
-#             def __init__(self, sensor_fit, sensor_width, sensor_height):
-#                 self.camera = self.Camera(sensor_fit, sensor_width, sensor_height)
-        
-#         def __init__(self, region_size, output_size, sensor_size, sensor_fit):
-#             self.region = self.Region(region_size[0], region_size[1])
-#             self.scene = self.Scene(output_size[0], output_size[1])
-#             self.space_data = self.SpaceData(sensor_fit, sensor_size[0], sensor_size[1])
+    # Create mock context with test parameters
+    context = MockContext(
+        region_size=region_size,
+        output_size=output_size,
+        sensor_fit=fit_mode,
+        sensor_width=sensor_size[0],
+        sensor_height=sensor_size[1]
+    )
     
-#     context = MockContext(region_size, output_size, sensor_size, fit_mode)
+    cameraframe = vl_coord_utils.get_camera_frame(context)
+    print(f"{cameraframe}")
+    assert cameraframe is not None
 
-#     cameraframe = vl_coord_utils.get_camera_frame(context)
-    
-#     # print(f"{fit_mode:10s}, {region_size}, {output_size}, {sensor_size} {result}")
-    
-#     print(cameraframe)
+    assert pytest.approx(cameraframe[0], rel=1e-3) == camera_frame_result[0]
+    assert pytest.approx(cameraframe[1], rel=1e-3) == camera_frame_result[1]
+    assert pytest.approx(cameraframe[2], rel=1e-3) == camera_frame_result[2]
+    assert pytest.approx(cameraframe[3], rel=1e-3) == camera_frame_result[3]
 
-#     # assert pytest.approx(project_result[0], rel=1e-3) == region_coords[0]
-#     # assert pytest.approx(project_result[1], rel=1e-3) == region_coords[1]
-
-
-# if __name__ == "__main__":
-#     pytest.main([__file__, "-v", "-s"])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "-s"])

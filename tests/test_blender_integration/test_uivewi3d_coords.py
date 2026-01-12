@@ -86,7 +86,7 @@ compute_combinations = [
   ['VERTICAL',   tall_region, tall_output, tall_sensor, (-0.3, 1.5), (711.1875956135596, 1692.8479145924057)]
 ]
 
-from vanishing_lines_for_blender import uiview3d
+from vanishing_lines_for_blender import view3d_ui
 from conftest import MockContext
 
 @pytest.mark.parametrize("fit_mode, region_size, output_size, sensor_size, compute_coords, region_coords",
@@ -102,7 +102,7 @@ def test_project_compute_to_region(
     # Create mock context
     context = MockContext(region_size, output_size, fit_mode)
     
-    uiview = uiview3d.UIView3D()
+    uiview = view3d_ui.View3DUI()
     uiview.set_coordinate_system_to_camera_frame(context)
 
     result = uiview.project(compute_coords)

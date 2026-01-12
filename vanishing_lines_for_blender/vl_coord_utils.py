@@ -139,285 +139,285 @@ def _unproject_output_from_region(
     
     return x, y
 
-def _get_sensor_size(
-        fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'],
-        sensor_size: Tuple[float, float]
-    ) -> Tuple[float, float]:
-    """Get sensor size based on sensor fit mode"""
-    w, h = sensor_size
-    match fit_mode:
-        case 'AUTO':
-            # on auto mode, in blender, the sensor becomes a square.
-            # the square size, therefore the field of view is driven by the
-            # sensor_width property
-            return (w, w)
-        case 'HORIZONTAL':
-            return (w, h)
-        case 'VERTICAL':
-            return (w, h)
+# def _get_sensor_size(
+#         fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'],
+#         sensor_size: Tuple[float, float]
+#     ) -> Tuple[float, float]:
+#     """Get sensor size based on sensor fit mode"""
+#     w, h = sensor_size
+#     match fit_mode:
+#         case 'AUTO':
+#             # on auto mode, in blender, the sensor becomes a square.
+#             # the square size, therefore the field of view is driven by the
+#             # sensor_width property
+#             return (w, w)
+#         case 'HORIZONTAL':
+#             return (w, h)
+#         case 'VERTICAL':
+#             return (w, h)
 
-def _project_sensor_to_region(
-        fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
-        sensor_size: Tuple[float, float],
-        output_size: Tuple[float, float],
-        region_size: Tuple[float, float],
-        view_camera_zoom: float,
-        view_camera_offset: Tuple[float, float],
-        sensor_coords: Tuple[float, float]
-    ) -> Tuple[float, float]:
+# def _project_sensor_to_region(
+#         fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+#         sensor_size: Tuple[float, float],
+#         output_size: Tuple[float, float],
+#         region_size: Tuple[float, float],
+#         view_camera_zoom: float,
+#         view_camera_offset: Tuple[float, float],
+#         sensor_coords: Tuple[float, float]
+#     ) -> Tuple[float, float]:
         
-        sensor_size = _get_sensor_size(fit_mode, sensor_size)        
-        output_aspect = output_size[0] / output_size[1]
-        match fit_mode:
-            case 'AUTO':
-                output_coord = _map_space(sensor_coords, 
-                    source=_fit_space_to_aspect((0,0,sensor_size[0], sensor_size[1]), output_aspect),
-                    target=(0, 0, output_size[0], output_size[1]))
+#         sensor_size = _get_sensor_size(fit_mode, sensor_size)        
+#         output_aspect = output_size[0] / output_size[1]
+#         match fit_mode:
+#             case 'AUTO':
+#                 output_coord = _map_space(sensor_coords, 
+#                     source=_fit_space_to_aspect((0,0,sensor_size[0], sensor_size[1]), output_aspect),
+#                     target=(0, 0, output_size[0], output_size[1]))
                 
-            case 'HORIZONTAL':
-                scale = output_size[0] / sensor_size[0]
-                offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
-                offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
-                output_coord = (
-                    sensor_coords[0] * scale + offset_x,
-                    sensor_coords[1] * scale + offset_y)
+#             case 'HORIZONTAL':
+#                 scale = output_size[0] / sensor_size[0]
+#                 offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
+#                 offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
+#                 output_coord = (
+#                     sensor_coords[0] * scale + offset_x,
+#                     sensor_coords[1] * scale + offset_y)
                 
-            case 'VERTICAL':
-                scale = output_size[1] / sensor_size[1]
-                offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
-                offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
-                output_coord = (
-                    sensor_coords[0] * scale + offset_x,
-                    sensor_coords[1] * scale + offset_y)
+#             case 'VERTICAL':
+#                 scale = output_size[1] / sensor_size[1]
+#                 offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
+#                 offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
+#                 output_coord = (
+#                     sensor_coords[0] * scale + offset_x,
+#                     sensor_coords[1] * scale + offset_y)
         
-        region_coord = _project_output_to_region(
-            fit_mode=fit_mode,
-            output_size=output_size,
-            region_size=region_size,
-            view_camera_zoom=view_camera_zoom,
-            view_camera_offset=view_camera_offset,
-            output_coords=output_coord)
+#         region_coord = _project_output_to_region(
+#             fit_mode=fit_mode,
+#             output_size=output_size,
+#             region_size=region_size,
+#             view_camera_zoom=view_camera_zoom,
+#             view_camera_offset=view_camera_offset,
+#             output_coords=output_coord)
         
-        return region_coord
+#         return region_coord
 
-def _unproject_sensor_from_region(
-        fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
-        sensor_size: Tuple[float, float],
-        output_size: Tuple[float, float],
-        region_size: Tuple[float, float],
-        view_camera_zoom: float,
-        view_camera_offset: Tuple[float, float],
-        region_coords: Tuple[float, float]) -> Tuple[float, float]:
-    """Map from region space to sensor space (uses cached viewport state)"""
-    # First unproject from region to output space
-    output_coord = _unproject_output_from_region(
-        fit_mode=fit_mode,
-        output_size=output_size,
-        region_size=region_size,
-        view_camera_zoom=view_camera_zoom,
-        view_camera_offset=view_camera_offset,
-        region_coords=region_coords)
+# def _unproject_sensor_from_region(
+#         fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+#         sensor_size: Tuple[float, float],
+#         output_size: Tuple[float, float],
+#         region_size: Tuple[float, float],
+#         view_camera_zoom: float,
+#         view_camera_offset: Tuple[float, float],
+#         region_coords: Tuple[float, float]) -> Tuple[float, float]:
+#     """Map from region space to sensor space (uses cached viewport state)"""
+#     # First unproject from region to output space
+#     output_coord = _unproject_output_from_region(
+#         fit_mode=fit_mode,
+#         output_size=output_size,
+#         region_size=region_size,
+#         view_camera_zoom=view_camera_zoom,
+#         view_camera_offset=view_camera_offset,
+#         region_coords=region_coords)
     
-    # Then convert from output space to sensor space
-    sensor_size = _get_sensor_size(fit_mode, sensor_size)
-    output_aspect = output_size[0] / output_size[1]
+#     # Then convert from output space to sensor space
+#     sensor_size = _get_sensor_size(fit_mode, sensor_size)
+#     output_aspect = output_size[0] / output_size[1]
     
-    match fit_mode:
-        case 'AUTO':
-            sensor_coord = _map_space(output_coord,
-                source=(0, 0, output_size[0], output_size[1]),
-                target=_fit_space_to_aspect((0, 0, sensor_size[0], sensor_size[1]), output_aspect))
+#     match fit_mode:
+#         case 'AUTO':
+#             sensor_coord = _map_space(output_coord,
+#                 source=(0, 0, output_size[0], output_size[1]),
+#                 target=_fit_space_to_aspect((0, 0, sensor_size[0], sensor_size[1]), output_aspect))
         
-        case 'HORIZONTAL':
-            scale = output_size[0] / sensor_size[0]
-            offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
-            offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
-            sensor_coord = (
-                (output_coord[0] - offset_x) / scale,
-                (output_coord[1] - offset_y) / scale)
+#         case 'HORIZONTAL':
+#             scale = output_size[0] / sensor_size[0]
+#             offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
+#             offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
+#             sensor_coord = (
+#                 (output_coord[0] - offset_x) / scale,
+#                 (output_coord[1] - offset_y) / scale)
         
-        case 'VERTICAL':
-            scale = output_size[1] / sensor_size[1]
-            offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
-            offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
-            sensor_coord = (
-                (output_coord[0] - offset_x) / scale,
-                (output_coord[1] - offset_y) / scale)
+#         case 'VERTICAL':
+#             scale = output_size[1] / sensor_size[1]
+#             offset_x = (output_size[0] - sensor_size[0] * scale) / 2.0
+#             offset_y = (output_size[1] - sensor_size[1] * scale) / 2.0
+#             sensor_coord = (
+#                 (output_coord[0] - offset_x) / scale,
+#                 (output_coord[1] - offset_y) / scale)
     
-    return sensor_coord
+#     return sensor_coord
 
-def _project_compute_to_region(
-        fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
-        compute_rect: Tuple[float, float, float, float],
-        output_size: Tuple[float, float],
-        region_size: Tuple[float, float],
-        view_camera_zoom: float,
-        view_camera_offset: Tuple[float, float],
-        compute_coords: Tuple[float, float]) -> Tuple[float, float]:
-    """Map from compute space to region space
-    fit_mode: how to fit the compute space to the output space
-    """
-    x, y, w, h = compute_rect
-    compute_size = _get_sensor_size(fit_mode, (w, h))        
-    output_aspect = output_size[0] / output_size[1]
-    match fit_mode:
-        case 'AUTO':
-            output_coords = _map_space(compute_coords, 
-                source=_fit_space_to_aspect(compute_rect, output_aspect),
-                target=(0, 0, output_size[0], output_size[1]))
+# def _project_compute_to_region(
+#         fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+#         compute_rect: Tuple[float, float, float, float],
+#         output_size: Tuple[float, float],
+#         region_size: Tuple[float, float],
+#         view_camera_zoom: float,
+#         view_camera_offset: Tuple[float, float],
+#         compute_coords: Tuple[float, float]) -> Tuple[float, float]:
+#     """Map from compute space to region space
+#     fit_mode: how to fit the compute space to the output space
+#     """
+#     x, y, w, h = compute_rect
+#     compute_size = w, h       
+#     output_aspect = output_size[0] / output_size[1]
+#     match fit_mode:
+#         case 'AUTO':
+#             output_coords = _map_space(compute_coords, 
+#                 source=_fit_space_to_aspect(compute_rect, output_aspect),
+#                 target=(0, 0, output_size[0], output_size[1]))
             
-        case 'HORIZONTAL':
-            scale = output_size[0] / compute_size[0]
-            offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
-            offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
-            output_coords = (
-                (compute_coords[0] - x) * scale + offset_x,
-                (compute_coords[1] - y) * scale + offset_y)
+#         case 'HORIZONTAL':
+#             scale = output_size[0] / compute_size[0]
+#             offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
+#             offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
+#             output_coords = (
+#                 (compute_coords[0] - x) * scale + offset_x,
+#                 (compute_coords[1] - y) * scale + offset_y)
             
-        case 'VERTICAL':
-            scale = output_size[1] / compute_size[1]
-            offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
-            offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
-            output_coords = (
-                (compute_coords[0] - x) * scale + offset_x,
-                (compute_coords[1] - y) * scale + offset_y)
+#         case 'VERTICAL':
+#             scale = output_size[1] / compute_size[1]
+#             offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
+#             offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
+#             output_coords = (
+#                 (compute_coords[0] - x) * scale + offset_x,
+#                 (compute_coords[1] - y) * scale + offset_y)
     
-    region_coord = _project_output_to_region(
-        fit_mode=fit_mode,
-        output_size=output_size,
-        region_size=region_size,
-        view_camera_zoom=view_camera_zoom,
-        view_camera_offset=view_camera_offset,
-        output_coords=output_coords)
+#     region_coord = _project_output_to_region(
+#         fit_mode=fit_mode,
+#         output_size=output_size,
+#         region_size=region_size,
+#         view_camera_zoom=view_camera_zoom,
+#         view_camera_offset=view_camera_offset,
+#         output_coords=output_coords)
     
-    return region_coord
+#     return region_coord
 
-def _unproject_compute_from_region(
-        fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
-        compute_rect: Tuple[float, float, float, float],
-        output_size: Tuple[float, float],
-        region_size: Tuple[float, float],
-        view_camera_zoom: float,
-        view_camera_offset: Tuple[float, float],
-        region_coords: Tuple[float, float]) -> Tuple[float, float]:
-    """Map from region space to compute space
-    fit_mode: how to fit the compute space to the output space
-    """
-    # First unproject from region to output space
-    output_coord = _unproject_output_from_region(
-        fit_mode=fit_mode,
-        output_size=output_size,
-        region_size=region_size,
-        view_camera_zoom=view_camera_zoom,
-        view_camera_offset=view_camera_offset,
-        region_coords=region_coords)
+# def _unproject_compute_from_region(
+#         fit_mode: Literal['AUTO', 'HORIZONTAL', 'VERTICAL'], 
+#         compute_rect: Tuple[float, float, float, float],
+#         output_size: Tuple[float, float],
+#         region_size: Tuple[float, float],
+#         view_camera_zoom: float,
+#         view_camera_offset: Tuple[float, float],
+#         region_coords: Tuple[float, float]) -> Tuple[float, float]:
+#     """Map from region space to compute space
+#     fit_mode: how to fit the compute space to the output space
+#     """
+#     # First unproject from region to output space
+#     output_coord = _unproject_output_from_region(
+#         fit_mode=fit_mode,
+#         output_size=output_size,
+#         region_size=region_size,
+#         view_camera_zoom=view_camera_zoom,
+#         view_camera_offset=view_camera_offset,
+#         region_coords=region_coords)
     
-    # Then convert from output space to compute space
-    x, y, w, h = compute_rect
-    compute_size = _get_sensor_size(fit_mode, (w, h))
-    output_aspect = output_size[0] / output_size[1]
+#     # Then convert from output space to compute space
+#     x, y, w, h = compute_rect
+#     compute_size = w, h
+#     output_aspect = output_size[0] / output_size[1]
     
-    match fit_mode:
-        case 'AUTO':
-            compute_coord = _map_space(output_coord,
-                source=(0, 0, output_size[0], output_size[1]),
-                target=_fit_space_to_aspect(compute_rect, output_aspect))
+#     match fit_mode:
+#         case 'AUTO':
+#             compute_coord = _map_space(output_coord,
+#                 source=(0, 0, output_size[0], output_size[1]),
+#                 target=_fit_space_to_aspect(compute_rect, output_aspect))
         
-        case 'HORIZONTAL':
-            scale = output_size[0] / compute_size[0]
-            offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
-            offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
-            compute_coord = (
-                (output_coord[0] - offset_x) / scale + x,
-                (output_coord[1] - offset_y) / scale + y)
+#         case 'HORIZONTAL':
+#             scale = output_size[0] / compute_size[0]
+#             offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
+#             offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
+#             compute_coord = (
+#                 (output_coord[0] - offset_x) / scale + x,
+#                 (output_coord[1] - offset_y) / scale + y)
         
-        case 'VERTICAL':
-            scale = output_size[1] / compute_size[1]
-            offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
-            offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
-            compute_coord = (
-                (output_coord[0] - offset_x) / scale + x,
-                (output_coord[1] - offset_y) / scale + y)
+#         case 'VERTICAL':
+#             scale = output_size[1] / compute_size[1]
+#             offset_x = (output_size[0] - compute_size[0] * scale) / 2.0
+#             offset_y = (output_size[1] - compute_size[1] * scale) / 2.0
+#             compute_coord = (
+#                 (output_coord[0] - offset_x) / scale + x,
+#                 (output_coord[1] - offset_y) / scale + y)
     
-    return compute_coord
+#     return compute_coord
 
-def _map_space(
-        coord:  tuple[float, float],
-        source: Tuple[float, float, float, float],
-        target: Tuple[float, float, float, float]
-    ) -> tuple[float, float]:
-        """
-        Map coord from source space to target space.
+# def _map_space(
+#         coord:  tuple[float, float],
+#         source: Tuple[float, float, float, float],
+#         target: Tuple[float, float, float, float]
+#     ) -> tuple[float, float]:
+#         """
+#         Map coord from source space to target space.
 
-        Params:
-            coord: (x, y) coordinate in source space
-            source: (x, y, width, height) defining the source rectangle
-            target: (x, y, width, height) defining the target rectangle
-        """
-        sx, sy, sw, sh = source
-        tx, ty, tw, th = target
-        x, y = coord
+#         Params:
+#             coord: (x, y) coordinate in source space
+#             source: (x, y, width, height) defining the source rectangle
+#             target: (x, y, width, height) defining the target rectangle
+#         """
+#         sx, sy, sw, sh = source
+#         tx, ty, tw, th = target
+#         x, y = coord
 
-        # Normalize coord within source [0–1]
-        nx = (x - sx) / sw
-        ny = (y - sy) / sh
+#         # Normalize coord within source [0–1]
+#         nx = (x - sx) / sw
+#         ny = (y - sy) / sh
 
-        # Scale to target
-        mapped_x = tx + nx * tw
-        mapped_y = ty + ny * th
+#         # Scale to target
+#         mapped_x = tx + nx * tw
+#         mapped_y = ty + ny * th
 
-        return mapped_x, mapped_y
+#         return mapped_x, mapped_y
 
-def _fit_space_to_aspect(
-    space: tuple[float, float, float, float],
-    target_aspect: float
-) -> tuple[float, float, float, float]:
-    """
-    Returns a rectangle that fits within the aspect ratio.
-    """
-    sx, sy, sw, sh = space
-    source_ar = sw / sh
+# def _fit_space_to_aspect(
+#     space: tuple[float, float, float, float],
+#     target_aspect: float
+# ) -> tuple[float, float, float, float]:
+#     """
+#     Returns a rectangle that fits within the aspect ratio.
+#     """
+#     sx, sy, sw, sh = space
+#     source_ar = sw / sh
 
-    if source_ar > target_aspect:
-        # Source too wide → match height, reduce width
-        new_h = sh
-        new_w = new_h * target_aspect
-        new_x = sx + (sw - new_w) / 2
-        new_y = sy
-    else:
-        # Source too tall → match width, reduce height
-        new_w = sw
-        new_h = new_w / target_aspect
-        new_x = sx
-        new_y = sy + (sh - new_h) / 2
+#     if source_ar > target_aspect:
+#         # Source too wide → match height, reduce width
+#         new_h = sh
+#         new_w = new_h * target_aspect
+#         new_x = sx + (sw - new_w) / 2
+#         new_y = sy
+#     else:
+#         # Source too tall → match width, reduce height
+#         new_w = sw
+#         new_h = new_w / target_aspect
+#         new_x = sx
+#         new_y = sy + (sh - new_h) / 2
 
-    return new_x, new_y, new_w, new_h
+#     return new_x, new_y, new_w, new_h
 
-def _crop_space_to_aspect(
-    source: tuple[float, float, float, float],
-    target_aspect: float
-) -> tuple[float, float, float, float]:
-    """
-    Returns a rectangle that fills the aspect ratio by cropping the excess.
-    (Crop)
-    """
-    sx, sy, sw, sh = source
-    source_ar = sw / sh
+# def _crop_space_to_aspect(
+#     source: tuple[float, float, float, float],
+#     target_aspect: float
+# ) -> tuple[float, float, float, float]:
+#     """
+#     Returns a rectangle that fills the aspect ratio by cropping the excess.
+#     (Crop)
+#     """
+#     sx, sy, sw, sh = source
+#     source_ar = sw / sh
 
-    if source_ar > target_aspect:
-        # Source too wide → match width, expand height
-        new_w = sw
-        new_h = new_w / target_aspect
-        new_x = sx
-        new_y = sy - (new_h - sh) / 2
-    else:
-        # Source too tall → match height, expand width
-        new_h = sh
-        new_w = new_h * target_aspect
-        new_x = sx - (new_w - sw) / 2
-        new_y = sy
+#     if source_ar > target_aspect:
+#         # Source too wide → match width, expand height
+#         new_w = sw
+#         new_h = new_w / target_aspect
+#         new_x = sx
+#         new_y = sy - (new_h - sh) / 2
+#     else:
+#         # Source too tall → match height, expand width
+#         new_h = sh
+#         new_w = new_h * target_aspect
+#         new_x = sx - (new_w - sw) / 2
+#         new_y = sy
 
-    return new_x, new_y, new_w, new_h
+#     return new_x, new_y, new_w, new_h
 
 def get_camera_frame(context)->Tuple[float, float, float, float]|None:
     """return the camera view frame rectangle in region space

@@ -13,7 +13,7 @@ from bpy_extras import view3d_utils
 from pyglm import glm
 
 # local
-from .uiview3d import UIView3D
+from .view3d_ui import View3DUI
 from . import vl_params
 from . import solver
 from . import vl_utils
@@ -25,28 +25,10 @@ ERROR_TEXT_X_OFFSET = 20
 ERROR_TEXT_Y_OFFSET = 40
 
 
-class VIEW_OT_VanishingLinesViewToolQuad(bpy.types.Operator):
-    """Invoke Vanishing Lines tool in quad[3] (camera view) for quadview layouts"""
-    bl_idname = "view.vanishing_lines_view_tool_quad"
-    bl_label = "Vanishing Lines (Quad Camera)"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def invoke(self, context, event):
-        # Check if quadview is enabled
-        if context.area and context.area.spaces.active.region_quadviews:
-            quad_regions = [r for r in context.area.regions if r.type == 'WINDOW']
-            if len(quad_regions) >= 4:
-                # Invoke the main tool with quad[3] context
-                with context.temp_override(region=quad_regions[3]):
-                    return bpy.ops.view.vanishing_lines_view_tool('INVOKE_DEFAULT')
-        
-        # Fallback to normal invocation if not in quadview
-        return bpy.ops.view.vanishing_lines_view_tool('INVOKE_DEFAULT')
 
-
-class MODAL_MT_RightClickMenu(bpy.types.Menu):
-    bl_label = "Vanishig Lines"
-    bl_idname = "MODAL_MT_right_click_menu"
+class MODAL_MT_VLContextMenu(bpy.types.Menu):
+    bl_label = "Vanishing Lines Context Menu"
+    bl_idname = "MODAL_MT_vl_context_menu"
 
     @classmethod
     def poll(kls, context):
@@ -99,13 +81,21 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
     def invoke(self, context, event):
         # Store the area and region where this operator is running
         self._context_area = context.area
-        self._context_region = context.region
+        
+        # Detect quadview and use quad[3] (camera view) if available
+        target_region = context.region
+        if context.area and context.area.spaces.active.region_quadviews:
+            quad_regions = [r for r in context.area.regions if r.type == 'WINDOW']
+            if len(quad_regions) >= 4:
+                target_region = quad_regions[3]
+        
+        self._context_region = target_region
         
         # Switch to camera view
         self._context_area.spaces.active.region_3d.view_perspective = 'CAMERA'
 
         # Initialize UIView3D for drawing and interaction in the viewport
-        self.uiview = UIView3D()
+        self.uiview = View3DUI()
 
         # Save initial camera state for restoration on cancel
         if self._context_area.spaces.active.camera:
@@ -137,8 +127,9 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             notify=camera_lens_changed,
         )
 
-        # Run the modal operator
-        context.window_manager.modal_handler_add(self)
+        # Run the modal operator with correct region context
+        with context.temp_override(region=self._context_region):
+            context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
     
     def get_vl_settings(self, context):
@@ -149,20 +140,20 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         header.layout.label(text="",  icon='EVENT_ONEKEY')
         header.layout.label(text="", icon='EVENT_TWOKEY')
         header.layout.label(text="", icon='EVENT_THREEKEY')
-        header.layout.label(text="set 1pt/2pt/3pt mode")
-        header.layout.label(text="cycle scale mode", icon='EVENT_R')
-        header.layout.label(text="toggle quad mode", icon='EVENT_Q')
-        header.layout.label(text="cancel", icon='EVENT_ESC')
-        header.layout.label(text="finish", icon='EVENT_RETURN')
+        header.layout.label(text="Set 1pt/2pt/3pt mode")
+        header.layout.label(text="Scale mode", icon='EVENT_R')
+        header.layout.label(text="Toggle Quad Mode", icon='EVENT_Q')
+        header.layout.label(text=" Cancel", icon='EVENT_ESC')
+        header.layout.label(text="Finish", icon='EVENT_RETURN')
 
         # mouse
         header.layout.label(text="", icon='EVENT_CTRL')
-        header.layout.label(text="move origin", icon='MOUSE_MMB_DRAG')
+        header.layout.label(text="Move Origin", icon='MOUSE_MMB_DRAG')
         header.layout.label(text="", icon='EVENT_CTRL')
-        header.layout.label(text="distance", icon='MOUSE_MMB_SCROLL')
+        header.layout.label(text="World Distance", icon='MOUSE_MMB_SCROLL')
 
         # context menu
-        header.layout.label(text="options", icon='MOUSE_RMB')
+        header.layout.label(text="Options", icon='MOUSE_RMB')
         
     def cancel(self, context):
         # Restore previous camera state
@@ -280,7 +271,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
         if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
             # This triggers the menu at the mouse location
-            bpy.ops.wm.call_menu(name=MODAL_MT_RightClickMenu.bl_idname)
+            bpy.ops.wm.call_menu(name=MODAL_MT_VLContextMenu.bl_idname)
             return {'RUNNING_MODAL'}
 
         match event.type:
@@ -424,7 +415,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 second_vanishing_lines_coordinates = [(first_line.start, last_line.start), (first_line.end, last_line.end)]
                 
                 for P, Q in second_vanishing_lines_coordinates:
-                    self.uiview._draw_layer.add_line(self.uiview.project(P), self.uiview.project(Q), get_axis_color(second_axis))
+                    self.uiview._painter.add_line(self.uiview.project(P), self.uiview.project(Q), get_axis_color(second_axis))
                     
             else:
                 for line in vl_settings.second_vanishing_lines:
@@ -484,7 +475,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                         for line in vl_settings.first_vanishing_lines])
 
                     for line in vl_settings.first_vanishing_lines:
-                        self.uiview._draw_layer.add_line(
+                        self.uiview._painter.add_line(
                             self.uiview.project(vl_utils.closest_point_to_target([line.start, line.end], vp1)), 
                             self.uiview.project(vp1), vl_utils.dim_color(get_axis_color(first_axis)))
                         
@@ -504,7 +495,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                         vp2 = solver.core.compute_vanishing_point(second_vanishing_lines)
                         
                         for line_start, line_end in second_vanishing_lines:
-                            self.uiview._draw_layer.add_line(
+                            self.uiview._painter.add_line(
                                 self.uiview.project(vl_utils.closest_point_to_target([line_start, line_end], vp2)), 
                                 self.uiview.project(vp2), 
                                 vl_utils.dim_color(get_axis_color(second_axis)))
@@ -517,7 +508,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                             for line in vl_settings.second_vanishing_lines])
                         
                         for line in vl_settings.second_vanishing_lines:
-                            self.uiview._draw_layer.add_line(
+                            self.uiview._painter.add_line(
                                 self.uiview.project(vl_utils.closest_point_to_target([line.start, line.end], vp2)), 
                                 self.uiview.project(vp2), 
                                 vl_utils.dim_color(get_axis_color(second_axis)))
@@ -532,7 +523,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                         for line in vl_settings.third_vanishing_lines])
                     
                     for line in vl_settings.third_vanishing_lines:
-                        self.uiview._draw_layer.add_line(
+                        self.uiview._painter.add_line(
                             self.uiview.project(vl_utils.closest_point_to_target([line.start, line.end], vp3)), 
                             self.uiview.project(vp3), 
                             vl_utils.dim_color(get_axis_color(third_axis)))
@@ -543,13 +534,13 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 projection, view = vl_utils.get_camera_matrices(camera_object=context.area.spaces.active.camera,
                     compute_space=solver.types.Rect(-1,-1,2,2))
                 principal, f = solver.utils.decompose_intrinsics(solver.types.Rect(-1,-1,2,2), projection)
-                self.uiview._draw_layer.add_point(
+                self.uiview._painter.add_point(
                     pos=self.uiview.project(principal),
                     color=glm.vec4(1.0, 0.7, 0.0, 1.0),
                     shape='X',
                 )
 
-                self.uiview._draw_layer.add_annotation(
+                self.uiview._painter.add_annotation(
                     pos=self.uiview.project(principal),
                     text="P",
                     color=glm.vec4(1.0, 0.7, 0.0, 1.0)
@@ -569,21 +560,21 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 blf.position(font_id, center[0] - line_width/2, center[1] - LINE_HEIGHT * i - text_block_height/2, 0)
                 blf.draw(font_id, f"{line}")
 
-        ## draw compute space
-        x_min, y_min = self.uiview.project((-1,-1))
-        x_max, y_max = self.uiview.project((1, 1))
-        self.uiview._draw_layer.add_rect(
-            (x_min, y_min),
-            (x_max - x_min, y_max - y_min),
-            color=(0,1,1,0.1)
-        )
+        # ## draw compute space
+        # x_min, y_min = self.uiview.project((-1,-1))
+        # x_max, y_max = self.uiview.project((1, 1))
+        # self.uiview._painter.add_rect(
+        #     (x_min, y_min),
+        #     (x_max - x_min, y_max - y_min),
+        #     color=(0,1,1,0.1)
+        # )
 
-        ## draw info
-        self.uiview._draw_layer.add_annotation(
-            pos=glm.vec2(100, 100),
-            text="Info",
-            color=glm.vec4(1.0, 1.0, 0.0, 1.0)
-        )
+        # ## draw info
+        # self.uiview._draw_layer.add_annotation(
+        #     pos=glm.vec2(100, 100),
+        #     text="Info",
+        #     color=glm.vec4(1.0, 1.0, 0.0, 1.0)
+        # )
 
         self.uiview.end()
 
@@ -706,7 +697,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
 ######################
 def view_menu_func(self, context):
-    self.layout.operator(VIEW_OT_VanishingLinesViewToolQuad.bl_idname, text="Vanishing Lines")
+    self.layout.operator(VIEW_OT_VanishingLinesViewTool.bl_idname, text="Vanishing Lines")
 
 def rv3d_draw_function():
     # global draw_list
@@ -750,9 +741,8 @@ def camera_lens_changed():
 draw_handler = None
 
 def register():
-    bpy.utils.register_class(MODAL_MT_RightClickMenu)
+    bpy.utils.register_class(MODAL_MT_VLContextMenu)
     bpy.utils.register_class(VIEW_OT_VanishingLinesViewTool)
-    bpy.utils.register_class(VIEW_OT_VanishingLinesViewToolQuad)
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
     global draw_handler
@@ -782,9 +772,8 @@ def unregister():
         except AttributeError:
             pass
 
-    bpy.utils.unregister_class(VIEW_OT_VanishingLinesViewToolQuad)
     bpy.utils.unregister_class(VIEW_OT_VanishingLinesViewTool)
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
-    bpy.utils.unregister_class(MODAL_MT_RightClickMenu)
+    bpy.utils.unregister_class(MODAL_MT_VLContextMenu)
 
     
