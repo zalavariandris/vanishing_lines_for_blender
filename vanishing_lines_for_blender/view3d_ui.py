@@ -11,8 +11,7 @@ from pyglm import glm
 CLIP_NEAR = -1000.0
 CLIP_FAR = 1000.0
 DEFAULT_CLICK_THRESHOLD = 22.0
-ANNOTATION_OFFSET_X = 5
-ANNOTATION_OFFSET_Y = 5
+
 DIM_FACTOR_ACTIVE = 0.3
 DIM_FACTOR_INACTIVE = 0.1
 
@@ -265,7 +264,7 @@ class View3DUI:
         closest_key:ControlIdType|None = None
         closest_dist_sq = threshold * threshold
 
-        for control_id, control_point in self._controls.items():
+        for control_id, control_point in reversed(self._controls.items()):
             P = (self.project(control_point.value))
             dist_sq = (P[0] - mouse_region_x) ** 2 + (P[1] - mouse_region_y) ** 2
             if dist_sq < closest_dist_sq:
@@ -303,10 +302,6 @@ class View3DUI:
         point_render_color = color
         if is_active or is_hovered:
             point_render_color = (1.0, 1.0, 1.0, 1.0)
-            self._painter.add_annotation(
-                (P[0] + ANNOTATION_OFFSET_X, P[1] + ANNOTATION_OFFSET_Y), 
-                f"({cp.value[0]:.2f}, {cp.value[1]:.2f})",
-                color=(1,1,1,1))
 
         self._painter.add_point(
             P,
@@ -314,9 +309,9 @@ class View3DUI:
 
         
         self._painter.add_annotation(
-            (P[0], P[1]),
-            text,
-            color=(1,1,1,1))
+            (P[0]+5, P[1]),
+            text=text,
+            color=point_render_color)
         
         return self._controls[control_id]
     
@@ -443,7 +438,7 @@ class View3DUI:
             angle += math.pi
 
         self._painter.add_annotation(
-            ((P_start[0]+P_end[0])/2 + ANNOTATION_OFFSET_X, (P_start[1]+P_end[1])/2 - ANNOTATION_OFFSET_X),
+            ((P_start[0]+P_end[0])/2, (P_start[1]+P_end[1])/2),
             text,
             color=render_color,
             angle=angle)

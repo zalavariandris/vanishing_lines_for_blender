@@ -10,6 +10,8 @@ import blf
 # Constants at module level
 DEFAULT_FONT_SIZE = 12
 DEFAULT_FONT_ID = 0
+ANNOTATION_OFFSET_X = DEFAULT_FONT_SIZE*2/3
+ANNOTATION_OFFSET_Y = DEFAULT_FONT_SIZE*2/3
 
 
 class OverlayPainter:
@@ -91,15 +93,21 @@ class OverlayPainter:
 
         # Render annotations
         blf.enable(DEFAULT_FONT_ID, blf.ROTATION)
+        blf.size(DEFAULT_FONT_ID, DEFAULT_FONT_SIZE)
         for pos, text, color, angle in self._annotations:
             w, _ = blf.dimensions(DEFAULT_FONT_ID, text)
-            x, y = pos
+            x, y = pos[0], pos[1]
+
             # Center text along angle
             x = x - (w / 2) * math.cos(angle)
             y = y - (w / 2) * math.sin(angle)
+            x += ANNOTATION_OFFSET_X * math.cos(angle + math.pi/2)
+            y += ANNOTATION_OFFSET_Y * math.sin(angle + math.pi/2)
+
+            
             blf.position(DEFAULT_FONT_ID, x, y, 0)
             blf.rotation(DEFAULT_FONT_ID, angle)
-            blf.size(DEFAULT_FONT_ID, DEFAULT_FONT_SIZE)
+            
             blf.color(DEFAULT_FONT_ID, *color)
             blf.draw(DEFAULT_FONT_ID, f"{text}")
 
