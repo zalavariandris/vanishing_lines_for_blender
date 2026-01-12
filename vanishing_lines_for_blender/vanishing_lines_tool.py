@@ -572,7 +572,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         ## draw info
         self.uiview._painter.add_annotation(
             pos=(x_min+(x_max-x_min)/2, y_min),
-            text="Vanishing Lines · Free Version",
+            text="Vanishing Lines · Beta Version",
             color=(0,1,1,0.3)
         )
 
