@@ -3,11 +3,11 @@ schema_version = "1.0.0"
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
 id = "vanishinglines"
-version = "0.7.5"
+version = "0.8.0"
 name = "VanishingLines"
 tagline = "Align camera to vanishing lines in the 3D View"
 maintainer = "BabLab (András Zalavári)"
-type = "add-on" # Supported types: "add-on", "theme"
+type = "add-on" # Supported types: "add-on"
 
 # Optional link to documentation, support, source files, etc
 # website = "https://extensions.blender.org/add-ons/my-example-package/"
@@ -32,9 +32,10 @@ license = [
 # Other supported platforms: "windows-arm64", "macos-x64"
 
 wheels = [
-  "./wheels/pyglm-2.8.2-cp311-cp311-macosx_11_0_arm64.whl",
-  "./wheels/pyglm-2.8.2-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
-  "./wheels/pyglm-2.8.2-cp311-cp311-win_amd64.whl"
+  "./wheels/pyglm-2.8.3-cp311-cp311-macosx_10_9_x86_64.whl",
+  "./wheels/pyglm-2.8.3-cp311-cp311-win_amd64.whl",
+  "./wheels/pyglm-2.8.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+  "./wheels/pyglm-2.8.3-cp311-cp311-macosx_11_0_arm64.whl"
 ]
 
 # Optional: build settings.

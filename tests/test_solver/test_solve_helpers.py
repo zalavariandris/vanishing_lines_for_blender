@@ -10,7 +10,7 @@ if __name__ == "__main__":
     print("Project root:", project_root)
     sys.path.insert(0, str(project_root / "vanishing_lines_for_blender"))
 
-import solver
+from vanishing_lines_for_blender import solver
 
 
 ##############################

@@ -1,18 +1,11 @@
 # standard library
-from collections import namedtuple
-from typing import Dict, List, Tuple, Literal, Final, Iterable
-from enum import IntEnum
-import math
-from dataclasses import dataclass
-from textwrap import dedent
-from abc import ABC, abstractmethod
+from typing import List, Tuple, Literal
+import warnings
 
 # third party library
 from pyglm import glm
-import numpy as np
 
-import warnings
-
+# local imports
 from .constants import (
     EPSILON, 
     DEFAULT_NEAR_PLANE, 
@@ -30,9 +23,12 @@ from . types import (
     ReferenceAxis
 )
 
-from . import helpers
+from . exceptions import (
+    VanishingLinesError,
+    AxisAssignmentError
+)
 
-from typing import TypedDict, NamedTuple
+from . import helpers
 
 
 #########################
@@ -55,7 +51,8 @@ def solve(
         reference_world_size:float,
 
         first_axis:Axis,
-        second_axis:Axis
+        second_axis:Axis,
+        handedness:Literal['right-handed', 'left-handed']="right-handed" 
     )->Tuple[glm.mat4, glm.mat4]:
 
     match mode:
@@ -110,7 +107,8 @@ def solve(
     view = adjust_axis_assignment(
         first_axis,
         second_axis,
-        view
+        view,
+        handedness
     )    
     
     if reference_axis is not None:
@@ -130,46 +128,75 @@ def solve(
 # SOLVER COMPONENTS #
 #####################
 
-def compute_vanishing_point(lines: List[Line2]) -> Point2:
+def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> Tuple[float, float]:
     """
-    Compute the least-squares intersection (vanishing point) of a set of 2D lines
-    defined by their endpoints. Uses pure PyGLM math, no numpy.
-
-    Args:
-        line_segments: list of ((x1, y1), (x2, y2)) as glm.vec2 pairs.
-
+    Compute the least-squares intersection of 2D lines.
+    
     Returns:
-        glm.vec2: the least-squares intersection point.
+        Tuple[float, float]: (The intersection point, The total squared error)
     """
     if len(lines) < 2:
-        raise ValueError("At least two lines are required to compute a vanishing point")
+        raise VanishingLinesError("At least two lines are required.")
 
-    # Accumulate normal equation components
-    S_aa = S_ab = S_bb = S_ac = S_bc = 0.0
+    # 1. Accumulate normal equation components
+    S_aa = S_ab = S_bb = S_ac = S_bc = S_cc = 0.0
 
-    for (Px, Py), (Qx, Qy) in lines:
-        # Line equation coefficients: a*x + b*y + c = 0
-        a = Py - Qy
-        b = Qx - Px
-        c = Px * Qy - Qx * Py
+    for (px, py), (qx, qy) in lines:
+        # Check for degenerate lines (zero length)
+        dx, dy = qx - px, qy - py
+        length_sq = dx*dx + dy*dy
+        if length_sq < EPSILON:
+            raise VanishingLinesError("Line of zero length.") 
+
+        # Coefficients for ax + by + c = 0
+        a = py - qy
+        b = qx - px
+        c = px * qy - qx * py
+
+        # # Optionally normalize coefficients so the error is actual Euclidean distance
+        # norm = 1.0 / glm.sqrt(a*a + b*b)
+        # a *= norm
+        # b *= norm
+        # c *= norm
 
         S_aa += a * a
         S_ab += a * b
         S_bb += b * b
         S_ac += a * c
         S_bc += b * c
+        S_cc += c * c
 
-    # Solve normal equations:
-    # [S_aa S_ab][x] = -[S_ac]
-    # [S_ab S_bb][y]   -[S_bc]
+    # 2. Analyze the Determinant
     det = S_aa * S_bb - S_ab * S_ab
-    if abs(det) < EPSILON:
-        raise ValueError(f"Lines are nearly parallel or determinant is zero. linesegments: {lines}")
+    
+    if abs(det) < EPSILON**2:
+        p1_x, p1_y = lines[0][0]
+        residual = abs(S_aa * p1_x + S_ab * p1_y + S_ac)
+        
+        if residual < EPSILON**2:
+            raise VanishingLinesError("All Lines are collinear.")
+        else:
+            raise VanishingLinesError("All lines are parallel.")
 
-    x = (-S_bb * S_ac + S_ab * S_bc) / det
-    y = (-S_aa * S_bc + S_ab * S_ac) / det
+    # 3. Solve the system using Cramer's Rule
+    # [S_aa S_ab][x] = [-S_ac]
+    # [S_ab S_bb][y] = [-S_bc]
+    x = ((-S_ac) * S_bb - S_ab * (-S_bc)) / det
+    y = (S_aa * (-S_bc) - (-S_ac) * S_ab) / det
+    
+    vp = glm.vec2(x, y)
 
-    return x, y
+    # # Optionally Compute Total Squared Error and raise an Exception
+    # #                    (Residual Sum of Squares)
+    # # This is the expansion of sum((a*x + b*y + c)^2)
+    # total_error = (x*x * S_aa + 
+    #                y*y * S_bb + 
+    #                2*x*y * S_ab + 
+    #                2*x * S_ac + 
+    #                2*y * S_bc + 
+    #                S_cc)
+
+    return vp.x, vp.y
 
 def orientation_from_one_vanishing_point(
         viewport:Tuple[float, float, float, float], 
@@ -191,8 +218,9 @@ def orientation_from_one_vanishing_point(
 
     # validate if matrix is a purely rotational matrix
     if utils.validate_orthogonality(glm.mat3(view)) is False:
+        raise VanishingLinesError("Invalid vanishing point configuration: computed view orientation matrix is not orthogonal.")
         view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
-        warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
+        # warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
     
 
     # Adjust Camera Roll to match second vanishing line
@@ -230,8 +258,9 @@ def orientation_from_two_vanishing_points(
         
     # validate if matrix is a purely rotational matrix
     if utils.validate_orthogonality(glm.mat3(view)) is False:
+        raise VanishingLinesError("Invalid vanishing point configuration: computed view orientation matrix is not orthogonal.")
         view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
-        warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
+        # warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
     
 
     return projection, view
@@ -265,9 +294,9 @@ def orientation_from_three_vanishing_points(
         
     # validate if matrix is a purely rotational matrix
     if utils.validate_orthogonality(glm.mat3(view)) is False:
+        raise VanishingLinesError("Invalid vanishing point configuration: computed view orientation matrix is not orthogonal.")
         view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
-        warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
-    
+        # warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
 
     return projection, view
 
@@ -418,11 +447,14 @@ def adjust_scale_to_reference_distance(
 def adjust_axis_assignment(
         first_axis: Axis, 
         second_axis: Axis,
-        view_matrix:glm.mat4
+        view_matrix:glm.mat4,
+        handedness:Literal['right-handed', 'left-handed']='right-handed'
     )->glm.mat4:
-    return view_matrix * glm.inverse(glm.mat4(create_axis_assignment_matrix(first_axis, second_axis))) # type: ignore[return-value] # PyGLM type stubs incorrectly infer mat4x2
+    """adjust a view matrix to match user-specified axis assignment. when used as a trasform matrix.
+    create_axis_assignment_matrix crates a native transform matrix"""
+    return view_matrix * glm.inverse(glm.mat4(create_axis_assignment_matrix(first_axis, second_axis, handedness))) # type: ignore[return-value] # PyGLM type stubs incorrectly infer mat4x2
 
-def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.mat3:
+def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis, handedness:Literal['right-handed', 'left-handed']='right-handed') -> glm.mat3:
     """
     Creates an axis assignment matrix that maps vanishing point directions to user-specified world axes.
     
@@ -434,7 +466,13 @@ def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.ma
         A 3x3 rotation matrix that transforms from vanishing point space to world space
     
     Raises:
-        Exception: If the axis assignment creates an invalid (non-orthogonal) matrix
+        AxisAssignmentError: If the axis assignment creates an invalid (non-orthogonal) matrix
+
+    Usage:
+        M_with_axis_shuffled = m * create_axis_assignment_matrix(
+            firstVanishingPointAxis=Axis.PositiveX,
+            secondVanishingPointAxis=Axis.PositiveY
+        )
 
     Note:
         Identity if:
@@ -454,16 +492,15 @@ def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis) -> glm.ma
                 return "Z"
             
     if get_axis(first_axis) == get_axis(second_axis):
-        raise Exception("Invalid axis assignment: axes must be distinct")
-    
+        raise AxisAssignmentError("Invalid axis assignment: axes must be distinct")
     
     # Get the unit vectors for the specified axes
     forward = helpers.vector_from_axis(first_axis)
     right = helpers.vector_from_axis(second_axis)
-    up = glm.cross(forward, right) # Todo: this will make a right-handed system, for left handedness we need the third_axis
+    up = helpers.third_axis_vector(first_axis, second_axis, handedness=handedness) # Todo: make sure this is correct
     
     # Build the matrix with each row representing the target world axis
-    axis_assignment_matrix = glm.mat3( # TODO: this is the inverse of the mat3_from_directions
+    axis_assignment_matrix = glm.mat3( # Note: this is the inverse of the mat3_from_directions
         forward.x,
         forward.y,
         forward.z,

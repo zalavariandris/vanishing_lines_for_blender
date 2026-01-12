@@ -1,145 +1,187 @@
-# type: ignore
+from typing import Tuple
 import bpy
+from . import solver
+
+def set_defaults(vl_settings: 'VLSettings')->None:
+    # if not vl_settings.initialized:
+    vl_settings.origin =    (0.0, -0.25)
+    vl_settings.principal = (0.0,  0.0)
+        # vl_settings.initialized = True
+
+    vl_settings.first_vanishing_lines.clear()
+    item = vl_settings.first_vanishing_lines.add()
+    item.start = (-0.2, -0.53)
+    item.end =   ( 0.6,  0.12)
+
+    item = vl_settings.first_vanishing_lines.add()
+    item.start = (-0.88, 0.0)
+    item.end =   ( 0.09, 0.20)
+
+    vl_settings.second_vanishing_lines.clear()
+    item = vl_settings.second_vanishing_lines.add()
+    item.start =  (0.22, -0.48)
+    item.end =   (-0.80,  0.05)
+
+    item = vl_settings.second_vanishing_lines.add()
+    item.start =  (0.65, 0.05)
+    item.end =   (-0.10, 0.20)
+
+    vl_settings.third_vanishing_lines.clear()
+    item = vl_settings.third_vanishing_lines.add()
+    item.start = (-0.3, -0.52)
+    item.end =   (-0.4, 0.5)
+
+    item = vl_settings.third_vanishing_lines.add()
+    item.start = (0.3, -0.52)
+    item.end =   (0.4, 0.5)
+
 
 
 class Line(bpy.types.PropertyGroup):
-    name="Line"
+    """A line defined by start and end points in normalized image space."""
+    
     start: bpy.props.FloatVectorProperty(
-        name="start",
+        name="Start",
         size=2,
-        default=(0.0, 0.0)
-    )
+        default=(0.0, 0.0),
+        description="Start point of the line."
+    ) # type: ignore
+
     end: bpy.props.FloatVectorProperty(
-        name="end",
+        name="End",
         size=2,
-        default=(0.0, 0.0)
-    )
+        default=(0.0, 0.0),
+        description="End point of the line."
+    ) # type: ignore
 
 
 class VLSettings(bpy.types.PropertyGroup):
-    name="VL Settings"
-
-    initialized: bpy.props.BoolProperty(name="Initialized", default=False, options={'HIDDEN'})
-    solver_is_paused: bpy.props.BoolProperty(name="Paused", default=False)
-
-    # compute_space: bpy.props.FloatVectorProperty(
-    #     name="Compute Space",
-    #     description="Compute space rectangle (x, y, width, height)",
-    #     size=4,
-    #     default=(0.0, 0.0, 1920.0, 1080.0),
-    #     # options={'HIDDEN'}
-    # )
+    initialized: bpy.props.BoolProperty(
+        name="Initialized", 
+        default=False, 
+        options={'HIDDEN'}
+    ) # type: ignore
 
     mode: bpy.props.EnumProperty(
         name="Perspective Mode",
-        description="Perspective Mode",
         items=[
-            ('ONE_POINT',   "1-Point", "Use 1-point perspective"),
-            ('TWO_POINT',   "2-Point", "Use 2-point perspective"),
-            ('THREE_POINT', "3-Point", "Use 3-point perspective")
+            ('ONE_POINT',   "1-Point", "Find camera orientation."),
+            ('TWO_POINT',   "2-Point", "Compute focal length from second vanishing point."),
+            ('THREE_POINT', "3-Point", "Use the third vanishing point to find the principal point.")
         ],
-        default='THREE_POINT'
-    )
+        default='TWO_POINT',
+        description="Number of vanishing points to use for camera calibration", 
+        options=set()
+    ) # type: ignore
 
-    enable_manual_principal: bpy.props.BoolProperty(
-        name="Manual Principal Point",
-        description="Set principal point manually",
-        default=False
-    )
+    # enable_manual_principal: bpy.props.BoolProperty(
+    #     name="Manual Principal Point",
+    #     default=False,
+    #     description="Manually set the principal point instead of using the image center", 
+    #     options=set()
+    # ) # type: ignore
 
     quad_mode: bpy.props.BoolProperty(
         name="Quad Mode",
-        description="Enable quad mode for 2-point perspective",
-        default=False
-    )
+        default=False,
+        description="Use quadrilateral corners to define second vanishing point", 
+        options=set()
+    ) # type: ignore
 
     scene_scale_mode: bpy.props.EnumProperty(
         name="Scene Scale Mode",
-        description="Scene Scale Mode",
         items=[
-            ('SCREEN', "Screen", "Use the screen plane for reference distance"),
-            ('ORIGIN', "Origin", "Set the origin distance from the camera"),
-            ('X_AXIS', "X Axis", "Use the X axis for reference distance"),
-            ('Y_AXIS', "Y Axis", "Use the Y axis for reference distance"),
-            ('Z_AXIS', "Z Axis", "Use the Z axis for reference distance")
+            ('SCREEN', "Screen", "Scale relative to screen space"),
+            ('ORIGIN', "Origin", "Scale from origin point"),
+            ('X_AXIS', "X Axis", "Scale along world X axis"),
+            ('Y_AXIS', "Y Axis", "Scale along world Y axis"),
+            ('Z_AXIS', "Z Axis", "Scale along world Z axis")
         ],
-        default='X_AXIS'
-    )
+        default='X_AXIS',
+        description="Method for determining scene scale reference", 
+        options=set()
+    ) # type: ignore
 
     scene_scale: bpy.props.FloatProperty(
         name="Scene Scale",
-        description="Scale of the scene for vanishing lines",
         default=10.0,
         min=0.01,
-        max=100.0
-    )
+        max=99999.0,
+        unit='LENGTH',
+        subtype='DISTANCE',
+        description="Real-world size of the reference measurement for scale calibration", 
+        options=set()
+    ) # type: ignore
 
-    reference_distance: bpy.props.FloatProperty(
-        name="Reference distance",
-        description="Reference distance",
-        default=0.5
-    )
+    reference_distance_segment: bpy.props.FloatVectorProperty(
+        name="Reference Distance Segment",
+        size=2,
+        default=(0.0, 0.5),
+        description="Start and end points of the reference distance segment for scale measurement", 
+        options=set()
+    ) # type: ignore
 
-    # Axis Assignement    
     first_axis: bpy.props.EnumProperty(
         name="First Axis",
         items=[
-            ('X+', "X+", ""),
-            ('X-', "X-", ""),
-            ('Y+', "Y+", ""),
-            ('Y-', "Y-", ""),
-            ('Z+', "Z+", ""),
-            ('Z-', "Z-", "")
+            ('X+', "X+", "Positive X axis direction"),
+            ('X-', "X-", "Negative X axis direction"),
+            ('Y+', "Y+", "Positive Y axis direction"),
+            ('Y-', "Y-", "Negative Y axis direction"),
+            ('Z+', "Z+", "Positive Z axis direction"),
+            ('Z-', "Z-", "Negative Z axis direction")
         ],
-        default='Y+'
-    )
+        default='Y+',
+        description="First vanishing point axis orientation", 
+        options=set()
+    ) # type: ignore
 
     second_axis: bpy.props.EnumProperty(
         name="Second Axis",
         items=[
-            ('X+', "X+", ""),
-            ('X-', "X-", ""),
-            ('Y+', "Y+", ""),
-            ('Y-', "Y-", ""),
-            ('Z+', "Z+", ""),
-            ('Z-', "Z-", "")
+            ('X+', "X+", "Positive X axis direction"),
+            ('X-', "X-", "Negative X axis direction"),
+            ('Y+', "Y+", "Positive Y axis direction"),
+            ('Y-', "Y-", "Negative Y axis direction"),
+            ('Z+', "Z+", "Positive Z axis direction"),
+            ('Z-', "Z-", "Negative Z axis direction")
         ],
-        default='X-'
-    )
+        default='X-',
+        description="Second vanishing point axis orientation", 
+        options=set()
+    ) # type: ignore
 
-    # control points
     origin: bpy.props.FloatVectorProperty(
         name="Origin",
         size=2,
-        default=(0.0, 0.0)
-    )
+        default=(0.0, 0.0),
+        description="Origin point for reference measurements in normalized image space", 
+        options=set()
+    ) # type: ignore
     
     principal: bpy.props.FloatVectorProperty(
         name="Principal",
         size=2,
-        default=(0.0, 0.0)
-    )
+        default=(0.0, 0.0),
+        description="Principal point (optical center) in normalized image space", 
+        options=set()
+    ) # type: ignore
 
     first_vanishing_lines: bpy.props.CollectionProperty(
-        name="First Vanishing Lines",
-        type=Line
-    )
-
+        type=Line, 
+        options=set()) # type: ignore
     second_vanishing_lines: bpy.props.CollectionProperty(
-        name="Second Vanishing Lines", 
-        type=Line
-    )
-
+        type=Line, 
+        options=set()) # type: ignore
     third_vanishing_lines: bpy.props.CollectionProperty(
-        name="Third Vanishing Lines", 
-        type=Line
-    )
+        type=Line, 
+        options=set()) # type: ignore
 
     error_message: bpy.props.StringProperty(
         name="Error Message",
-        default=""
-    )
-
+        default="", 
+        options=set()
+    ) # type: ignore
 
 ######################
 # REGISTER FUNCTIONS #
@@ -152,5 +194,5 @@ def register():
 def unregister():
     if hasattr(bpy.types.Camera, 'vl_settings'):
         del bpy.types.Camera.vl_settings
-    bpy.utils.unregister_class(Line)
     bpy.utils.unregister_class(VLSettings)
+    bpy.utils.unregister_class(Line)

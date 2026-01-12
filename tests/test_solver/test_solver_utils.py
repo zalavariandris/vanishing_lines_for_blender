@@ -4,7 +4,7 @@ from typing import Final
 
 from pyglm import glm
 
-import solver
+from vanishing_lines_for_blender import solver
 
 def test_compute_vanishing_point_shape_X():
     """Test least squares intersection of lines in X shape."""

@@ -7,6 +7,7 @@ import warnings
 from . constants import EPSILON, MAX_VANISHING_POINT_DISTANCE
 
 from . types import Point2
+from . exceptions import VanishingLinesError
 
 def compute_roll_matrix(
         second_vanishing_line:Tuple[Point2, Point2],
@@ -28,11 +29,11 @@ def compute_roll_matrix(
     A_ray = utils.cast_ray(A, view_matrix, projection_matrix, glm.vec4(*viewport))
     B_ray = utils.cast_ray(B, view_matrix, projection_matrix, glm.vec4(*viewport))
 
-    # define the plane coordinate system (the plane facing against the camera screen, orineted by the first axis)
+    # define the plane coordinate system (the plane facing against the camera screen, oriented by the first axis)
     view_origin = glm.vec3(view_matrix[3])
     forward = glm.normalize(glm.vec3(view_matrix[0][2], view_matrix[1][2], view_matrix[2][2]))
 
-    plane_origin = view_origin + forward*0.01# glm.vec3(0, 0, 0) TODO: the computation is dependent on the plane position. Consider removeing this dependency from the algorithm.
+    plane_origin = view_origin + forward * 0.01 # glm.vec3(0, 0, 0) TODO: the computation is dependent on the plane position. Consider removing this dependency from the algorithm.
     plane_normal = axis_positive_vector(first_axis)
     plane_y_axis = glm.cross(plane_normal, third_axis_vector(first_axis, second_axis)) # along the line
     plane_x_axis = glm.cross(plane_normal, plane_y_axis)  # perpendicular in the plane
@@ -44,10 +45,16 @@ def compute_roll_matrix(
     v = B_on_plane - A_on_plane # vector along the line on the plane
     v_proj = v - glm.dot(v, plane_normal) * plane_normal # project vector onto plane
 
-    # --- Compute 360° angle using atan2 ---
+    # --- Compute angle using atan2, normalized to (-π/2, π/2) range ---
     x_on_plane = glm.dot(v_proj, plane_y_axis)
     y_on_plane = glm.dot(v_proj, plane_x_axis)
-    angle = angle = math.atan(y_on_plane / x_on_plane)
+    angle = math.atan2(y_on_plane, x_on_plane)
+    
+    # Normalize angle to (-π/2, π/2), so horizon is not upside down
+    if angle > math.pi / 2:
+        angle -= math.pi
+    elif angle < -math.pi / 2:
+        angle += math.pi
     
     roll_axis = plane_normal # plane normal
     roll_matrix: glm.mat4 = glm.rotate(glm.mat4(1.0), angle, roll_axis)  # type: ignore[attr-defined]
@@ -72,9 +79,8 @@ def calc_second_vanishing_point_from_focal_length(
     """
     
     # find the second vanishing point
-    # // TODO_ take principal point into account here
     if glm.distance(Fu, P) < EPSILON:
-        raise ValueError("First vanishing point coincides with principal point, cannot compute second vanishing point.")
+        raise VanishingLinesError(" Cannot compute second vanishing point; first vanishing point overlaps principal point.")
 
     Fu_P = Fu - P
 
@@ -99,7 +105,7 @@ def compute_focal_length_from_vanishing_points(
     # Check for degenerate cases
     Fu_Fv_distance = glm.distance(Fu, Fv)
     if Fu_Fv_distance < EPSILON:
-        raise ValueError(f"Vanishing points are too close together: distance = {Fu_Fv_distance:.2e}")
+        raise VanishingLinesError("Focal length cannot be computed; vanishing points overlap.")
     
     # Detect if vanishing points are very far away and need special handling
     max_reasonable_distance = MAX_VANISHING_POINT_DISTANCE # Configurable threshold
@@ -142,36 +148,27 @@ def compute_focal_length_from_vanishing_points(
             glm.dot(glm.normalize(Fu - P), glm.normalize(Fv - P)), -1.0, 1.0
         )))
         
-        raise ValueError(
-            f"Invalid vanishing point configuration: cannot compute focal length.\n"
-            f"  f² = {focal_length_squared:.6f} (must be > 0)\n"
-            f"  Vanishing point separation: {vanishing_point_distance:.2f} pixels\n"
-            f"  Angle between VP directions: {angle_deg:.1f}° (should be close to 90°)\n"
-            f"  Distance Fu->projection: {distance_fu_to_proj:.2f}\n"
-            f"  Distance Fv->projection: {distance_fv_to_proj:.2f}\n"
-            f"  Distance P->projection: {distance_p_to_proj:.2f}\n"
-            f"  Possible causes: VPs too close to principal point, VPs not orthogonal, or VPs collinear with principal point"
-        )
+        raise VanishingLinesError(f"Invalid vanishing point configuration: cannot compute focal length.\n")
     
     focal_length = math.sqrt(focal_length_squared)
     return focal_length
 
 def vector_from_axis(axis: Axis)->glm.vec3:
     match axis:
-      case Axis.NegativeX:
-        return glm.vec3(-1, 0, 0)
-      case Axis.PositiveX:
-        return glm.vec3(1, 0, 0)
-      case Axis.NegativeY:
-        return glm.vec3(0, -1, 0)
-      case Axis.PositiveY:
-        return glm.vec3(0, 1, 0)
-      case Axis.NegativeZ:
-        return glm.vec3(0, 0, -1)
-      case Axis.PositiveZ:
-        return glm.vec3(0, 0, 1)
-
-def axis_positive_vector(axis)->glm.vec3:
+        case Axis.NegativeX:
+            return glm.vec3(-1, 0, 0)
+        case Axis.PositiveX:
+            return glm.vec3(1, 0, 0)
+        case Axis.NegativeY:
+            return glm.vec3(0, -1, 0)
+        case Axis.PositiveY:
+            return glm.vec3(0, 1, 0)
+        case Axis.NegativeZ:
+            return glm.vec3(0, 0, -1)
+        case Axis.PositiveZ:
+            return glm.vec3(0, 0, 1)
+        
+def axis_positive_vector(axis: Axis)->glm.vec3:
     match axis:
         case Axis.PositiveX | Axis.NegativeX:
             return glm.vec3(1, 0, 0)
@@ -180,30 +177,73 @@ def axis_positive_vector(axis)->glm.vec3:
         case Axis.PositiveZ | Axis.NegativeZ:
             return glm.vec3(0, 0, 1)
         
-def third_axis_vector(axis1:Axis, axis2:Axis)->glm.vec3:
+def third_axis_vector(axis1:Axis, axis2:Axis, handedness:Literal["left-handed", "right-handed"]="right-handed")->glm.vec3:
+    """get the vector of the third, perpendicular axis given two axes"""
     vec1 = vector_from_axis(axis1)
     vec2 = vector_from_axis(axis2)
-    return glm.normalize(glm.cross(vec1, vec2))
+    return glm.normalize(glm.cross(vec1, vec2)) if handedness=="right-handed" else glm.normalize(glm.cross(vec2, vec1))
 
-def third_axis(axis1:Axis, axis2:Axis)->Axis:
-    vec = third_axis_vector(axis1, axis2)
-    return axis_from_vector(vec)
-
-def axis_from_vector(vector: glm.vec3)->Axis:
-    if vector.x == 0 and vector.y == 0:
-      return Axis.PositiveZ if vector.z > 0 else Axis.NegativeZ
-    elif vector.x == 0 and vector.z == 0:
-      return Axis.PositiveY if vector.y > 0 else Axis.NegativeY
-    elif vector.y == 0 and vector.z == 0:
-      return Axis.PositiveX if vector.x > 0 else Axis.NegativeX
+def third_axis(axis1:Axis, axis2:Axis, handedness:Literal["left-handed", "right-handed"]="right-handed")->Axis:
+    """Get the primary axis enum of the third, perpendicular axis given two axes.
     
-    raise ValueError('Invalid axis vector')
+    Args:
+        axis1: First axis
+        axis2: Second axis
+        handedness: Coordinate system handedness ('right' or 'left')
+    
+    Returns:
+        The perpendicular axis as an Axis enum
+    """
+    vec = third_axis_vector(axis1, axis2, handedness)
+    return primary_axis_from_vector(vec)
+
+def primary_axis_from_vector(vector: glm.vec3) -> Axis:
+    """Determine the primary axis (positive or negative) that best aligns with the given vector.
+    
+    Finds the axis with the largest absolute component and returns the corresponding
+    positive or negative Axis enum based on the vector's direction.
+    
+    Args:
+        vector: A 3D vector
+    
+    Returns:
+        The Axis enum that best represents the vector's direction
+    """
+    # 1. Find the index (0, 1, or 2) of the largest absolute component
+    abs_v = glm.abs(vector)
+    # Using a list allows us to find the index of the max value
+    components = [abs_v.x, abs_v.y, abs_v.z]
+    major_axis_index = components.index(max(components))
+    
+    # 2. Use a simple lookup to return the correct Enum
+    is_positive = vector[major_axis_index] > 0
+    
+    lookup = {
+        0: (Axis.PositiveX, Axis.NegativeX),
+        1: (Axis.PositiveY, Axis.NegativeY),
+        2: (Axis.PositiveZ, Axis.NegativeZ)
+    }
+    
+    return lookup[major_axis_index][0 if is_positive else 1]
 
 def adjust_vanishing_lines(
         old_vp:glm.vec2, 
         new_vp:glm.vec2, 
         vanishing_lines:List[Tuple[glm.vec2, glm.vec2]]
     ) -> List[Tuple[glm.vec2, glm.vec2]]:
+    """Adjust vanishing lines when their vanishing point moves.
+    
+    When a vanishing point moves, this function adjusts the vanishing lines by moving
+    only the closest endpoint of each line proportionally to maintain perspective.
+    
+    Args:
+        old_vp: Previous position of the vanishing point
+        new_vp: New position of the vanishing point
+        vanishing_lines: List of vanishing lines as (start, end) point tuples
+    
+    Returns:
+        Updated list of vanishing lines with adjusted endpoints
+    """
     # When vanishing point moves, adjust only the closest endpoint of each vanishing line
     new_vanishing_lines = vanishing_lines.copy()
     for i, (P, Q) in enumerate(vanishing_lines):
@@ -264,3 +304,38 @@ def adjust_vanishing_lines_by_rotation(
         new_vanishing_lines.append((new_P, new_Q))
     
     return new_vanishing_lines
+
+def vanishing_points_from_camera(projection: glm.mat4, view: glm.mat4) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
+    """Extract vanishing points from camera projection and view matrices.
+    
+    Vanishing points are where parallel lines in world space converge in the image.
+    For each world axis, we project a point at a very large distance along that axis.
+    """
+    # Use a very large but finite value to represent "infinity"
+    MAX_DIST = 1e10
+    
+    # World space basis vectors (X, Y, Z directions)
+    # These are points at very large distances along each axis
+    far_points = [
+        glm.vec3(MAX_DIST, 0, 0), # X-axis
+        glm.vec3(0, MAX_DIST, 0), # Y-axis
+        glm.vec3(0, 0, MAX_DIST)  # Z-axis
+    ]
+    
+    vanishing_points = []
+    
+    for far_point in far_points:
+        # Transform to clip space: P * V * point
+        vp_clip = projection * view * glm.vec4(far_point, 1.0)
+        
+        # Check for degenerate case (direction parallel to image plane)
+        if abs(vp_clip.w) < EPSILON:
+            # Point at infinity - use a very large NDC value
+            vanishing_points.append(glm.vec2(vp_clip.x * 1e6, vp_clip.y * 1e6))
+        else:
+            # Perspective divide to get NDC coordinates (normalized device coordinates)
+            # These are in the range [-1, 1] for the viewport
+            ndc = glm.vec2(vp_clip.x / vp_clip.w, vp_clip.y / vp_clip.w)
+            vanishing_points.append(ndc)
+    
+    return tuple(vanishing_points)
