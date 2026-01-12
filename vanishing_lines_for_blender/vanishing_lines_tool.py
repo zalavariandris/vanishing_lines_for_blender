@@ -560,21 +560,21 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 blf.position(font_id, center[0] - line_width/2, center[1] - LINE_HEIGHT * i - text_block_height/2, 0)
                 blf.draw(font_id, f"{line}")
 
-        # ## draw compute space
-        # x_min, y_min = self.uiview.project((-1,-1))
-        # x_max, y_max = self.uiview.project((1, 1))
-        # self.uiview._painter.add_rect(
-        #     (x_min, y_min),
-        #     (x_max - x_min, y_max - y_min),
-        #     color=(0,1,1,0.1)
-        # )
+        ## draw compute space
+        x_min, y_min = self.uiview.project((-1,-1))
+        x_max, y_max = self.uiview.project((1, 1))
+        self.uiview._painter.add_rect(
+            (x_min, y_min),
+            (x_max - x_min, y_max - y_min),
+            color=(0,1,1,0.1)
+        )
 
-        # ## draw info
-        # self.uiview._draw_layer.add_annotation(
-        #     pos=glm.vec2(100, 100),
-        #     text="Info",
-        #     color=glm.vec4(1.0, 1.0, 0.0, 1.0)
-        # )
+        ## draw info
+        self.uiview._painter.add_annotation(
+            pos=(x_min+(x_max-x_min)/2, y_min),
+            text="Vanishing Lines · Beta Version",
+            color=(0,1,1,0.3)
+        )
 
         self.uiview.end()
 
