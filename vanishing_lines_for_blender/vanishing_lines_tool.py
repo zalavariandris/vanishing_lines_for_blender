@@ -21,8 +21,6 @@ from . import vl_utils
 # Constants
 FONT_SIZE = 16
 LINE_HEIGHT = 18
-ERROR_TEXT_X_OFFSET = 20
-ERROR_TEXT_Y_OFFSET = 40
 
 
 
@@ -364,16 +362,13 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         GREEN = (0,1,0,1)
         RED = (1,0,0,1)
         BLUE = (0,0.3, 1.0, 1.0)
-        YELLOW = (1,1,0,1)
+        YELLOW = (1,0.9,0,1)
         ORANGE = (1.0, 0.5, 0.0, 1.0)
 
         ###########################
         # Vanishing Line CONTROLS #
         ###########################
         vl_settings = self.get_vl_settings(context)
-        _ = self.uiview.prop_point(vl_settings, "origin",    
-            text="O",
-            color=YELLOW)
         
         def get_axis_color(axis:solver.types.Axis) -> Tuple[float, float, float, float]:
             match axis:
@@ -463,6 +458,10 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 direction=get_distance_measurement_direction(),
                 text=f"{vl_settings.scene_scale:.2f}{length_unit}",
                 color=ORANGE)
+            
+        _ = self.uiview.prop_point(vl_settings, "origin",    
+            text="O",
+            color=YELLOW)
 
         ###########################################
         # DRAW Extended lines to vanishing points #

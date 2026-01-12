@@ -40,6 +40,7 @@ if __name__ == "__main__":
                 dest_file = Path(BUILD_DIR) / src_file.relative_to(SRC_DIR)
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src_file, dest_file)
+                print(f"- {dest_file}")
     print("Source files copied to dist directory.")
 
     # Create wheels for third party modules
@@ -58,7 +59,7 @@ if __name__ == "__main__":
     print("Downloading wheels for all platforms...")
     for module in PACKAGES:
         for platform, python_version in platforms:
-            print(f"  Downloading {module} for {platform}...")
+            print(f"- {module} for {platform}...")
             try:
                 subprocess.run([
                     "pip", "download",
