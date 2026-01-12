@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
     # Create zip file directly from source
     Path(DIST_DIR).mkdir(exist_ok=True)
-    zip_filename = Path(DIST_DIR) / f"{ADDON_NAME}-v{version}.zip"
+    zip_filename = Path(DIST_DIR) / f"{ADDON_NAME}-v{version}-beta.zip"
     with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for file_path in Path(BUILD_DIR).rglob('*'):
             if file_path.is_file():
