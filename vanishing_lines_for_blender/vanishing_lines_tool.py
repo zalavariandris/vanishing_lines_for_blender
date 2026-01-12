@@ -697,7 +697,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
 ######################
 def view_menu_func(self, context):
-    self.layout.operator(VIEW_OT_VanishingLinesViewTool.bl_idname, text="Vanishing Lines")
+    self.layout.operator(VIEW_OT_VanishingLinesViewTool.bl_idname, text="Vanishing Lines (dev)")
 
 def rv3d_draw_function():
     # global draw_list
