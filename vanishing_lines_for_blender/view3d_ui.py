@@ -12,8 +12,7 @@ CLIP_NEAR = -1000.0
 CLIP_FAR = 1000.0
 DEFAULT_CLICK_THRESHOLD = 22.0
 ANNOTATION_OFFSET_X = 5
-TEXT_OFFSET_Y_BELOW = -15
-TEXT_OFFSET_Y_ABOVE = 5
+ANNOTATION_OFFSET_Y = 5
 DIM_FACTOR_ACTIVE = 0.3
 DIM_FACTOR_INACTIVE = 0.1
 
@@ -305,7 +304,7 @@ class View3DUI:
         if is_active or is_hovered:
             point_render_color = (1.0, 1.0, 1.0, 1.0)
             self._painter.add_annotation(
-                (P[0] + ANNOTATION_OFFSET_X, P[1] + TEXT_OFFSET_Y_BELOW), 
+                (P[0] + ANNOTATION_OFFSET_X, P[1] + ANNOTATION_OFFSET_Y), 
                 f"({cp.value[0]:.2f}, {cp.value[1]:.2f})",
                 color=(1,1,1,1))
 
@@ -315,7 +314,7 @@ class View3DUI:
 
         
         self._painter.add_annotation(
-            (P[0] + ANNOTATION_OFFSET_X, P[1] + TEXT_OFFSET_Y_ABOVE),
+            (P[0], P[1]),
             text,
             color=(1,1,1,1))
         
@@ -325,8 +324,8 @@ class View3DUI:
         color=(0.8,0.8,0.8,1.0)
     ):
         assert self._painter is not None, "Draw layer not initialized"
-        start_cp = self.prop_point(data, start_prop, color=color)
-        end_cp = self.prop_point(data, end_prop, color=color)
+        start_cp = self.prop_point(data, start_prop, text="", color=color)
+        end_cp = self.prop_point(data, end_prop, text="", color=color)
 
         P_start = self.project(start_cp.value)
         P_end = self.project(end_cp.value)

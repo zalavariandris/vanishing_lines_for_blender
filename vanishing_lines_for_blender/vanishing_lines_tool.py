@@ -371,6 +371,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         # Vanishing Line CONTROLS #
         ###########################
         vl_settings = self.get_vl_settings(context)
+
         _ = self.uiview.prop_point(vl_settings, "origin",    
             text="O",
             color=YELLOW)

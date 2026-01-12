@@ -21,6 +21,7 @@
 - [ ] mock bpy: fake-bpy-module
 
 ### FIX bugs
+- [ ] FIX: origin annotation seem to be drawn twice?, also dont draw the value on hover
 - [ ] FIX: two point mode. first axis i Y second axis is Z adn up. move tha axis when its almost vertical, the up vector flips downwards.
 - [ ] FIX when axis changed on the right mouse context menu, updates are not triggered. 
 - [ ] this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS is_operator_running takes bl_id or bl_idname?

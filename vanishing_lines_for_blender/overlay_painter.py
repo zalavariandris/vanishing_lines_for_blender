@@ -9,8 +9,6 @@ import blf
 
 # Constants at module level
 DEFAULT_FONT_SIZE = 12
-ANNOTATION_OFFSET_X = 3
-ANNOTATION_OFFSET_Y = 3
 DEFAULT_FONT_ID = 0
 
 
@@ -99,7 +97,7 @@ class OverlayPainter:
             # Center text along angle
             x = x - (w / 2) * math.cos(angle)
             y = y - (w / 2) * math.sin(angle)
-            blf.position(DEFAULT_FONT_ID, x + ANNOTATION_OFFSET_X, y + ANNOTATION_OFFSET_Y, 0)
+            blf.position(DEFAULT_FONT_ID, x, y, 0)
             blf.rotation(DEFAULT_FONT_ID, angle)
             blf.size(DEFAULT_FONT_ID, DEFAULT_FONT_SIZE)
             blf.color(DEFAULT_FONT_ID, *color)
