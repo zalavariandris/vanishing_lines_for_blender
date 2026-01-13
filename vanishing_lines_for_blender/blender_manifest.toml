@@ -6,7 +6,7 @@ id = "vanishinglines_dev"
 name = "VanishingLines (dev)"
 version = "0.8.1"
 
-tagline = "Align camera to vanishing lines in the 3D View"
+tagline = "Align a camera using vanishing lines, right inside Blender."
 maintainer = "BabLab (András Zalavári)"
 type = "add-on" # Supported types: "add-on"
 

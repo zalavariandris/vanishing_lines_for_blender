@@ -24,18 +24,17 @@ FONT_SIZE = 16
 LINE_HEIGHT = 18
 
 
-
 class MODAL_MT_VLContextMenu(bpy.types.Menu):
     bl_label = "Vanishing Lines Context Menu"
-    bl_idname = vl_config.make_idname("MODAL_MT_vl_context_menu")
+    bl_idname = "MODAL_MT_vl_context_menu"
 
     @classmethod
     def poll(kls, context):
-        return vl_utils.is_operator_running(vl_config.make_idname('VIEW_OT_vanishing_lines_view_tool'))
+        return vl_utils.is_operator_running('VIEW_OT_vanishing_lines_view_tool')
 
     def draw(self, context):
         layout = self.layout.column()
-        if op:=vl_utils.get_running_operator_by_idname(vl_config.make_idname('VIEW_OT_vanishing_lines_view_tool')):
+        if op:=vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
             vl_settings = op.get_vl_settings(context)
             layout.prop_tabs_enum(vl_settings, 'mode')
 
@@ -62,7 +61,7 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
         
 
 class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
-    bl_idname = vl_config.make_idname("view.vanishing_lines_view_tool")
+    bl_idname = "view.vanishing_lines_view_tool"
     bl_label = "Vanishing Lines View Tool"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -270,7 +269,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
         if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
             # This triggers the menu at the mouse location
-            bpy.ops.wm.call_menu(name=vl_config.make_idname("MODAL_MT_vl_context_menu"))
+            bpy.ops.wm.call_menu(name="MODAL_MT_vl_context_menu")
             return {'RUNNING_MODAL'}
 
         match event.type:
@@ -698,13 +697,13 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 ######################
 def view_menu_func(self, context):
     label = "Vanishing Lines (dev)" if vl_config.IS_DEV else "Vanishing Lines"
-    self.layout.operator(vl_config.make_idname("view.vanishing_lines_view_tool"), text=label)
+    self.layout.operator("view.vanishing_lines_view_tool", text=label)
 
 def rv3d_draw_function():
     # global draw_list
     """Wrapper function to call the draw_view method of the operator instance."""
     # print("rv3d_draw_function")
-    if op:=vl_utils.get_running_operator_by_idname(vl_config.make_idname('VIEW_OT_vanishing_lines_view_tool')):
+    if op:=vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
         # Only draw in the area and region where the operator was invoked
         if bpy.context.area == op._context_area and bpy.context.region == op._context_region:
             op.view3d_draw(bpy.context)
@@ -713,7 +712,7 @@ def camera_lens_changed():
     # print("camera_lens_changed called")
     """Callback when camera lens changes"""
     # Only proceed if the operator is running
-    op = vl_utils.get_running_operator_by_idname(vl_config.make_idname('VIEW_OT_vanishing_lines_view_tool'))
+    op = vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool')
     if not op:
         # print("camera_lens_changed: operator not running")
         return
@@ -725,7 +724,7 @@ def camera_lens_changed():
     
     def deferred_update():
         """Deferred update to run outside msgbus callback context"""
-        if op := vl_utils.get_running_operator_by_idname(vl_config.make_idname('VIEW_OT_vanishing_lines_view_tool')):
+        if op := vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
             # Find the window containing the stored area
             for window in bpy.context.window_manager.windows:
                 if op._context_area in window.screen.areas[:]:
