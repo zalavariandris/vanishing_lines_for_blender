@@ -2,8 +2,8 @@ schema_version = "1.0.0"
 
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
-id = "vanishinglines_dev"
-name = "VanishingLines (dev)"
+id = "vanishinglines"
+name = "VanishingLines"
 version = "0.8.1"
 
 tagline = "Align a camera using vanishing lines, right inside Blender."

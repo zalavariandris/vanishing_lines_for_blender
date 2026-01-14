@@ -17,7 +17,6 @@ from .view3d_ui import View3DUI
 from . import vl_params
 from . import solver
 from . import vl_utils
-from . import vl_config
 
 # Constants
 FONT_SIZE = 16
@@ -696,8 +695,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
 ######################
 def view_menu_func(self, context):
-    label = "Vanishing Lines (dev)" if vl_config.IS_DEV else "Vanishing Lines"
-    self.layout.operator("view.vanishing_lines_view_tool", text=label)
+    self.layout.operator("view.vanishing_lines_view_tool", text="Vanishing Lines")
 
 def rv3d_draw_function():
     # global draw_list
