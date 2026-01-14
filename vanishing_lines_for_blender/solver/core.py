@@ -128,7 +128,7 @@ def solve(
 # SOLVER COMPONENTS #
 #####################
 
-def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> Tuple[float, float]:
+def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> Point2:
     """
     Compute the least-squares intersection of 2D lines.
     
@@ -200,10 +200,10 @@ def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> Tuple[
 
 def orientation_from_one_vanishing_point(
         viewport:Tuple[float, float, float, float], 
-        vp1:Tuple[float, float], 
-        second_line:Tuple[float, float], 
+        vp1:Point2, 
+        second_line:Line2, 
         f:float, 
-        P:Tuple[float, float]
+        P:Point2
     )->Tuple[glm.mat4, glm.mat4]:
     # compute projection
     projection = utils.compose_intrinsics(viewport, f, P, DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE)
@@ -267,9 +267,9 @@ def orientation_from_two_vanishing_points(
 
 def orientation_from_three_vanishing_points(
         viewport:Tuple[float, float, float, float], 
-        vp1:Tuple[float, float], 
-        vp2:Tuple[float, float], 
-        vp3:Tuple[float, float]
+        vp1:Point2, 
+        vp2:Point2, 
+        vp3:Point2
     )->Tuple[glm.mat4, glm.mat4]:
     """"""
 
