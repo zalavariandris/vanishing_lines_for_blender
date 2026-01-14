@@ -5,7 +5,7 @@ import math
 import warnings
 
 from . constants import EPSILON
-from . types import Point2, Line2, Ray3, Line3, Rect
+from . types import Point2, Line2, Ray3, Line3, Rect, Axis
 
 
 ############################
@@ -195,24 +195,180 @@ def apply_gram_schmidt_orthogonalization(matrix: glm.mat3) -> glm.mat3:
 def calc_vanishing_points_from_camera(
         view_matrix: glm.mat3, 
         projection_matrix: glm.mat4, 
+        viewport: Rect,
+        first_axis: Axis = Axis.PositiveX,
+        second_axis: Axis = Axis.PositiveY
+    ) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
+    """Calculate vanishing points for the camera, optionally ordered by axis assignment.
+    
+    Args:
+        view_matrix: Camera view matrix (rotation only, mat3)
+        projection_matrix: Camera projection matrix
+        viewport: Viewport rectangle
+        first_axis: Optional Axis enum for first vanishing point
+        second_axis: Optional Axis enum for second vanishing point  
+        third_axis: Optional Axis enum for third vanishing point
+        
+    Returns:
+        Tuple of three vanishing points. If axes are specified, returns them in order
+        (vp_for_first_axis, vp_for_second_axis, vp_for_third_axis).
+        Otherwise returns (vpX, vpY, vpZ).
+    """
+    vpX, vpY, vpZ = _impl_calc_vanishing_points_from_camera(view_matrix, projection_matrix, viewport)
+    
+    # If no axis assignment provided, return in default X, Y, Z order
+    if first_axis is None:
+        return vpX, vpY, vpZ
+    
+    # Map axes to their corresponding vanishing points
+    from . import types
+    def get_vp_for_axis(axis: 'types.Axis') -> glm.vec2:
+        """Map axis enum to corresponding vanishing point."""
+        axis_type = abs(axis.value)  # Get base axis (1=X, 2=Y, 3=Z)
+        if axis_type == 1:  # X axis
+            return vpX
+        elif axis_type == 2:  # Y axis
+            return vpY
+        else:  # Z axis
+            return vpZ
+    
+    vp1 = get_vp_for_axis(first_axis)
+    vp2 = get_vp_for_axis(second_axis) if second_axis else vpY
+    
+    # Calculate third axis from first and second
+    from . import helpers
+    third_axis = helpers.third_axis(first_axis, second_axis)
+    vp3 = get_vp_for_axis(third_axis)
+    
+    return vp1, vp2, vp3
+
+def _impl_naive_calc_vanishing_points_from_camera(
+        view_matrix: glm.mat3, 
+        projection_matrix: glm.mat4, 
         viewport: Rect
     ) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
     """
     Calculate the projected vanishing points from the camera matrices.
     """
+
+    if not isinstance(view_matrix, glm.mat3):
+        raise TypeError("view_matrix must be a glm.mat4")
+    if not isinstance(projection_matrix, glm.mat4):
+        raise TypeError("projection_matrix must be a glm.mat4")
     
     # Project vanishing Points
     MAX_FLOAT32 = (2 - 2**-23) * 2**127
-    VPX = glm.project(glm.vec3(MAX_FLOAT32,0,0), view_matrix, projection_matrix, viewport)
-    VPY = glm.project(glm.vec3(0,MAX_FLOAT32,0), view_matrix, projection_matrix, viewport)
-    VPZ = glm.project(glm.vec3(0,0,MAX_FLOAT32), view_matrix, projection_matrix, viewport)
+    VPX = glm.project(glm.vec3(MAX_FLOAT32,0,0), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
+    VPY = glm.project(glm.vec3(0,MAX_FLOAT32,0), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
+    VPZ = glm.project(glm.vec3(0,0,MAX_FLOAT32), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
 
     return glm.vec2(VPX), glm.vec2(VPY), glm.vec2(VPZ)
+
+
+def _impl_calc_vanishing_points_from_camera(
+        view_matrix: glm.mat3, 
+        projection_matrix: glm.mat4, 
+        viewport: Rect
+    ) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
+    """
+    Calculate the projected vanishing points from the camera matrices.
+    
+    Reference implementation using large finite values (kept for comparison):
+        MAX_FLOAT32 = (2 - 2**-23) * 2**127
+        VPX = glm.project(glm.vec3(MAX_FLOAT32,0,0), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
+        VPY = glm.project(glm.vec3(0,MAX_FLOAT32,0), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
+        VPZ = glm.project(glm.vec3(0,0,MAX_FLOAT32), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
+    """
+
+    if not isinstance(view_matrix, glm.mat3):
+        raise TypeError("view_matrix must be a glm.mat3")
+    if not isinstance(projection_matrix, glm.mat4):
+        raise TypeError("projection_matrix must be a glm.mat4")
+    
+    # Vanishing points are where points at infinity project to.
+    # In homogeneous coordinates, a point at infinity along direction d is (dx, dy, dz, 0)
+    # We use the rotation part only (view_matrix as mat3), since translation doesn't affect directions
+    
+    def project_direction_to_vanishing_point(direction: glm.vec3) -> glm.vec2:
+        """Project a world-space direction vector to its vanishing point in viewport space."""
+        # Transform direction to view space (rotation only, w=0 for point at infinity)
+        view_dir = view_matrix * direction
+        
+        # Apply projection matrix to the direction (as homogeneous point at infinity)
+        # For a point at infinity: P * vec4(view_dir, 0)
+        clip = projection_matrix * glm.vec4(view_dir, 0.0)
+        
+        # Perspective divide
+        # If clip.w is 0, the point is at infinity in clip space (parallel to view direction)
+        # In practice, clip.w should be non-zero for vanishing points
+        if abs(clip.w) < EPSILON:
+            # Direction is parallel to the image plane - vanishing point at infinity
+            # Return a point far outside the viewport to indicate this
+            return glm.vec2(float('inf'), float('inf'))
+        
+        # NDC coordinates
+        ndc = glm.vec2(clip.x / clip.w, clip.y / clip.w)
+        
+        # Transform from NDC [-1,1] to viewport coordinates
+        vp_x = viewport.x + viewport.width * (ndc.x + 1.0) / 2.0
+        vp_y = viewport.y + viewport.height * (ndc.y + 1.0) / 2.0
+        
+        return glm.vec2(vp_x, vp_y)
+    
+    # Calculate vanishing points for each world axis
+    VPX = project_direction_to_vanishing_point(glm.vec3(1, 0, 0))
+    VPY = project_direction_to_vanishing_point(glm.vec3(0, 1, 0))
+    VPZ = project_direction_to_vanishing_point(glm.vec3(0, 0, 1))
+    
+    return VPX, VPY, VPZ
 
 def flip_coordinate_handness(mat: glm.mat4) -> glm.mat4:
     """swap left-right handed coordinate system"""
     flipZ = glm.scale(glm.vec3(1.0, 1.0, -1.0))  # type: ignore[attr-defined]
     return flipZ * mat # todo: check order
+
+def adjust_vanishing_lines_to_camera_orientation(
+        first_vanishing_lines: List[Line2],
+        second_vanishing_lines: List[Line2],
+        third_vanishing_lines: List[Line2],
+        first_axis: Axis,
+        second_axis: Axis,
+        view_matrix: glm.mat3,
+        projection_matrix: glm.mat4
+    ) -> List[List[Line2]]:
+        # Map vanishing points by axis assignment
+
+        
+        vp1, vp2, vp3 = calc_vanishing_points_from_camera(
+            glm.mat3(view_matrix), 
+            projection_matrix, 
+            Rect(-1,-1,2,2),
+            first_axis=first_axis,
+            second_axis=second_axis
+        )
+
+        new_line_sets: List[List[Line2]] = []
+        for lines, vp in [(first_vanishing_lines, vp1), (second_vanishing_lines, vp2), (third_vanishing_lines, vp3)]:
+            new_lines = []
+            for line in lines:
+                start = glm.vec2(*line[0])
+                end = glm.vec2(*line[1])
+                center = (start + end) * 0.5
+                dir = glm.normalize(vp - center)
+                
+                # Preserve direction: check if point is in same direction as VP
+                start_vec = start - center
+                end_vec = end - center
+                start_dist = glm.length(start_vec) * glm.sign(glm.dot(start_vec, dir))
+                end_dist = glm.length(end_vec) * glm.sign(glm.dot(end_vec, dir))
+
+                new_start = center + dir * start_dist
+                new_end =   center + dir * end_dist
+                new_line = new_start, new_end
+                new_lines.append(new_line)
+            new_line_sets.append(new_lines)
+
+        return new_line_sets
 
 
 ##################

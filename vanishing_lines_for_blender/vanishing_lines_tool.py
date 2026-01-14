@@ -90,17 +90,20 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         
         # Switch to camera view
         self._context_area.spaces.active.region_3d.view_perspective = 'CAMERA'
+        camera_object = self._context_area.spaces.active.camera
+
+        if camera_object is None:
+            self.report({'WARNING'}, "No camera found in the active 3D Viewport.")
+            return {'CANCELLED'}
 
         # Initialize UIView3D for drawing and interaction in the viewport
         self.uiview = View3DUI()
 
         # Save initial camera state for restoration on cancel
-        if self._context_area.spaces.active.camera:
-            camera_object = self._context_area.spaces.active.camera
-            self._initial_camera_matrix = camera_object.matrix_world.copy()
-            self._initial_camera_lens = camera_object.data.lens
-            self._initial_camera_shift_x = camera_object.data.shift_x
-            self._initial_camera_shift_y = camera_object.data.shift_y
+        self._initial_camera_matrix = camera_object.matrix_world.copy()
+        self._initial_camera_lens = camera_object.data.lens
+        self._initial_camera_shift_x = camera_object.data.shift_x
+        self._initial_camera_shift_y = camera_object.data.shift_y
 
         # Initialize vl_params if not already done
         if vl_settings:=self.get_vl_settings(context):
@@ -111,6 +114,9 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
         # Register the statusbar draw callback
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
+
+        # adjust vanishing lines to the current transform of the camera
+        vl_utils.adjust_vanishing_lines_to_camera(camera_object)
 
         # initial solve
         self.update_solve()
@@ -294,14 +300,23 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
                 return {'RUNNING_MODAL'}
             
             case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl:
-                # Move origin
+                # # orbit camera
+                # camera = self._context_area.spaces.active.camera
+                # camera_transform = vl_utils.glm_from_blender_mat(camera.matrix_world)
+                # delta_x = event.mouse_prev_x - event.mouse_x
+                # delta_y = event.mouse_prev_y - event.mouse_y
+                # camera.matrix_world = vl_utils.glm_to_blender_mat(
+                #     vl_utils.ball_control(camera_transform, glm.vec3(0,0,0), delta_x * 0.01, delta_y * 0.01))
+                # vl_utils.adjust_vanishing_lines_to_camera(camera)
+                                            
+                # Move origin / Pan Camera # TODO: actually move the camera, and update the origin accordingly?
                 proj_mouse_x, proj_mouse_y = self.uiview.unproject((event.mouse_x, event.mouse_y))
                 proj_mouse_prev_x, proj_mouse_prev_y = self.uiview.unproject((event.mouse_prev_x, event.mouse_prev_y))
                 proj_mouse_delta_x = proj_mouse_prev_x - proj_mouse_x
                 proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
                 vl_settings.origin[0] -= proj_mouse_delta_x
                 vl_settings.origin[1] -= proj_mouse_delta_y
-                self.update_solve()
+                # self.update_solve()
                 return {'RUNNING_MODAL'}
             
             case 'MOUSEMOVE' if self._middle_mouse_pressed:
@@ -579,6 +594,10 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         # self.update_solve(context)
 
     def update_solve(self):
+        print("update_solve")
+        # import  traceback
+        # traceback.print_stack(limit=2)
+
         compute_space = solver.types.Rect(-1,-1,2,2)
         vl_settings = self._context_area.spaces.active.camera.data.vl_settings # self.get_vl_settings(context)
         try:

@@ -214,6 +214,59 @@ def get_camera_matrices(
     
     return projection, view
 
+def ball_control(M:glm.mat4, pivot:glm.vec3, yaw:float, pitch:float) -> glm.mat4:
+    # TODO: use blender mathutils for this!
+    up = glm.vec3(0,0,1)
+    forward = -M[2].xyz
+    horizontal_axis = glm.normalize(glm.cross(up, forward))
+    vertical_axis = up
+
+    M = glm.rotate(glm.mat4(1.0), yaw, vertical_axis) * glm.rotate(glm.mat4(1.0), pitch, horizontal_axis) * M
+    
+    return M
+
+# adjust vanishing lines to new camera orientation
+def adjust_vanishing_lines_to_camera(camera):
+    projection_matrix, view_matrix = get_camera_matrices(
+        camera_object=camera, 
+        compute_space=solver.types.Rect(-1,-1,2,2)
+    )
+
+    first_vanishing_lines =  [(line.start, line.end) for line in camera.data.vl_settings.first_vanishing_lines]
+    second_vanishing_lines = [(line.start, line.end) for line in camera.data.vl_settings.second_vanishing_lines]
+    third_vanishing_lines =  [(line.start, line.end) for line in camera.data.vl_settings.third_vanishing_lines]
+
+    axes_mapping = {
+        'X+': solver.types.Axis.PositiveX,
+        'Y+': solver.types.Axis.PositiveY,
+        'Z+': solver.types.Axis.PositiveZ,
+        'X-': solver.types.Axis.NegativeX,
+        'Y-': solver.types.Axis.NegativeY,
+        'Z-': solver.types.Axis.NegativeZ
+    }
+
+    new_line_sets = solver.utils.adjust_vanishing_lines_to_camera_orientation(
+        first_vanishing_lines,
+        second_vanishing_lines,
+        third_vanishing_lines,
+        axes_mapping[camera.data.vl_settings.first_axis],
+        axes_mapping[camera.data.vl_settings.second_axis],
+        glm.mat3(view_matrix),
+        projection_matrix,
+    )
+
+    # update vl_settings lines
+    for vl_setting_lines, new_lines in zip(
+        [
+            camera.data.vl_settings.first_vanishing_lines, 
+            camera.data.vl_settings.second_vanishing_lines, 
+            camera.data.vl_settings.third_vanishing_lines
+        ],
+        new_line_sets
+    ):
+        for i in range(len(vl_setting_lines)):
+            vl_setting_lines[i].start = new_lines[i][0]
+            vl_setting_lines[i].end =   new_lines[i][1]
 
 
 def projection_matrix_from_fov(
@@ -253,13 +306,18 @@ def get_running_operator_by_idname(op_idname):
 def glm_to_blender_mat(glm_mat:glm.mat4) -> mathutils.Matrix:
     """
     Converts a glm.mat4 object to a Blender mathutils.Matrix (4x4).
-    
-    PyGLM matrices are column-major iterables. 
-    Blender's Matrix((...)) constructor expects rows.
     """
     # 1. Feed the 4 columns of the glm.mat4 into the constructor
     # 2. Transpose the result to flip it from column-major to row-major
     return mathutils.Matrix(tuple(glm_mat)).transposed()
+
+def glm_from_blender_mat(blender_mat:mathutils.Matrix) -> glm.mat4:
+    """
+    Converts a Blender mathutils.Matrix (4x4) to a glm.mat4 object.
+    """
+    # 1. Transpose the Blender matrix to convert from row-major to column-major
+    # 2. Feed the resulting iterable into the glm.mat4 constructor
+    return glm.mat4(*flatten(blender_mat.transposed()))
 
 def set_view_camera(context, camera_object: bpy.types.Object):
     space = context.space_data
