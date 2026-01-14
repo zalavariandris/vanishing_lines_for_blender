@@ -95,7 +95,7 @@ def solve(
     if utils.validate_orthogonality(glm.mat3(view)) is False:
         view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
         warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
-    
+
     view = adjust_position_to_origin(
         viewport, 
         projection, 

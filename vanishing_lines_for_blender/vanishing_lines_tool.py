@@ -679,7 +679,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
                 f = focal_length,
                 P = (0,0), # TODO: is [0], [1] necessary?
-                O = (vl_settings.origin[0],    vl_settings.origin[1]),
+                O = None, #(vl_settings.origin[0],    vl_settings.origin[1]),
                 reference_axis=reference_axis, # TODO: make configurable
                 reference_distance_segment=(vl_settings.reference_distance_segment[0], vl_settings.reference_distance_segment[1]-vl_settings.reference_distance_segment[0]), # TODO: make fist value configurable
                 reference_world_size=vl_settings.scene_scale,
@@ -689,13 +689,19 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             )
 
             ## apply solver results to blender view
-            vl_utils.apply_solver_results_to_view3d(
+            vl_utils.apply_orientation_to_blender_camera(
                 projection, 
                 view, 
-                self._context_area, 
+                camera_object=self._context_area.spaces.active.camera,
                 compute_space=tuple(compute_space), 
-                fit_mode='COVER'
             )
+            # vl_utils.apply_solver_results_to_view3d(
+            #     projection, 
+            #     view, 
+            #     self._context_area, 
+            #     compute_space=tuple(compute_space), 
+            #     fit_mode='COVER'
+            # )
 
             vl_settings.error_message = ""
                     

@@ -114,6 +114,60 @@ def apply_solver_results_to_blender_camera(
     camera_data.shift_x = shift_x/2
     camera_data.shift_y = shift_y/2
 
+def apply_orientation_to_blender_camera(
+        view: glm.mat4,
+        camera_object: bpy.types.Object,
+        pivot_point: glm.vec3 = glm.vec3(0,0,0)
+    ) -> None:
+    """
+    Apply orientation from solver view matrix to Blender camera object.
+    Args:
+        view: Solver view matrix (glm.mat4)
+        camera_object: Blender camera object to modify
+        pivot_point: Point which remains fixed during rotation
+    """
+    if not isinstance(camera_object.data, bpy.types.Camera):
+        raise TypeError("Expected a Camera data-block")
+    
+    if not isinstance(view, glm.mat4):
+        raise TypeError("Expected view to be glm.mat4")
+
+    if not isinstance(pivot_point, glm.vec3):
+        raise TypeError("Expected pivot_point to be glm.vec3")
+    
+    # Apply transform
+    transform = glm.inverse(view)
+    translation = glm.vec3(transform[3].x, transform[3].y, transform[3].z)
+    # Adjust translation to keep pivot point fixed
+    adjusted_translation = translation + pivot_point - glm.vec3(
+        glm.dot(transform[0].xyz, pivot_point),
+        glm.dot(transform[1].xyz, pivot_point),
+        glm.dot(transform[2].xyz, pivot_point)
+    )
+
+    transform[3] = glm.vec4(adjusted_translation, 1.0)
+    transform_list = [[v for v in row] for row in glm.transpose(transform)]
+    camera_object.matrix_world = mathutils.Matrix(transform_list)
+
+def apply_projection_to_blender_camera(
+        projection: glm.mat4,
+        camera_object: bpy.types.Object,
+        compute_space: Tuple[float, float, float, float],
+        fit_mode: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']
+    ) -> None:
+    """"""
+    ...
+
+def apply_position_to_blender_camera(
+        projection: glm.mat4,
+        view: glm.mat4,
+        camera_object: bpy.types.Object,
+        compute_space: Tuple[float, float, float, float],
+        fit_mode: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']
+    ) -> None:
+    """"""
+    ...
+
 def apply_solver_results_to_view3d(
         projection: glm.mat4,
         view: glm.mat4, 
