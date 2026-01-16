@@ -14,7 +14,7 @@ from pyglm import glm
 
 # local
 from .view3d_ui import View3DUI
-from . import vl_params
+from . import vl_properties_camera
 from . import solver
 from . import vl_utils
 
@@ -23,17 +23,17 @@ FONT_SIZE = 16
 LINE_HEIGHT = 18
 
 
-class MODAL_MT_VLContextMenu(bpy.types.Menu):
+class VIEW3D_MT_vl_solve_camera_context(bpy.types.Menu):
     bl_label = "Vanishing Lines Context Menu"
-    bl_idname = "MODAL_MT_vl_context_menu"
+    bl_idname = "VIEW3D_MT_vl_solve_camera_context"
 
     @classmethod
     def poll(kls, context):
-        return vl_utils.is_operator_running('VIEW_OT_vanishing_lines_view_tool')
+        return vl_utils.is_operator_running('VIEW3D_OT_vl_solve_camera')
 
     def draw(self, context):
         layout = self.layout.column()
-        if op:=vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
+        if op:=vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_camera'):
             vl_settings = op.get_vl_settings(context)
             layout.prop_tabs_enum(vl_settings, 'mode')
 
@@ -59,12 +59,11 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
             col.prop(vl_settings, 'reference_distance_segment', index=1)
         
 
-class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
-    bl_idname = "view.vanishing_lines_view_tool"
+class VIEW3D_OT_vl_solve_camera(bpy.types.Operator):
+    bl_idname = "view3d.vl_solve_camera"
     bl_label = "Vanishing Lines View Tool"
     bl_options = {'REGISTER', 'UNDO'}
 
-    
     # Store initial camera state for restoration on cancel
     _initial_camera_matrix: mathutils.Matrix = None  # type: ignore
     _initial_camera_lens: float = 0.0
@@ -109,7 +108,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         if vl_settings:=self.get_vl_settings(context):
             if not vl_settings.initialized:
                 # Load existing parameters from camera
-                vl_params.set_defaults(vl_settings)
+                vl_properties_camera.set_defaults(vl_settings)
                 vl_settings.initialized = True
 
         # Register the statusbar draw callback
@@ -274,7 +273,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
         if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
             # This triggers the menu at the mouse location
-            bpy.ops.wm.call_menu(name="MODAL_MT_vl_context_menu")
+            bpy.ops.wm.call_menu(name="VIEW3D_MT_vl_solve_camera_context")
             return {'RUNNING_MODAL'}
 
         match event.type:
@@ -594,10 +593,6 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
         # self.update_solve(context)
 
     def update_solve(self):
-        print("update_solve")
-        # import  traceback
-        # traceback.print_stack(limit=2)
-
         compute_space = solver.types.Rect(-1,-1,2,2)
         vl_settings = self._context_area.spaces.active.camera.data.vl_settings # self.get_vl_settings(context)
         try:
@@ -679,7 +674,7 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
                 f = focal_length,
                 P = (0,0), # TODO: is [0], [1] necessary?
-                O = None, #(vl_settings.origin[0],    vl_settings.origin[1]),
+                O = (vl_settings.origin[0],    vl_settings.origin[1]),
                 reference_axis=reference_axis, # TODO: make configurable
                 reference_distance_segment=(vl_settings.reference_distance_segment[0], vl_settings.reference_distance_segment[1]-vl_settings.reference_distance_segment[0]), # TODO: make fist value configurable
                 reference_world_size=vl_settings.scene_scale,
@@ -689,19 +684,13 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
             )
 
             ## apply solver results to blender view
-            vl_utils.apply_orientation_to_blender_camera(
+            vl_utils.apply_solver_results_to_view3d(
                 projection, 
                 view, 
-                camera_object=self._context_area.spaces.active.camera,
+                self._context_area, 
                 compute_space=tuple(compute_space), 
+                fit_mode='COVER'
             )
-            # vl_utils.apply_solver_results_to_view3d(
-            #     projection, 
-            #     view, 
-            #     self._context_area, 
-            #     compute_space=tuple(compute_space), 
-            #     fit_mode='COVER'
-            # )
 
             vl_settings.error_message = ""
                     
@@ -718,15 +707,16 @@ class VIEW_OT_VanishingLinesViewTool(bpy.types.Operator):
 
 
 
+
 ######################
 def view_menu_func(self, context):
-    self.layout.operator("view.vanishing_lines_view_tool", text="Vanishing Lines")
+    self.layout.operator("view3d.vl_solve_camera", text="Vanishing Lines")
 
 def rv3d_draw_function():
     # global draw_list
     """Wrapper function to call the draw_view method of the operator instance."""
     # print("rv3d_draw_function")
-    if op:=vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
+    if op:=vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_camera'):
         # Only draw in the area and region where the operator was invoked
         if bpy.context.area == op._context_area and bpy.context.region == op._context_region:
             op.view3d_draw(bpy.context)
@@ -735,7 +725,7 @@ def camera_lens_changed():
     # print("camera_lens_changed called")
     """Callback when camera lens changes"""
     # Only proceed if the operator is running
-    op = vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool')
+    op = vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_camera')
     if not op:
         # print("camera_lens_changed: operator not running")
         return
@@ -747,7 +737,7 @@ def camera_lens_changed():
     
     def deferred_update():
         """Deferred update to run outside msgbus callback context"""
-        if op := vl_utils.get_running_operator_by_idname('VIEW_OT_vanishing_lines_view_tool'):
+        if op := vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_camera'):
             # Find the window containing the stored area
             for window in bpy.context.window_manager.windows:
                 if op._context_area in window.screen.areas[:]:
@@ -764,8 +754,8 @@ def camera_lens_changed():
 draw_handler = None
 
 def register():
-    bpy.utils.register_class(MODAL_MT_VLContextMenu)
-    bpy.utils.register_class(VIEW_OT_VanishingLinesViewTool)
+    bpy.utils.register_class(VIEW3D_MT_vl_solve_camera_context)
+    bpy.utils.register_class(VIEW3D_OT_vl_solve_camera)
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
     global draw_handler
@@ -795,8 +785,8 @@ def unregister():
         except AttributeError:
             pass
 
-    bpy.utils.unregister_class(VIEW_OT_VanishingLinesViewTool)
+    bpy.utils.unregister_class(VIEW3D_OT_vl_solve_camera)
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
-    bpy.utils.unregister_class(MODAL_MT_VLContextMenu)
+    bpy.utils.unregister_class(VIEW3D_MT_vl_solve_camera_context)
 
     
