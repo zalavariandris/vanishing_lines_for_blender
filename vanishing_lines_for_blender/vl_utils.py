@@ -201,7 +201,7 @@ def apply_projection_to_blender_camera(
 
 def adjust_camera_to_keep_point_at_screen_position(
         camera_object: bpy.types.Object,
-        world_point: glm.vec3,
+        anchor_point: glm.vec3,
         target_screen_position: glm.vec2,
         projection: glm.mat4,
         compute_space: Tuple[float, float, float, float]
@@ -222,10 +222,20 @@ def adjust_camera_to_keep_point_at_screen_position(
     current_camera_pos = glm.vec3(current_transform[3])
     
     # Calculate distance from current camera to world point
-    target_distance = glm.length(world_point - current_camera_pos)
+    target_distance = glm.length(anchor_point - current_camera_pos)
     
     # Get current view matrix
     current_view = glm_from_blender_mat(camera_object.matrix_world.inverted())
+
+    # get current vlender camera projection matrix
+    current_projection = camera_object.calc_matrix_camera(
+        depsgraph=bpy.context.evaluated_depsgraph_get(),
+        x=scene.render.resolution_x,
+        y=scene.render.resolution_y,
+        scale_x=scene.render.pixel_aspect_x,
+        scale_y=scene.render.pixel_aspect_y,
+    )
+
     
     # Create a view matrix with rotation only (no translation)
     view_rotation_only = glm.mat4(
@@ -257,7 +267,7 @@ def adjust_camera_to_keep_point_at_screen_position(
     
     # Calculate camera position: world_point - distance * ray_direction
     # This places the camera at 'target_distance' away from world_point, opposite to ray_direction
-    new_camera_position = world_point - target_distance * ray_direction
+    new_camera_position = anchor_point - target_distance * ray_direction
     
     # Update camera position
     current_transform[3] = glm.vec4(new_camera_position, 1.0)
@@ -388,15 +398,15 @@ def ball_control(M:glm.mat4, pivot:glm.vec3, yaw:float, pitch:float) -> glm.mat4
     return M
 
 # adjust vanishing lines to new camera orientation
-def adjust_vanishing_lines_to_camera(camera):
+def adjust_vanishing_lines_to_camera(vl_settings, camera):
+    print("Adjusting vanishing lines to camera orientation...")
     projection_matrix, view_matrix = get_camera_matrices(
         camera_object=camera, 
         compute_space=solver.types.Rect(-1,-1,2,2)
     )
-
-    first_vanishing_lines =  [(line.start, line.end) for line in camera.data.vl_settings.first_vanishing_lines]
-    second_vanishing_lines = [(line.start, line.end) for line in camera.data.vl_settings.second_vanishing_lines]
-    third_vanishing_lines =  [(line.start, line.end) for line in camera.data.vl_settings.third_vanishing_lines]
+    first_vanishing_lines =  [(line.start, line.end) for line in vl_settings.first_vanishing_lines]
+    second_vanishing_lines = [(line.start, line.end) for line in vl_settings.second_vanishing_lines]
+    third_vanishing_lines =  [(line.start, line.end) for line in vl_settings.third_vanishing_lines]
 
     axes_mapping = {
         'X+': solver.types.Axis.PositiveX,
@@ -411,8 +421,8 @@ def adjust_vanishing_lines_to_camera(camera):
         first_vanishing_lines,
         second_vanishing_lines,
         third_vanishing_lines,
-        axes_mapping[camera.data.vl_settings.first_axis],
-        axes_mapping[camera.data.vl_settings.second_axis],
+        axes_mapping[vl_settings.first_axis],
+        axes_mapping[vl_settings.second_axis],
         glm.mat3(view_matrix),
         projection_matrix,
     )
@@ -420,9 +430,9 @@ def adjust_vanishing_lines_to_camera(camera):
     # update vl_settings lines
     for vl_setting_lines, new_lines in zip(
         [
-            camera.data.vl_settings.first_vanishing_lines, 
-            camera.data.vl_settings.second_vanishing_lines, 
-            camera.data.vl_settings.third_vanishing_lines
+            vl_settings.first_vanishing_lines, 
+            vl_settings.second_vanishing_lines, 
+            vl_settings.third_vanishing_lines
         ],
         new_line_sets
     ):

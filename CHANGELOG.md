@@ -20,12 +20,32 @@
 - [ ] test with the actual blender python: https://github.com/mondeja/pytest-blender
 - [ ] mock bpy: fake-bpy-module
 
+## Review
+- [ ] review types. make them consistent
+- [ ] revieow #TODO notes
+
+# TODO:
+- [ ] let appropriate events PASS THROUGH
+- [ ] add plane switches
+- [ ] on invoke, if camera has tilt shift, use 3 point vanishing mode, othervise 2 point vanishing mode
+- [ ] move vl settings to the operator (in next version consider adding a settings to save it per camera)
+- [ ] NEXT version add multiple vanishing lines
+- [ ] allow _native_ pan and orbit(?) as well
+- [ ] what about the tools panel? add ui there?
+- [ ] allow selecting anchor objects: DEFAULT(the view orbit pivot), ORIGIN, CURRENTLY SELECTED OBJECT
+- [ ] what to do with the scene scale? add it to the current pivot point? 
+      What if the pivot point is behind the camera. 
+      (this is probably not necessary anymore.)Allow setting the height of the camera instead?
+      Consider implementing it in the next version.
+
 ### FIX bugs
-- [ ] FIX: origin annotation seem to be drawn twice?, also dont draw the value on hover
-- [ ] FIX: two point mode. first axis i Y second axis is Z adn up. move tha axis when its almost vertical, the up vector flips downwards.
+- [ ] FIX when wuad mode is activated, adjust vanishing line to the current orientation 
+- [x] FIX: origin annotation seem to be drawn twice?, also dont draw the value on hover
+- [ ] FIX: two point mode. first axis i Y second axis is Z and up. move tha axis when its almost vertical, the up vector flips downwards.
 - [ ] FIX when axis changed on the right mouse context menu, updates are not triggered. 
 - [ ] this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS is_operator_running takes bl_id or bl_idname?
-- [ ] 🔥 when camera is too close to the origin (scene scale is small), there is an uncaught error. 
+- [x] FIX 🔥 when camera is too close to the origin (scene scale is small), there is an uncaught error. 
+  -> with the orientation tool this is not an issue anymore
 - [x] FIX when camera sensor fit set to auto and sensor_width is less than sensor_height there is a mismatch! TODO: this bug was not caught by the tests
 
 

@@ -17,6 +17,7 @@ from .view3d_ui import View3DUI
 from . import vl_properties_camera
 from . import solver
 from . import vl_utils
+from . import vl_properties_camera
 
 # Constants
 FONT_SIZE = 16
@@ -34,7 +35,7 @@ class VIEW3D_MT_vl_solve_orientation_context(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout.column()
         if op:=vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation'):
-            vl_settings = op.get_vl_settings(context)
+            vl_settings = op.vl_settings
             layout.prop_tabs_enum(vl_settings, 'mode')
 
             row = layout.row()
@@ -62,7 +63,21 @@ class VIEW3D_MT_vl_solve_orientation_context(bpy.types.Menu):
 class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
     bl_idname = "view3d.vl_solve_orientation"
     bl_label = "Vanishing Lines View Tool"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO'} # TODO: review other options {'BLOCKING', 'GRAB_CURSOR'}
+
+    vl_settings: bpy.props.PointerProperty(type=vl_properties_camera.VLSettings) # type: ignore
+
+    navigation_mode: bpy.props.EnumProperty(
+        items=[
+            ('NONE', "None", ""),
+            ('ORBIT', "Orbit", ""),
+            ('PAN', "Pan", ""),
+            ('DOLLY', "Dolly", ""),
+        ],
+        default='NONE'
+    ) # type: ignore
+
+    mouse_dragging: bpy.props.BoolProperty(default=False) # type: ignore
 
     # Store initial camera state for restoration on cancel
     _initial_camera_matrix: mathutils.Matrix = None  # type: ignore
@@ -105,7 +120,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self._initial_camera_shift_y = camera_object.data.shift_y
 
         # Initialize vl_params if not already done
-        if vl_settings:=self.get_vl_settings(context):
+        if vl_settings:=self.vl_settings:
             if not vl_settings.initialized:
                 # Load existing parameters from camera
                 vl_properties_camera.set_defaults(vl_settings)
@@ -115,7 +130,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
 
         # adjust vanishing lines to the current transform of the camera
-        vl_utils.adjust_vanishing_lines_to_camera(camera_object)
+        vl_utils.adjust_vanishing_lines_to_camera(self.vl_settings, camera_object)
 
         # initial solve
         # self.update_solve()
@@ -134,8 +149,208 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
     
-    def get_vl_settings(self, context):
-        return self._context_area.spaces.active.camera.data.vl_settings # view camera
+    def modal(self, context, event):
+        # -------------------------------------------------
+        # Exit conditions
+        # -------------------------------------------------
+        
+        if event.type in {'ESC'}:
+            self._context_area.tag_redraw()
+            return self.finish(context)
+        
+        if event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
+            self._context_area.tag_redraw()
+            return self.finish(context)
+        
+        mouse_is_in_area = (
+            event.mouse_region_x>0 and 
+            event.mouse_region_x<context.area.width and 
+            event.mouse_region_y>0 and 
+            event.mouse_region_y<context.area.height
+        )
+
+        if not mouse_is_in_area:
+            return {'PASS_THROUGH'}
+        
+        if context.region.type != 'WINDOW':
+            return {'PASS_THROUGH'}
+        
+        ##########################
+        # Handle Keyboard Events #
+        ##########################
+        vl_settings = self.vl_settings
+        if event.value == 'PRESS':
+            match event.type:
+                case 'ONE' | 'NUMPAD_1':
+                    vl_settings.mode = 'ONE_POINT'
+                    self.update_solve()
+                    return {'RUNNING_MODAL'}
+                case 'TWO' | 'NUMPAD_2':
+                    vl_settings.mode = 'TWO_POINT'
+                    self.update_solve()
+                    return {'RUNNING_MODAL'}
+                case 'THREE' | 'NUMPAD_3':
+                    vl_settings.mode = 'THREE_POINT'
+                    self.update_solve()
+                    return {'RUNNING_MODAL'}
+                case 'Q':
+                    vl_settings.quad_mode = not vl_settings.quad_mode
+                    self.update_solve()
+                    return {'RUNNING_MODAL'}
+                
+        # capture ui controls events
+        changed = self.uiview.event(context, event)
+        if changed:
+            self.update_solve()
+            return {'RUNNING_MODAL'}  
+
+
+
+        # ############# #
+        # CONTEXT MENUI #
+        # ############# #
+
+        if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
+            bpy.ops.wm.call_menu(name="VIEW3D_MT_vl_solve_orientation_context")
+            return {'RUNNING_MODAL'}
+        
+        # ##########################
+        # Handle NAVIGATION Events #
+        # ##########################
+        if event.type == 'MIDDLEMOUSE':
+            if event.value == 'PRESS':
+                self._middle_mouse_pressed = True
+                return {'RUNNING_MODAL'}
+            elif event.value == 'RELEASE':
+                self._middle_mouse_pressed = False
+                return {'RUNNING_MODAL'}
+        
+        # match event.type:
+
+        #     case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl:
+        #         # SMOOTH DOLLY CAMERA
+        #         # Match Blender's native dolly speed: proportional to view_distance
+        #         camera = self._context_area.spaces.active.camera
+        #         rv3d = self._context_area.spaces.active.region_3d
+                
+        #         # Blender dolly formula: zfac = 1.0 + (pixel_delta * 0.01 * dist)
+        #         # For wheel events, we simulate ~20 pixel movement per wheel step
+        #         pixel_delta = event.mouse_y - event.mouse_prev_y
+        #         zfac = 1.0 + (pixel_delta/20 * 0.003 * rv3d.view_distance)
+                
+        #         # Move camera along its local Z-axis by (1 - zfac) * dist
+        #         dolly_distance = (1.0 - zfac) * rv3d.view_distance
+        #         forward = camera.matrix_world.to_3x3() @ mathutils.Vector((0, 0, 1.0))
+        #         camera.location += forward * dolly_distance
+        #         vl_utils.adjust_vanishing_lines_to_camera(camera)
+        #         return {'RUNNING_MODAL'}
+            
+        #     case 'WHEELUPMOUSE' | 'WHEELDOWNMOUSE':
+        #         # STEP DOLLY CAMERA
+        #         # Match Blender's native dolly speed: proportional to view_distance
+        #         camera = self._context_area.spaces.active.camera
+        #         rv3d = self._context_area.spaces.active.region_3d
+                
+        #         # Blender dolly formula: zfac = 1.0 + (pixel_delta * 0.01 * dist)
+        #         # For wheel events, we simulate ~20 pixel movement per wheel step
+        #         pixel_delta = 1 if event.type == 'WHEELUPMOUSE' else -1
+        #         zfac = 1.0 + (pixel_delta * 0.003 * rv3d.view_distance)
+                
+        #         # Move camera along its local Z-axis by (1 - zfac) * dist
+        #         dolly_distance = (1.0 - zfac) * rv3d.view_distance
+        #         forward = camera.matrix_world.to_3x3() @ mathutils.Vector((0, 0, 1.0))
+        #         camera.location += forward * dolly_distance
+        #         vl_utils.adjust_vanishing_lines_to_camera(camera)
+        #         return {'RUNNING_MODAL'}
+            
+        #     case 'MOUSEMOVE' if self._middle_mouse_pressed and event.shift:
+        #         def pan_camera(camera, rv3d, region, delta_x, delta_y, pivot):
+        #             """
+        #             Pan camera by screen-space delta using Blender's built-in projection.
+        #             pivot: the point to keep in focus (like view pivot)
+        #             """
+        #             # Original screen coordinate of pivot
+        #             pivot_2d = view3d_utils.location_3d_to_region_2d(region, rv3d, pivot)
+
+        #             # New 2D coordinate with mouse delta
+        #             new_2d = pivot_2d + mathutils.Vector((delta_x, delta_y))
+
+        #             # Project back into world space at pivot depth
+        #             new_world = view3d_utils.region_2d_to_location_3d(region, rv3d, new_2d, pivot)
+
+        #             # Offset vector
+        #             offset = pivot - new_world
+
+        #             # Move camera by that offset
+        #             camera.location += offset
+
+        #         camera = self._context_area.spaces.active.camera
+        #         rv3d = self._context_area.spaces.active.region_3d
+        #         region = context.region
+
+        #         delta_x = event.mouse_x - event.mouse_prev_x
+        #         delta_y = event.mouse_y - event.mouse_prev_y    
+
+        #         # pivot = center of view or custom pivot point
+        #         pivot = rv3d.view_location
+
+        #         pan_camera(camera, rv3d, region, delta_x, delta_y, pivot)
+        #         vl_utils.adjust_vanishing_lines_to_camera(camera)
+        #         return {'RUNNING_MODAL'}
+            
+            # case 'MOUSEMOVE' if self._middle_mouse_pressed:
+            #     # ORBIT CAMERA
+            #     print("orbit camera")
+            #     camera = self._context_area.spaces.active.camera
+            #     camera_transform = vl_utils.glm_from_blender_mat(camera.matrix_world)
+            #     delta_x = event.mouse_prev_x - event.mouse_x
+            #     delta_y = event.mouse_prev_y - event.mouse_y
+            #     camera.matrix_world = vl_utils.glm_to_blender_mat(
+            #         vl_utils.ball_control(camera_transform, glm.vec3(0,0,0), delta_x * 0.01, delta_y * 0.01))
+            #     vl_utils.adjust_vanishing_lines_to_camera(camera)
+            #     return {'RUNNING_MODAL'}
+            
+            # case 'WHEELUPMOUSE' | 'WHEELDOWNMOUSE':
+            #     # Adjust camera zoom
+            #     self._context_area.spaces.active.region_3d.view_camera_zoom += (1 if event.type == 'WHEELUPMOUSE' else -1) * 6
+            #     return {'RUNNING_MODAL'}
+            
+            # case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl and event.alt and vl_settings.mode == 'ONE_POINT':
+            #     # Adjust focal length
+            #     delta = event.mouse_prev_y - event.mouse_y
+            #     camera_object = self._context_area.spaces.active.camera
+            #     camera_object.data.lens *= math.pow(1.1, -delta * 0.03)
+            #     self.update_solve()
+            #     return {'RUNNING_MODAL'}
+                                            
+            #     # # Move origin / Pan Camera # TODO: actually move the camera, and update the origin accordingly?
+            #     # proj_mouse_x, proj_mouse_y = self.uiview.unproject((event.mouse_x, event.mouse_y))
+            #     # proj_mouse_prev_x, proj_mouse_prev_y = self.uiview.unproject((event.mouse_prev_x, event.mouse_prev_y))
+            #     # proj_mouse_delta_x = proj_mouse_prev_x - proj_mouse_x
+            #     # proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
+            #     # vl_settings.origin[0] -= proj_mouse_delta_x
+            #     # vl_settings.origin[1] -= proj_mouse_delta_y
+            #     return {'RUNNING_MODAL'}
+            
+            # case 'MOUSEMOVE' if self._middle_mouse_pressed:
+            #     # Pan camera
+            #     mouse_delta_x = event.mouse_prev_x - event.mouse_x
+            #     mouse_delta_y = event.mouse_prev_y - event.mouse_y
+            #     region = context.region
+
+            #     # Get zoom factor to match coordinate projection
+            #     view_camera_zoom = self._context_area.spaces.active.region_3d.view_camera_zoom
+            #     zoom_fac = ((math.sqrt(2.0) + view_camera_zoom / 50.0) ** 2) / 4.0  # Blender magic zoom formula
+
+            #     offset_delta_x = mouse_delta_x / (2.0 * zoom_fac * region.width)
+            #     offset_delta_y = mouse_delta_y / (2.0 * zoom_fac * region.height)
+            #     self._context_area.spaces.active.region_3d.view_camera_offset[0] += offset_delta_x
+            #     self._context_area.spaces.active.region_3d.view_camera_offset[1] += offset_delta_y
+            #     return {'RUNNING_MODAL'}
+
+        return {'PASS_THROUGH'}
+        
+        # return {'RUNNING_MODAL'}
     
     def status_text(self, header, context):
         # keyboard
@@ -187,160 +402,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         bpy.context.workspace.status_text_set(None)
         return {'FINISHED'}
     
-    def modal(self, context, event):
-        # print("modal", event.type, event.value)
-        if event.type in {'ESC'}:
-            self._context_area.tag_redraw()
-            return self.finish(context)
-        
-        if event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
-            self._context_area.tag_redraw()
-            return self.finish(context)
-        
-        mouse_is_in_area = (
-            event.mouse_region_x>0 and 
-            event.mouse_region_x<context.area.width and 
-            event.mouse_region_y>0 and 
-            event.mouse_region_y<context.area.height
-        )
-
-        mouse_is_in_region = (
-            0 <= event.mouse_region_x < context.region.width and
-            0 <= event.mouse_region_y < context.region.height
-        )
-
-        if not mouse_is_in_area:
-            return {'PASS_THROUGH'}
-        
-        if not mouse_is_in_region:
-            return {'PASS_THROUGH'}
-        
-        if event.type == 'MIDDLEMOUSE':
-            if event.value == 'PRESS':
-                self._middle_mouse_pressed = True
-            elif event.value == 'RELEASE':
-                self._middle_mouse_pressed = False
-        
-        # is_over_panel = False
-        # for reg in self._context_area.regions:
-        #     # We only care about panels that overlap the viewport
-        #     if reg.type in {'HEADER', 'UI'}:
-        #         # Check if mouse is within this region's rectangle
-        #         # Note: region.x/y is also relative to the whole window
-        #         if (reg.x <= event.mouse_x <= reg.x + reg.width and
-        #             reg.y <= event.mouse_y <= reg.y + reg.height):
-        #             is_over_panel = True
-        #             # print(reg.type, "over")
-        #             break
-
-        # # print("mouse in area:", mouse_is_in_area, " mouse in region:", mouse_is_in_region, " over panel:", is_over_panel)
-
-        # if is_over_panel:
-        #     # Mouse is over Toolbar or Sidebar
-        #     return {'PASS_THROUGH'}
-        
-        ############
-        # Keyboard #
-        ############
-        vl_settings = self.get_vl_settings(context)
-        if event.type in {'ONE', 'TWO', 'THREE', 'NUMPAD_1', 'NUMPAD_2', 'NUMPAD_3'} and event.value == 'PRESS':
-            match event.type:
-                case 'ONE' | 'NUMPAD_1':
-                    vl_settings.mode = 'ONE_POINT'
-                case 'TWO' | 'NUMPAD_2':
-                    vl_settings.mode = 'TWO_POINT'
-                case 'THREE' | 'NUMPAD_3':
-                    vl_settings.mode = 'THREE_POINT'
-            self.update_solve()
-            return {'RUNNING_MODAL'}
-        
-        if event.type == 'R' and event.value == 'PRESS':
-            # get prop enumoptions
-            options = [item.identifier for item in vl_settings.bl_rna.properties['scene_scale_mode'].enum_items]
-            current_index = options.index(vl_settings.scene_scale_mode)
-            next_index = (current_index + 1) % len(options)
-            vl_settings.scene_scale_mode = options[next_index]
-            self.update_solve()
-            return {'RUNNING_MODAL'}
-
-        if event.type == 'Q' and event.value == 'PRESS':
-            vl_settings.quad_mode = not vl_settings.quad_mode
-            self.update_solve()
-            return {'RUNNING_MODAL'}
-        
-        if self._context_area.spaces.active.region_3d.view_perspective != 'CAMERA':
-            return self.cancel(context)
-
-        if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
-            # This triggers the menu at the mouse location
-            bpy.ops.wm.call_menu(name="VIEW3D_MT_vl_solve_orientation_context")
-            return {'RUNNING_MODAL'}
-
-        match event.type:
-            case 'WHEELUPMOUSE' | 'WHEELDOWNMOUSE' if event.ctrl:
-                # Adjust reference distance
-                distance_length = vl_settings.reference_distance_segment[1] - vl_settings.reference_distance_segment[0]
-                distance_length *= (1.1 if event.type == 'WHEELUPMOUSE' else 0.9)
-                vl_settings.reference_distance_segment[1] = vl_settings.reference_distance_segment[0] + distance_length
-                self.update_solve()
-                return {'RUNNING_MODAL'}
-            
-            case 'WHEELUPMOUSE' | 'WHEELDOWNMOUSE':
-                # Adjust camera zoom
-                self._context_area.spaces.active.region_3d.view_camera_zoom += (1 if event.type == 'WHEELUPMOUSE' else -1) * 6
-                return {'RUNNING_MODAL'}
-            
-            case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl and event.alt and vl_settings.mode == 'ONE_POINT':
-                # Adjust focal length
-                delta = event.mouse_prev_y - event.mouse_y
-                camera_object = self._context_area.spaces.active.camera
-                camera_object.data.lens *= math.pow(1.1, -delta * 0.03)
-                self.update_solve()
-                return {'RUNNING_MODAL'}
-            
-            case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl:
-                # # orbit camera
-                # camera = self._context_area.spaces.active.camera
-                # camera_transform = vl_utils.glm_from_blender_mat(camera.matrix_world)
-                # delta_x = event.mouse_prev_x - event.mouse_x
-                # delta_y = event.mouse_prev_y - event.mouse_y
-                # camera.matrix_world = vl_utils.glm_to_blender_mat(
-                #     vl_utils.ball_control(camera_transform, glm.vec3(0,0,0), delta_x * 0.01, delta_y * 0.01))
-                # vl_utils.adjust_vanishing_lines_to_camera(camera)
-                                            
-                # Move origin / Pan Camera # TODO: actually move the camera, and update the origin accordingly?
-                proj_mouse_x, proj_mouse_y = self.uiview.unproject((event.mouse_x, event.mouse_y))
-                proj_mouse_prev_x, proj_mouse_prev_y = self.uiview.unproject((event.mouse_prev_x, event.mouse_prev_y))
-                proj_mouse_delta_x = proj_mouse_prev_x - proj_mouse_x
-                proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
-                vl_settings.origin[0] -= proj_mouse_delta_x
-                vl_settings.origin[1] -= proj_mouse_delta_y
-                # self.update_solve()
-                return {'RUNNING_MODAL'}
-            
-            case 'MOUSEMOVE' if self._middle_mouse_pressed:
-                # Pan camera
-                mouse_delta_x = event.mouse_prev_x - event.mouse_x
-                mouse_delta_y = event.mouse_prev_y - event.mouse_y
-                region = context.region
-
-                # Get zoom factor to match coordinate projection
-                view_camera_zoom = self._context_area.spaces.active.region_3d.view_camera_zoom
-                zoom_fac = ((math.sqrt(2.0) + view_camera_zoom / 50.0) ** 2) / 4.0  # Blender magic zoom formula
-
-                offset_delta_x = mouse_delta_x / (2.0 * zoom_fac * region.width)
-                offset_delta_y = mouse_delta_y / (2.0 * zoom_fac * region.height)
-                self._context_area.spaces.active.region_3d.view_camera_offset[0] += offset_delta_x
-                self._context_area.spaces.active.region_3d.view_camera_offset[1] += offset_delta_y
-                return {'RUNNING_MODAL'}
-
-        # capture ui controls events
-        changed = self.uiview.event(context, event)
-        if changed:
-            self.update_solve()
-        
-        return {'RUNNING_MODAL'}
-    
     def view3d_draw(self, context):
         # draw only in the correct region
         if context.area != self._context_area:
@@ -381,7 +442,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         ###########################
         # Vanishing Line CONTROLS #
         ###########################
-        vl_settings = self.get_vl_settings(context)
+        vl_settings = self.vl_settings
         
         def get_axis_color(axis:solver.types.Axis) -> Tuple[float, float, float, float]:
             match axis:
@@ -594,7 +655,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
     def update_solve(self):
         compute_space = solver.types.Rect(-1,-1,2,2)
-        vl_settings = self._context_area.spaces.active.camera.data.vl_settings # self.get_vl_settings(context)
+        vl_settings = self.vl_settings
         try:
             # map props to solver
             mode = {
@@ -685,6 +746,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
             # Store current projected position of pivot point
             camera_object = self._context_area.spaces.active.camera
+            
             # Use view orbit point as pivot
             orbit_point = self._context_area.spaces.active.region_3d.view_location
             pivot_point = glm.vec3(orbit_point.x, orbit_point.y, orbit_point.z)

@@ -189,10 +189,10 @@ class VLSettings(bpy.types.PropertyGroup):
 def register():
     bpy.utils.register_class(Line)
     bpy.utils.register_class(VLSettings)
-    bpy.types.Camera.vl_settings = bpy.props.PointerProperty(type=VLSettings, name="VL Settings")
+    # bpy.types.Camera.vl_settings = bpy.props.PointerProperty(type=VLSettings, name="VL Settings")
     
 def unregister():
-    if hasattr(bpy.types.Camera, 'vl_settings'):
-        del bpy.types.Camera.vl_settings
+    # if hasattr(bpy.types.Camera, 'vl_settings'):
+    #     del bpy.types.Camera.vl_settings
     bpy.utils.unregister_class(VLSettings)
     bpy.utils.unregister_class(Line)
