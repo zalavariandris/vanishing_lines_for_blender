@@ -3,14 +3,15 @@ import math
 from . import utils
 from . types import Axis, Rect
 from pyglm import glm
+
+from . types import Line2
 import warnings
 from . constants import EPSILON, MAX_VANISHING_POINT_DISTANCE
 
-from . types import Point2
 from . exceptions import VanishingLinesError
 
 def compute_roll_matrix(
-        second_vanishing_line:Tuple[Point2, Point2],
+        second_vanishing_line:Line2,
         view_matrix:glm.mat4,
         projection_matrix:glm.mat4,
         viewport: Rect,

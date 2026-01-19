@@ -5,14 +5,14 @@ import math
 import warnings
 
 from . constants import EPSILON
-from . types import Point2, Line2, Ray3, Line3, Rect, Axis
+from . types import Line2, Ray3, Line3, Rect, Axis
 
 
 ############################
 # 2D-3D GEOMETRY FUNCTIONS #
 ############################
 
-def dot2d(u: Point2, v: Point2) -> float:
+def dot2d(u: glm.vec2, v: glm.vec2) -> float:
     Ux, Uy = u
     Vx, Vy = v
     return Ux * Vx + Uy * Vy
@@ -56,7 +56,7 @@ def cast_ray(
     P: glm.vec2, 
     view_matrix: glm.mat4, 
     projection_matrix: glm.mat4, 
-    viewport: glm.vec4 | Tuple[float, float, float, float]
+    viewport: Rect
 ) -> Ray3:
     """
     Cast a ray from the camera through a pixel in screen space.
@@ -72,12 +72,12 @@ def cast_ray(
 
     ray_origin = glm.unProject(
         glm.vec3(P.x, P.y, 0.0),
-        view_matrix, projection_matrix, viewport
+        view_matrix, projection_matrix, tuple(viewport)
 )
 
     ray_target = glm.unProject(
         glm.vec3(P.x, P.y, 1.0),
-        view_matrix, projection_matrix, viewport
+        view_matrix, projection_matrix, tuple(viewport)
     )
 
     return ray_origin, ray_target
@@ -188,6 +188,58 @@ def apply_gram_schmidt_orthogonalization(matrix: glm.mat3) -> glm.mat3:
     
     return result
 
+def intersect_ray_with_rect(P: glm.vec2, Q: glm.vec2, rect: Rect) -> glm.vec2 | None:
+    """
+    Intersect an infinite ray starting at P and passing through Q with a rectangle.
+    """
+    rect_x, rect_y, rect_w, rect_h = rect
+    rect_min = glm.vec2(rect_x, rect_y)
+    rect_max = glm.vec2(rect_x + rect_w, rect_y + rect_h)
+
+    # Direction vector from P to Q
+    direction = Q - P
+    
+    # Avoid division by zero if P and Q are the same point
+    if glm.length2(direction) < 1e-12:
+        return None
+
+    # t_near: entry point into the 'slab', t_far: exit point
+    t_near = -math.inf
+    t_far = math.inf
+    EPSILON = 1e-9
+
+    for i in range(2):  # Check X (0) and Y (1) axes
+        if abs(direction[i]) < EPSILON:
+            # Ray is parallel to this axis. 
+            # If P is not between the min/max of this axis, it misses entirely.
+            if P[i] < rect_min[i] or P[i] > rect_max[i]:
+                return None
+        else:
+            # Slab intersection distances
+            inv_dir = 1.0 / direction[i]
+            t1 = (rect_min[i] - P[i]) * inv_dir
+            t2 = (rect_max[i] - P[i]) * inv_dir
+            
+            # Identify which is the entry and which is the exit for this specific axis
+            t_entry = min(t1, t2)
+            t_exit = max(t1, t2)
+            
+            # Shrink the overall interval to the intersection of all slabs
+            t_near = max(t_near, t_entry)
+            t_far = min(t_far, t_exit)
+
+    # 1. Logic check: If t_near > t_far, the ray missed the rectangle.
+    # 2. Infinite Ray check: If t_far < 0, the rectangle is behind the ray's origin.
+    if t_near > t_far or t_far < 0:
+        return None
+
+    # 3. Origin check: If t_near < 0, the ray starts INSIDE the rectangle.
+    # We return the first point forward (which is t_near if outside, or P if inside).
+    # If you want the EXIT point when starting inside, use max(0, t_near).
+    actual_t = max(0, t_near)
+
+    return P + direction * actual_t
+
 #####################
 # UTILITY FUNCTIONS #
 #####################
@@ -241,29 +293,6 @@ def calc_vanishing_points_from_camera(
     vp3 = get_vp_for_axis(third_axis)
     
     return vp1, vp2, vp3
-
-def _impl_naive_calc_vanishing_points_from_camera(
-        view_matrix: glm.mat3, 
-        projection_matrix: glm.mat4, 
-        viewport: Rect
-    ) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
-    """
-    Calculate the projected vanishing points from the camera matrices.
-    """
-
-    if not isinstance(view_matrix, glm.mat3):
-        raise TypeError("view_matrix must be a glm.mat4")
-    if not isinstance(projection_matrix, glm.mat4):
-        raise TypeError("projection_matrix must be a glm.mat4")
-    
-    # Project vanishing Points
-    MAX_FLOAT32 = (2 - 2**-23) * 2**127
-    VPX = glm.project(glm.vec3(MAX_FLOAT32,0,0), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
-    VPY = glm.project(glm.vec3(0,MAX_FLOAT32,0), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
-    VPZ = glm.project(glm.vec3(0,0,MAX_FLOAT32), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
-
-    return glm.vec2(VPX), glm.vec2(VPY), glm.vec2(VPZ)
-
 
 def _impl_calc_vanishing_points_from_camera(
         view_matrix: glm.mat3, 
@@ -374,7 +403,7 @@ def adjust_vanishing_lines_to_camera_orientation(
 ##################
 # GLM EXTENSIONS #
 ##################
-def mat3_to_euler_zxy(M: glm.mat3) -> Tuple[float, float, float]:
+def mat3_to_euler_zxy(M: glm.mat3) -> glm.vec3:
     """
     # Assumes R is a flat list of 9 elements (col-major)
     """
@@ -393,61 +422,61 @@ def mat3_to_euler_zxy(M: glm.mat3) -> Tuple[float, float, float]:
         z = math.atan2(r10, r00)
         y = 0.0
 
-    return z, x, y  # Z, X, Y order
+    return glm.vec3(z, x, y)  # Z, X, Y order
 
-def extract_euler_XYZ(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_XYZ(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(M[2][1], M[2][2])
     C2 = math.sqrt(M[0][0] * M[0][0] + M[1][0] * M[1][0])
     T2 = math.atan2(-M[2][0], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(S1 * M[0][2] - C1 * M[0][1], C1 * M[1][1] - S1 * M[1][2])
-    return -T1, -T2, -T3
+    return glm.vec3(-T1, -T2, -T3)
 
-def extract_euler_YXZ(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_YXZ(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(M[2][0], M[2][2])
     C2 = math.sqrt(M[0][1] * M[0][1] + M[1][1] * M[1][1])
     T2 = math.atan2(-M[2][1], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(S1 * M[1][2] - C1 * M[1][0], C1 * M[0][0] - S1 * M[0][2])
-    return T1, T2, T3
+    return glm.vec3(T1, T2, T3)
 
-def extract_euler_XZY(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_XZY(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(M[1][2], M[1][1])
     C2 = math.sqrt(M[0][0] * M[0][0] + M[2][0] * M[2][0])
     T2 = math.atan2(-M[1][0], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(S1 * M[0][1] - C1 * M[0][2], C1 * M[2][2] - S1 * M[2][1])
-    return T1, T2, T3
+    return glm.vec3(T1, T2, T3)
 
-def extract_euler_YZX(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_YZX(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(-M[0][2], M[0][0])
     C2 = math.sqrt(M[1][1] * M[1][1] + M[2][1] * M[2][1])
     T2 = math.atan2(M[0][1], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(S1 * M[1][0] + C1 * M[1][2], S1 * M[2][0] + C1 * M[2][2])
-    return T1, T2, T3
+    return glm.vec3(T1, T2, T3)
 
-def extract_euler_ZYX(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_ZYX(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(M[0][1], M[0][0])
     C2 = math.sqrt(M[1][2] * M[1][2] + M[2][2] * M[2][2])
     T2 = math.atan2(-M[0][2], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(S1 * M[2][0] - C1 * M[2][1], C1 * M[1][1] - S1 * M[1][0])
-    return T1, T2, T3
+    return glm.vec3(T1, T2, T3)
 
-def extract_euler_ZXY(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_ZXY(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(-M[1][0], M[1][1])
     C2 = math.sqrt(M[0][2] * M[0][2] + M[2][2] * M[2][2])
     T2 = math.atan2(M[1][2], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(C1 * M[2][0] + S1 * M[2][1], C1 * M[0][0] + S1 * M[0][1])
-    return T1, T2, T3
+    return glm.vec3(T1, T2, T3)
 
 def decompose(M: glm.mat4) -> Tuple[glm.vec3, glm.quat, glm.vec3, glm.vec3, glm.vec4]:
     """glm decompose wrapper.
@@ -496,7 +525,7 @@ def perspective_tiltshift(fovy:float, aspect:float, near:float, far:float, shift
 
 
 
-def decompose_perspective(P: glm.mat4):
+def decompose_perspective(P: glm.mat4)->Tuple[float, float, float, float]:
     """
     Decompose a perspective projection matrix.
     Works for both symmetric and tilt-shift (off-center) variants.
@@ -539,7 +568,7 @@ def decompose_perspective(P: glm.mat4):
 
     return fovy, aspect, near, far
 
-def decompose_perspective_tiltshift(P: glm.mat4):
+def decompose_perspective_tiltshift(P: glm.mat4)->Tuple[float, float, float, float, float, float]:
     """
     Decompose a perspective projection matrix.
     Works for both symmetric and tilt-shift (off-center) variants.
@@ -595,7 +624,7 @@ def decompose_extrinsics(view)->Tuple[glm.vec3, glm.quat]:
     
     return translation, quat
 
-def decompose_frustum(P: glm.mat4):
+def decompose_frustum(P: glm.mat4)->Tuple[float, float, float, float, float, float]:
     # near / far
     near = P[3][2] / (P[2][2] - 1.0)
     far  = P[3][2] / (P[2][2] + 1.0)

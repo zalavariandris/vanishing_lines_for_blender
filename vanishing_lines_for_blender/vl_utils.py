@@ -226,16 +226,6 @@ def adjust_camera_to_keep_point_at_screen_position(
     
     # Get current view matrix
     current_view = glm_from_blender_mat(camera_object.matrix_world.inverted())
-
-    # get current vlender camera projection matrix
-    current_projection = camera_object.calc_matrix_camera(
-        depsgraph=bpy.context.evaluated_depsgraph_get(),
-        x=scene.render.resolution_x,
-        y=scene.render.resolution_y,
-        scale_x=scene.render.pixel_aspect_x,
-        scale_y=scene.render.pixel_aspect_y,
-    )
-
     
     # Create a view matrix with rotation only (no translation)
     view_rotation_only = glm.mat4(
@@ -247,6 +237,8 @@ def adjust_camera_to_keep_point_at_screen_position(
     
     # Define viewport
     viewport = glm.vec4(compute_space[0], compute_space[1], compute_space[2], compute_space[3])
+
+    proj, view = get_camera_matrices(camera_object)
     
     # Unproject the screen position at near and far plane to get ray direction
     near_point = glm.unProject(
@@ -275,16 +267,6 @@ def adjust_camera_to_keep_point_at_screen_position(
     # Apply to Blender camera
     transform_list = [[v for v in row] for row in glm.transpose(current_transform)]
     camera_object.matrix_world = mathutils.Matrix(transform_list)
-
-def apply_position_to_blender_camera(
-        projection: glm.mat4,
-        view: glm.mat4,
-        camera_object: bpy.types.Object,
-        compute_space: Tuple[float, float, float, float],
-        fit_mode: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']
-    ) -> None:
-    """"""
-    ...
 
 def apply_solver_results_to_view3d(
         projection: glm.mat4,
@@ -535,5 +517,5 @@ def get_view_orbit_point(context) -> mathutils.Vector|None:
     if not space or space.type != 'VIEW_3D':
         return None
     
-    return space.region_3d.view_location.copy()
+    return space.region_3d.view_location.copy() # note: view_location is actually the Orbit Pivot Point (the target), not the camera's physical position in world space.
  

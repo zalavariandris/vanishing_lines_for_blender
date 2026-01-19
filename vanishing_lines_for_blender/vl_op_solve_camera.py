@@ -54,7 +54,7 @@ class VIEW3D_MT_vl_solve_camera_context(bpy.types.Menu):
 
             layout.prop(vl_settings, 'scene_scale')
             col = layout.column()
-            col.enabled = vl_settings.scene_scale_mode != 'ORIGIN'
+            col.enabled = vl_settings.scene_scale_mode != 'ANCHOR'
             col.prop(vl_settings, 'reference_distance_segment', index=0)
             col.prop(vl_settings, 'reference_distance_segment', index=1)
         
@@ -436,7 +436,7 @@ class VIEW3D_OT_vl_solve_camera(bpy.types.Operator):
         ###############################
         # reference distance CONTROLS #
         ###############################
-        if vl_settings.scene_scale_mode != 'ORIGIN':
+        if vl_settings.scene_scale_mode != 'ANCHOR':
             def get_distance_measurement_direction() -> Tuple[float, float]:
                 if vl_settings.scene_scale_mode == 'SCREEN':
                     return (1.0,0.0)
@@ -604,7 +604,7 @@ class VIEW3D_OT_vl_solve_camera(bpy.types.Operator):
             }[vl_settings.mode]
 
             reference_axis = {
-                'ORIGIN': None,# TODO: ORIGIN option
+                'ANCHOR': None,# TODO: ORIGIN option
                 'SCREEN': solver.types.ReferenceAxis.Screen,
                 'X_AXIS': solver.types.ReferenceAxis.X_Axis,
                 'Y_AXIS': solver.types.ReferenceAxis.Y_Axis,

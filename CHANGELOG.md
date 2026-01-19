@@ -25,6 +25,7 @@
 - [ ] revieow #TODO notes
 
 # TODO:
+- [ ] TEST unsolve.
 - [ ] let appropriate events PASS THROUGH
 - [ ] add plane switches
 - [ ] on invoke, if camera has tilt shift, use 3 point vanishing mode, othervise 2 point vanishing mode

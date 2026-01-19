@@ -287,7 +287,7 @@ class VIEW_OT_VanishingLinesStartOperator(bpy.types.Operator):
         ##############################
         # reference distance segment #
         ##############################
-        if vl_settings.scene_scale_mode != 'ORIGIN':
+        if vl_settings.scene_scale_mode != 'ANCHOR':
             def get_distance_measurement_direction() -> mathutils.Vector:
                 if vl_settings.scene_scale_mode == 'SCREEN':
                     return mathutils.Vector((1,0))

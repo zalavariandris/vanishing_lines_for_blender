@@ -81,6 +81,17 @@ class VLSettings(bpy.types.PropertyGroup):
     #     options=set()
     # ) # type: ignore
 
+    focal_length: bpy.props.FloatProperty(
+        name="Focal Length",
+        default=50.0,
+        min=1.0,
+        max=1000.0,
+        unit='LENGTH',
+        subtype='DISTANCE',
+        description="Focal length of the camera lens", 
+        options=set()
+    ) # type: ignore
+
     quad_mode: bpy.props.BoolProperty(
         name="Quad Mode",
         default=False,
@@ -92,7 +103,7 @@ class VLSettings(bpy.types.PropertyGroup):
         name="Scene Scale Mode",
         items=[
             ('SCREEN', "Screen", "Scale relative to screen space"),
-            ('ORIGIN', "Origin", "Scale from origin point"),
+            ('ANCHOR', "Anchor", "Scale from anchor point"),
             ('X_AXIS', "X Axis", "Scale along world X axis"),
             ('Y_AXIS', "Y Axis", "Scale along world Y axis"),
             ('Z_AXIS', "Z Axis", "Scale along world Z axis")
@@ -105,8 +116,8 @@ class VLSettings(bpy.types.PropertyGroup):
     scene_scale: bpy.props.FloatProperty(
         name="Scene Scale",
         default=10.0,
-        min=0.01,
-        max=99999.0,
+        # min=0.01,
+        # max=99999.0,
         unit='LENGTH',
         subtype='DISTANCE',
         description="Real-world size of the reference measurement for scale calibration", 
@@ -118,6 +129,18 @@ class VLSettings(bpy.types.PropertyGroup):
         size=2,
         default=(0.0, 0.5),
         description="Start and end points of the reference distance segment for scale measurement", 
+        options=set()
+    ) # type: ignore
+
+    anchor_mode: bpy.props.EnumProperty(
+        name="Anchor Mode",
+        items=[
+            ('VIEW_ORBIT', "View", "Use viewport orbit point as anchor point"),
+            ('CURSOR', "3D Cursor", "Use 3D cursor position as anchor point"),
+            ('WORLD_ORIGIN', "Origin", "Use world origin as anchor point")
+        ],
+        default='VIEW_ORBIT',
+        description="Method for determining anchor point in the scene", 
         options=set()
     ) # type: ignore
 
