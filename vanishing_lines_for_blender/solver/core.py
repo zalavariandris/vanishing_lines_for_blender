@@ -424,11 +424,9 @@ def adjust_position_to_anchor(
     point_on_ray = ray_direction * distance
     camera_position = point_on_ray
 
-    view = view # remove existing scaling
     view = glm.translate(view, camera_position)  # type: ignore[attr-defined]
 
     # move camera location in world space to match anchor_world
-    view = glm.translate(view, anchor_world)  # type: ignore[attr-defined]
     return view
 
 def adjust_scale_to_reference_distance(
