@@ -24,6 +24,9 @@ FONT_SIZE = 16
 LINE_HEIGHT = 18
 
 
+def unsolve(projection: glm.mat4, view: glm.mat4):
+    return vp1, vp2, vp3
+
 class VIEW3D_MT_vl_solve_orientation_context(bpy.types.Menu):
     bl_label = "Vanishing Lines Context Menu"
     bl_idname = "VIEW3D_MT_vl_solve_orientation_context"

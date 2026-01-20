@@ -7,10 +7,10 @@ from dataclasses import dataclass
 #########
 Point2 = Tuple[float, float]
 Point3 = Tuple[float, float, float]
-Line2 = Tuple[Point2, Point2] # two endpoints
-Line3 = Tuple[Point3, Point3] # two endpoints
-Ray2 = Tuple[Point2, Point2] # origin, direction
-Ray3 = Tuple[Point3, Point3] # origin, direction
+Line2 =  Tuple[Point2, Point2] # two endpoints
+Line3 =  Tuple[Point3, Point3] # two endpoints
+Ray2 =   Tuple[Point2, Point2] # origin, direction
+Ray3 =   Tuple[Point3, Point3] # origin, direction
 Plane3 = Tuple[Point3, Point3]  # point, normal
 
 

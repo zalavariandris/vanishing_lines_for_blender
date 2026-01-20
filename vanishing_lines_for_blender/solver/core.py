@@ -29,7 +29,7 @@ from . exceptions import (
 )
 
 from . import helpers
-
+from dataclasses import dataclass
 
 #########################
 # MAIN SOLVER FUNCTIONS #
@@ -123,7 +123,36 @@ def solve(
 
     return projection, view
 
+@dataclass
+class UnsolveResult:
+    vp1: glm.vec2
+    vp2: glm.vec2
+    vp3: glm.vec2
+    O: glm.vec2
+    origin_distance: float
 
+def unsolve(
+        projection: glm.mat4, 
+        view: glm.mat4,
+        first_axis:Axis,
+        second_axis:Axis
+    ) -> UnsolveResult:
+
+    vp1, vp2, vp3 = utils.calc_vanishing_points_from_camera(
+        glm.mat3(view), 
+        projection, 
+        Rect(-1,-1,2,2),
+        first_axis=first_axis,
+        second_axis=second_axis
+    )
+
+    # compute origin distance
+    O = glm.project(glm.vec3(0,0,0), view, projection, (-1,-1,2,2)).xy
+    ray_origin, ray_target = utils.cast_ray(O, view, projection, glm.vec4(-1,-1,2,2))  # to validate unprojection
+    ray_direction = glm.normalize(ray_target - ray_origin)
+    origin_distance = glm.dot(-ray_origin, ray_direction)
+
+    return UnsolveResult(vp1, vp2, vp3, O, origin_distance)
 #####################
 # SOLVER COMPONENTS #
 #####################

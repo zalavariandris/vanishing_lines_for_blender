@@ -57,14 +57,13 @@ def cast_ray(
     view_matrix: glm.mat4, 
     projection_matrix: glm.mat4, 
     viewport: glm.vec4 | Tuple[float, float, float, float]
-) -> Ray3:
+) -> Tuple[glm.vec3, glm.vec3]:
     """
     Cast a ray from the camera through a pixel in screen space.
     returns the ray origin and target.
     
     Args:
-        screen_x: X coordinate in pixel space
-        screen_y: Y coordinate in pixel space
+        P: 2D point in screen space
         view_matrix: Camera view matrix
         projection_matrix: Camera projection matrix
         viewport: Viewport (x, y, width, height)
