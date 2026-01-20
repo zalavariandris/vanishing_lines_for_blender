@@ -39,8 +39,7 @@ class VIEW3D_MT_vl_solve_orientation_context(bpy.types.Menu):
         if op:=vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation'):
             vl_settings = op.vl_settings
             layout.prop_tabs_enum(vl_settings, 'mode')
-
-            layout.prop(vl_settings, 'anchor_mode')
+            layout.prop_menu_enum(vl_settings, 'anchor_mode')
 
             # row = layout.row()
             # row.enabled = vl_settings.mode in {'ONE_POINT'}
@@ -55,7 +54,7 @@ class VIEW3D_MT_vl_solve_orientation_context(bpy.types.Menu):
             # # row.prop(vl_settings, 'enable_manual_principal')
             # layout.prop_menu_enum(vl_settings, 'first_axis')
             # layout.prop_menu_enum(vl_settings, 'second_axis')
-            # layout.prop_menu_enum(vl_settings, 'scene_scale_mode')
+            layout.prop_menu_enum(vl_settings, 'scene_scale_mode')
 
             # layout.prop(vl_settings, 'scene_scale')
             # col = layout.column()
@@ -128,38 +127,47 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             vl_properties_camera.set_defaults(self.vl_settings)
             self.vl_settings.initialized = True
 
-        vl_utils.adjust_vanishing_lines_to_camera(self.vl_settings, camera_object) # adjust vanishing lines to the current transform of the camera
-        self.vl_settings.mode = 'TWO_POINT'  # default mode
-        self.vl_settings.focal_length = camera_object.data.lens # initialize focal length for one point mode. TODO: update this, in other modes, so on switch, the camera lens is preserved
-        self.vl_settings.scene_scale_mode = 'ANCHOR'
+        # vl_utils.adjust_vanishing_lines_to_camera(self.vl_settings, camera_object) # adjust vanishing lines to the current transform of the camera
+        # self.vl_settings.mode = 'TWO_POINT'  # default mode
+        # self.vl_settings.focal_length = camera_object.data.lens # initialize focal length for one point mode. TODO: update this, in other modes, so on switch, the camera lens is preserved
+        # self.vl_settings.scene_scale_mode = 'ANCHOR'
+
+        # reference_axis = {
+        #     'ANCHOR': None,
+        #     'SCREEN': solver.types.ReferenceAxis.Screen,
+        #     'X_AXIS': solver.types.ReferenceAxis.X_Axis,
+        #     'Y_AXIS': solver.types.ReferenceAxis.Y_Axis,
+        #     'Z_AXIS': solver.types.ReferenceAxis.Z_Axis
+        # }[self.vl_settings.scene_scale_mode]
 
         
-        match self.vl_settings.anchor_mode:
-            case 'CURSOR':
-                cursor = context.scene.cursor.location.copy()
-                anchor_world = glm.vec3(cursor.x, cursor.y, cursor.z)
-            case 'VIEW_ORBIT':
-                orbit_location = self._context_space.region_3d.view_location.copy()
-                anchor_world = glm.vec3(orbit_location.x, orbit_location.y, orbit_location.z)
-            case 'WORLD_ORIGIN':
-                anchor_world = glm.vec3(0.0, 0.0, 0.0)
+        # match self.vl_settings.anchor_mode:
+        #     case 'CURSOR':
+        #         cursor = context.scene.cursor.location.copy()
+        #         anchor_world = glm.vec3(cursor.x, cursor.y, cursor.z)
+        #     case 'VIEW_ORBIT':
+        #         orbit_location = self._context_space.region_3d.view_location.copy()
+        #         anchor_world = glm.vec3(orbit_location.x, orbit_location.y, orbit_location.z)
+        #     case 'WORLD_ORIGIN':
+        #         anchor_world = glm.vec3(0.0, 0.0, 0.0)
 
-        projection, view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
-        unsolve_result = solver.core.unsolve(
-            viewport=solver.types.Rect(-1,-1,2,2),
-            projection=projection,
-            view=view,
-            anchor_world=anchor_world,
-            first_axis=solver.types.Axis.PositiveX,
-            second_axis=solver.types.Axis.PositiveY
-        )
-        print("unsolve_result",unsolve_result)
-        self.vl_settings.origin = (unsolve_result.anchor.x, unsolve_result.anchor.y)
-        # Always set scene_scale_mode and scene_scale to the unsolve result
-        self.vl_settings.scene_scale_mode = 'ANCHOR'
-        self.vl_settings.scene_scale = unsolve_result.anchor_distance
-        if unsolve_result.anchor_distance < 0:
-            print("[invoke] Origin is behind the camera. Negative scene_scale:", unsolve_result.anchor_distance)
+        # projection, view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
+        # unsolve_result = solver.core.unsolve(
+        #     viewport=solver.types.Rect(-1,-1,2,2),
+        #     projection=projection,
+        #     view=view,
+        #     reference_axis=reference_axis
+        #     anchor_world=anchor_world,
+        #     first_axis=solver.types.Axis.PositiveX,
+        #     second_axis=solver.types.Axis.PositiveY
+        # )
+        # print("unsolve_result",unsolve_result)
+        # self.vl_settings.origin = (unsolve_result.anchor.x, unsolve_result.anchor.y)
+        # # Always set scene_scale_mode and scene_scale to the unsolve result
+        # self.vl_settings.scene_scale_mode = 'ANCHOR'
+        # self.vl_settings.scene_scale = unsolve_result.anchor_distance
+        # if unsolve_result.anchor_distance < 0:
+        #     print("[invoke] Origin is behind the camera. Negative scene_scale:", unsolve_result.anchor_distance)
 
         # Register the statusbar draw callback
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
@@ -168,7 +176,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self.uiview = View3DUI()
 
         # initial solve
-        # self.update_solve()
+        self.update_solve(context)
 
         # # Subscribe to camera lens changes for this operator instance
         # self._msgbus_owner = object()
@@ -454,6 +462,28 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                     anchor_world = glm.vec3(cursor.x, cursor.y, cursor.z)
                     anchor_screen = glm.vec2(vl_settings.origin[0],    vl_settings.origin[1])
 
+            # convert blender focal length to solver focal length
+            match self._context_area.spaces.active.region_3d.view_perspective:
+                case 'CAMERA':
+                    camera_object = self._context_area.spaces.active.camera
+                    focal_length = self.vl_settings.focal_length / camera_object.data.sensor_width * compute_space.height
+
+                case 'PERSP':
+                    # print("compute for PERSP view")
+                    # region_aspect = self._context_area.width / self._context_area.height
+                    # get region aspect from context area
+                    region = next((r for r in self._context_area.regions if r.type == 'WINDOW'), None)
+                    region_aspect = region.width / region.height
+                    if region_aspect >= 1.0:
+                        focal_length = self.vl_settings.focal_length / 36.0 * compute_space.width
+                    else:
+                        # print("compute for PERSP view - height")
+                        focal_length = self.vl_settings.focal_length / 24.0 * compute_space.height
+
+                case 'ORTHO':
+                    self._context_area.spaces.active.region_3d.view_perspective = 'PERSP'
+                    focal_length = self.vl_settings.focal_length / 36.0 * compute_space.height
+
             projection, view = solver.core.solve(
                 mode = mode,
                 viewport=compute_space,
@@ -461,7 +491,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 second_vanishing_lines=second_vanishing_lines,
                 third_vanishing_lines= [(glm.vec2(*line.start), glm.vec2(*line.end)) for line in  vl_settings.third_vanishing_lines],
 
-                f = self.vl_settings.focal_length, # used only in one point mode
+                f = focal_length, # used only in one point mode
                 P = glm.vec2(0,0), # TODO: is [0], [1] necessary?
                 anchor_screen = anchor_screen,
                 anchor_world = anchor_world,
@@ -485,7 +515,10 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 fit_mode=camera_object.data.sensor_fit
             )
                     
+            # Clear previous error message
+            self.vl_settings.error_message = ""
         except solver.exceptions.VanishingLinesError as e:
+            # Store error message in vl_settings
             error_type = type(e).__name__  # Gets 'ValueError' as a string
             error_message = str(e)         # Gets the actual message you wrote in 'raise'
             self.vl_settings.error_message = f"{error_type}\n{error_message}"
@@ -493,7 +526,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         except Exception as e:
             import traceback
             traceback.print_exc()
-            self.vl_settings.error_message = ""
 
         if self._context_area.type == 'VIEW_3D':
             self._context_area.tag_redraw()
@@ -673,11 +705,11 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 case 'INCHES':
                     length_unit = "in"
                 
-            # self.uiview.prop_distance_segment(vl_settings, "reference_distance_segment", 
-            #     origin=vl_settings.origin,
-            #     direction=get_distance_measurement_direction(),
-            #     text=f"{vl_settings.scene_scale:.2f}{length_unit}",
-            #     color=ORANGE)
+            self.uiview.prop_distance_segment(vl_settings, "reference_distance_segment", 
+                origin=vl_settings.origin,
+                direction=get_distance_measurement_direction(),
+                text=f"{vl_settings.scene_scale:.2f}{length_unit}",
+                color=ORANGE)
         
         if vl_settings.anchor_mode == 'VIEW_ORBIT':
             O = context.scene.cursor.location.copy()

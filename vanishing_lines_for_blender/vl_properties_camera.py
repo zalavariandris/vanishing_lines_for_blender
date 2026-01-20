@@ -86,8 +86,7 @@ class VLSettings(bpy.types.PropertyGroup):
         default=50.0,
         min=1.0,
         max=1000.0,
-        unit='LENGTH',
-        subtype='DISTANCE',
+        unit='CAMERA',
         description="Focal length of the camera lens", 
         options=set()
     ) # type: ignore
