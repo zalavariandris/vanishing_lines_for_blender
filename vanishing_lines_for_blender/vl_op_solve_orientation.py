@@ -131,24 +131,35 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         vl_utils.adjust_vanishing_lines_to_camera(self.vl_settings, camera_object) # adjust vanishing lines to the current transform of the camera
         self.vl_settings.mode = 'TWO_POINT'  # default mode
         self.vl_settings.focal_length = camera_object.data.lens # initialize focal length for one point mode. TODO: update this, in other modes, so on switch, the camera lens is preserved
+        self.vl_settings.scene_scale_mode = 'ANCHOR'
 
-        view_orbit_point = self._context_space.region_3d.view_location.copy()
+        
+        match self.vl_settings.anchor_mode:
+            case 'CURSOR':
+                cursor = context.scene.cursor.location.copy()
+                anchor_world = glm.vec3(cursor.x, cursor.y, cursor.z)
+            case 'VIEW_ORBIT':
+                orbit_location = self._context_space.region_3d.view_location.copy()
+                anchor_world = glm.vec3(orbit_location.x, orbit_location.y, orbit_location.z)
+            case 'WORLD_ORIGIN':
+                anchor_world = glm.vec3(0.0, 0.0, 0.0)
+
         projection, view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
-        # unsolve_result = solver.core.unsolve(
-        #     viewport=solver.types.Rect(-1,-1,2,2),
-        #     projection=projection,
-        #     view=view,
-        #     anchor_world=glm.vec3(view_orbit_point.x, view_orbit_point.y, view_orbit_point.z), # world origin
-        #     first_axis=solver.types.Axis.PositiveX,
-        #     second_axis=solver.types.Axis.PositiveY
-        # )
-        # print("unsolve_result",unsolve_result)
-        # self.vl_settings.origin = (unsolve_result.anchor.x, unsolve_result.anchor.y)
-        # # Always set scene_scale_mode and scene_scale to the unsolve result
-        # self.vl_settings.scene_scale_mode = 'ANCHOR'
-        # self.vl_settings.scene_scale = unsolve_result.anchor_distance
-        # if unsolve_result.anchor_distance < 0:
-        #     print("[invoke] Origin is behind the camera. Negative scene_scale:", unsolve_result.anchor_distance)
+        unsolve_result = solver.core.unsolve(
+            viewport=solver.types.Rect(-1,-1,2,2),
+            projection=projection,
+            view=view,
+            anchor_world=anchor_world,
+            first_axis=solver.types.Axis.PositiveX,
+            second_axis=solver.types.Axis.PositiveY
+        )
+        print("unsolve_result",unsolve_result)
+        self.vl_settings.origin = (unsolve_result.anchor.x, unsolve_result.anchor.y)
+        # Always set scene_scale_mode and scene_scale to the unsolve result
+        self.vl_settings.scene_scale_mode = 'ANCHOR'
+        self.vl_settings.scene_scale = unsolve_result.anchor_distance
+        if unsolve_result.anchor_distance < 0:
+            print("[invoke] Origin is behind the camera. Negative scene_scale:", unsolve_result.anchor_distance)
 
         # Register the statusbar draw callback
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
@@ -667,12 +678,25 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             #     direction=get_distance_measurement_direction(),
             #     text=f"{vl_settings.scene_scale:.2f}{length_unit}",
             #     color=ORANGE)
-            
-        anchor_is_behind = vl_settings.scene_scale < 0
-        if not anchor_is_behind:
-            _ = self.uiview.prop_point(vl_settings, "origin",    
+        
+        if vl_settings.anchor_mode == 'VIEW_ORBIT':
+            O = context.scene.cursor.location.copy()
+            self.uiview._painter.add_point(
+                pos=self.uiview.project(O),
+                color=YELLOW,
+                shape='X'
+            )
+            self.uiview._painter.add_annotation(
+                pos=self.uiview.project(O),
                 text="O",
-                color=YELLOW)
+                color=YELLOW
+            )
+        else:
+            anchor_is_behind = vl_settings.scene_scale < 0
+            if not anchor_is_behind:
+                _ = self.uiview.prop_point(vl_settings, "origin",    
+                    text="O",
+                    color=YELLOW)
 
         ###########################################
         # DRAW Extended lines to vanishing points #

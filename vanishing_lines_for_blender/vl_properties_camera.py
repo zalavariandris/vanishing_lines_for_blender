@@ -108,7 +108,7 @@ class VLSettings(bpy.types.PropertyGroup):
             ('Y_AXIS', "Y Axis", "Scale along world Y axis"),
             ('Z_AXIS', "Z Axis", "Scale along world Z axis")
         ],
-        default='X_AXIS',
+        default='ANCHOR',
         description="Method for determining scene scale reference", 
         options=set()
     ) # type: ignore
@@ -139,7 +139,7 @@ class VLSettings(bpy.types.PropertyGroup):
             ('CURSOR', "3D Cursor", "Use 3D cursor position as anchor point"),
             ('WORLD_ORIGIN', "Origin", "Use world origin as anchor point")
         ],
-        default='VIEW_ORBIT',
+        default='CURSOR',
         description="Method for determining anchor point in the scene", 
         options=set()
     ) # type: ignore

@@ -125,15 +125,16 @@ def solve(
         distance=reference_world_size
     )
     
-    if reference_axis is not None:
-        view = adjust_scale_to_reference_distance(
-            viewport, 
-            projection, 
-            reference_world_size, 
-            reference_axis, 
-            reference_distance_segment, 
-            view
-        )
+    # if reference_axis is not None:
+    #     view = adjust_scale_to_reference_distance(
+    #         viewport, 
+    #         projection, 
+    #         anchor_world,
+    #         reference_world_size, 
+    #         reference_axis, 
+    #         reference_distance_segment, 
+    #         view
+    #     )
 
     return projection, view
 
@@ -161,18 +162,17 @@ def unsolve(
         first_axis=first_axis, 
         second_axis=second_axis
     )
-
-    anchor_world = glm.vec3(0,0,0)
     
     anchor_screen = glm.project(anchor_world, view, projection, tuple(viewport)).xy
+    
     anchor_camera_space = view * glm.vec4(anchor_world, 1.0)
     is_behind_camera = anchor_camera_space.z > 0
-    anchor_distance = glm.length(glm.vec3(anchor_camera_space)) * (-1 if is_behind_camera else 1)
-
+    anchor_distance = glm.length(glm.vec3(anchor_camera_space))
     if is_behind_camera:
         # flip anchor around the rectangle center if distance is negative
         rect_center = glm.vec2(viewport.x + viewport.width / 2, viewport.y + viewport.height / 2)
         anchor_screen = rect_center * 2.0 - anchor_screen
+        anchor_distance = -anchor_distance
 
     return UnsolveResults(
         vp1=vp1,
@@ -413,25 +413,34 @@ def adjust_position_to_anchor(
         distance:float=1.0
     )->glm.mat4:
 
+    print("anchor_world:", anchor_world)
     is_behind_camera = distance < 0
     if is_behind_camera:
         # flip origin around the rectangle center if distance is negative
         rect_center = glm.vec2(viewport.x + viewport.width / 2, viewport.y + viewport.height / 2)
         anchor_screen = rect_center * 2.0 - anchor_screen
 
+
+
     ray_origin, ray_target = utils.cast_ray(anchor_screen, view, projection, viewport)  # to validate unprojection
     ray_direction = glm.normalize(ray_target - ray_origin)
     point_on_ray = ray_direction * distance
     camera_position = point_on_ray
-
-    view = glm.translate(view, camera_position)  # type: ignore[attr-defined]
+    view = glm.translate(view, camera_position-anchor_world)
+    
+    # print(f"anchor_world: {anchor_world}")
+    # trans_mat = glm.translate(glm.mat4(1.0), -anchor_world)
+    # view = view * trans_mat
 
     # move camera location in world space to match anchor_world
     return view
 
+
+
 def adjust_scale_to_reference_distance(
         viewport:Rect,
         projection:glm.mat4,
+        anchor_world:glm.vec3,
         reference_world_size:float, 
         reference_axis:ReferenceAxis,
         reference_distance_segment:Tuple[float, float],
@@ -457,7 +466,7 @@ def adjust_scale_to_reference_distance(
             reference_axis_vector = right
 
     # find reference axis in screen space
-    O_screen = glm.project(glm.vec3(0, 0, 0), view, projection, tuple(viewport)).xy
+    O_screen = glm.project(glm.vec3(0,0,0), view, projection, tuple(viewport)).xy
     V_screen = glm.project(reference_axis_vector, view, projection, tuple(viewport)).xy
     dir_screen = glm.normalize(glm.vec2(V_screen.x - O_screen.x, V_screen.y - O_screen.y))
 
