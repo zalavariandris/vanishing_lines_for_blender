@@ -244,7 +244,7 @@ def intersect_ray_with_rect(P: glm.vec2, Q: glm.vec2, rect: Rect) -> glm.vec2 | 
 # UTILITY FUNCTIONS #
 #####################
 
-def calc_vanishing_points_from_camera(
+def orientation_to_three_vanishing_points(
         view_matrix: glm.mat3, 
         projection_matrix: glm.mat4, 
         viewport: Rect,
@@ -266,7 +266,7 @@ def calc_vanishing_points_from_camera(
         (vp_for_first_axis, vp_for_second_axis, vp_for_third_axis).
         Otherwise returns (vpX, vpY, vpZ).
     """
-    vpX, vpY, vpZ = _impl_calc_vanishing_points_from_camera(view_matrix, projection_matrix, viewport)
+    vpX, vpY, vpZ = _impl_orientation_to_three_vanishing_points(view_matrix, projection_matrix, viewport)
     
     # If no axis assignment provided, return in default X, Y, Z order
     if first_axis is None:
@@ -294,7 +294,7 @@ def calc_vanishing_points_from_camera(
     
     return vp1, vp2, vp3
 
-def _impl_calc_vanishing_points_from_camera(
+def _impl_orientation_to_three_vanishing_points(
         view_matrix: glm.mat3, 
         projection_matrix: glm.mat4, 
         viewport: Rect
@@ -368,7 +368,7 @@ def adjust_vanishing_lines_to_camera_orientation(
         # Map vanishing points by axis assignment
 
         
-        vp1, vp2, vp3 = calc_vanishing_points_from_camera(
+        vp1, vp2, vp3 = orientation_to_three_vanishing_points(
             glm.mat3(view_matrix), 
             projection_matrix, 
             Rect(-1,-1,2,2),

@@ -57,15 +57,14 @@ def solve(
         handedness:Literal['right-handed', 'left-handed']="right-handed" 
     )->Tuple[glm.mat4, glm.mat4]:
 
-    print(f"Solve")
-    print(f" Mode: {mode}")
-    print(f" Focal Length: {f}")
-    print(f" P: {P}")
-    print(f" A: {anchor_screen}")
-    print(f" Reference Axis: {reference_axis}")
-    print(f" reference_world_size: {reference_world_size}")
+    # print(f"Solve")
+    # print(f" Mode: {mode}")
+    # print(f" Focal Length: {f}")
+    # print(f" P: {P}")
+    # print(f" A: {anchor_screen}")
+    # print(f" Reference Axis: {reference_axis}")
+    # print(f" reference_world_size: {reference_world_size}")
     
-
 
     match mode:
         case SolverMode.OneVP:
@@ -155,16 +154,18 @@ def unsolve(
         first_axis:Axis, 
         second_axis:Axis, 
         handedness:Literal['right-handed', 'left-handed']="right-handed")->UnsolveResults:
-    vp1, vp2, vp3 = utils.calc_vanishing_points_from_camera(
+    
+    # unsolve orientaion
+    vp1, vp2, vp3 = utils.orientation_to_three_vanishing_points(
         glm.mat3(view), 
         projection, 
         viewport, 
         first_axis=first_axis, 
         second_axis=second_axis
     )
-    
+
+    # unsolve anchor world
     anchor_screen = glm.project(anchor_world, view, projection, tuple(viewport)).xy
-    
     anchor_camera_space = view * glm.vec4(anchor_world, 1.0)
     is_behind_camera = anchor_camera_space.z > 0
     anchor_distance = glm.length(glm.vec3(anchor_camera_space))
