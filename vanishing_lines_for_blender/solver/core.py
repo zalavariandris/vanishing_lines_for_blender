@@ -30,7 +30,7 @@ from . exceptions import (
 )
 
 from . import helpers
-
+from dataclasses import dataclass
 
 #########################
 # MAIN SOLVER FUNCTIONS #

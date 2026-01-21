@@ -63,8 +63,7 @@ def cast_ray(
     returns the ray origin and target.
     
     Args:
-        screen_x: X coordinate in pixel space
-        screen_y: Y coordinate in pixel space
+        P: 2D point in screen space
         view_matrix: Camera view matrix
         projection_matrix: Camera projection matrix
         viewport: Viewport (x, y, width, height)
