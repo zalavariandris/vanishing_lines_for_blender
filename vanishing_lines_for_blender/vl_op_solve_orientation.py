@@ -25,50 +25,7 @@ from pyglm import glm
 FONT_SIZE = 16
 LINE_HEIGHT = 18
 
-<<<<<<< HEAD
-=======
 
-def unsolve(projection: glm.mat4, view: glm.mat4):
-    return vp1, vp2, vp3
-
-class VIEW3D_MT_vl_solve_orientation_context(bpy.types.Menu):
-    bl_label = "Vanishing Lines Context Menu"
-    bl_idname = "VIEW3D_MT_vl_solve_orientation_context"
-
-    @classmethod
-    def poll(kls, context):
-        return vl_utils.is_operator_running('VIEW3D_OT_vl_solve_orientation')
-
-    def draw(self, context):
-        layout = self.layout.column()
-        if op:=vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation'):
-            vl_settings = op.vl_settings
-            layout.prop_tabs_enum(vl_settings, 'mode')
-            layout.prop_menu_enum(vl_settings, 'anchor_mode')
-
-            # row = layout.row()
-            # row.enabled = vl_settings.mode in {'ONE_POINT'}
-            # row.prop(context.area.spaces.active.camera.data, 'lens')
-            
-            # row = layout.row()
-            # row.enabled = vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}
-            # row.prop(vl_settings, 'quad_mode')
-
-            # row = layout.row()
-            # row.enabled = vl_settings.mode in {'ONE_POINT', 'TWO_POINT'}
-            # # row.prop(vl_settings, 'enable_manual_principal')
-            # layout.prop_menu_enum(vl_settings, 'first_axis')
-            # layout.prop_menu_enum(vl_settings, 'second_axis')
-            layout.prop_menu_enum(vl_settings, 'scene_scale_mode')
-
-            # layout.prop(vl_settings, 'scene_scale')
-            # col = layout.column()
-            # col.enabled = vl_settings.scene_scale_mode != 'ANCHOR'
-            # col.prop(vl_settings, 'reference_distance_segment', index=0)
-            # col.prop(vl_settings, 'reference_distance_segment', index=1)
-        
-
->>>>>>> fab3c5a7c425b6e04d9da860da6cea5c44e3bfc2
 class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
     bl_idname = "view3d.vl_solve_orientation"
     bl_label = "Vanishing Lines View Tool"
@@ -133,6 +90,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         ######################################
         vl_settings = camera_object.vl_settings
 
+        # Get current camera matrices, before set to defaults
+        glm_proj, glm_view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
+
         # Initialize defaults
         if not vl_settings.initialized:
             # Load existing parameters from camera
@@ -145,8 +105,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         cursor = context.scene.cursor.location.copy()
         
         # check if cursor is behind the camera
-        _, view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
-        cursor_camera_space = view * glm.vec4(cursor.x, cursor.y, cursor.z, 1.0)
+        cursor_camera_space = glm_view * glm.vec4(cursor.x, cursor.y, cursor.z, 1.0)
         is_cursor_behind = cursor_camera_space.z > 0
 
         if is_cursor_behind:
@@ -159,9 +118,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # Match VLSettings to current Camera #
         ######################################
         # update vl_settings matrices to current camera
-        glm_proj, glm_view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
         vl_settings.proj_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm.transpose(glm_proj)))
         vl_settings.view_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm.transpose(glm_view)))
+
         ###########
         # unsolve #
         ###########
@@ -175,7 +134,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             'Z-': solver.types.Axis.NegativeZ
         }
 
-        # adjust vanishing lines #TODO: refactor this part
+        # I. adjust VANISHING LINES #TODO: refactor this part
         vp1, vp2, vp3 = solver.utils.orientation_to_three_vanishing_points(
             glm.mat3(glm_view), 
             glm_proj, 
@@ -184,20 +143,20 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             second_axis=axis_map[vl_settings.second_axis]
         )
 
-        vl_utils.adjust_vanishing_lines_to_camera(
+        vl_utils.adjust_vanishing_lines_to_matrices(
             vl_settings, 
             glm_proj,
             glm_view
         )
 
-        # adjust anchor screen
+        # II. adjust ANCHOR SCREEN
         anchor_screen:glm.vec2 = glm.project(
             glm.vec3(vl_settings.anchor_world.x, vl_settings.anchor_world.y, vl_settings.anchor_world.z), 
             glm_view, glm_proj, tuple(viewport)
         ).xy
         vl_settings.anchor_screen = (anchor_screen.x, anchor_screen.y)
 
-        # adjust reference scale
+        # III. adjust REFERENCE SCENE SCALE
         anchor_world = glm.vec3(vl_settings.anchor_world[0], vl_settings.anchor_world[1], vl_settings.anchor_world[2])
         match vl_settings.reference_scale_mode:
             case 'ANCHOR':
@@ -214,11 +173,11 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                         ref_axis_vec = glm.vec3(0, 0, 1)
                     case 'SCREEN' | _:
                         # Right vector is column 0 of the inverse view matrix
-                        ref_axis_vec = glm.vec3(glm.inverse(view)[0])
+                        ref_axis_vec = glm.vec3(glm.inverse(glm_view)[0])
 
         # --- 2. Measure current world length on screen ---
-        A_screen = glm.project(anchor_world, view, glm_proj, tuple(viewport)).xy
-        V_screen = glm.project(anchor_world + ref_axis_vec, view, glm_proj, tuple(viewport)).xy
+        A_screen = glm.project(anchor_world, glm_view, glm_proj, tuple(viewport)).xy
+        V_screen = glm.project(anchor_world + ref_axis_vec, glm_view, glm_proj, tuple(viewport)).xy
         dir_screen = glm.normalize(V_screen - anchor_screen)
 
         def get_world_pos(screen_pos):
@@ -232,6 +191,13 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
         vl_settings.reference_scene_scale = world_length
 
+
+        # apply current state, here we ensure that the solve is up to date, but if the usolve was correct, this should not change anything
+        vl_settings.solve()
+        vl_settings.to_camera(context.space_data.camera)
+        self.update_solve(context)
+
+        # ================================
 
         # # Set anchor point based on cursor position
         # cursor = context.scene.cursor.location.copy()
@@ -298,7 +264,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self.uiview = View3DUI()
 
         # initial solve
-        self.update_solve(context)
+        # self.update_solve(context)
 
         # # Subscribe to camera lens changes for this operator instance
         # self._msgbus_owner = object()
@@ -378,7 +344,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # capture ui controls events
         changed = self.uiview.event(context, event)
         if changed:
-            # self.update_solve(context)
+            vl_settings.solve()
+            vl_settings.to_camera(context.space_data.camera)
+            self.update_solve(context)
             return {'RUNNING_MODAL'}  
 
         # ############# #

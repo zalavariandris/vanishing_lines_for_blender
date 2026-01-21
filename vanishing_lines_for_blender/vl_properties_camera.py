@@ -47,9 +47,8 @@ def on_property_update(vl_settings, context):
         return
     
     vl_settings = camera_object.vl_settings
-
-    vl_settings.solve()
-    vl_settings.to_camera(camera_object)
+    vl_settings.solve() 
+    vl_settings.to_camera(camera_object) # TODO: if uncommented, than initial unsolve will be overridden...
     
 from . import vl_utils
 
@@ -390,7 +389,7 @@ class VLSettings(bpy.types.PropertyGroup):
             second_axis=axis_map[self.second_axis]
         )
 
-        vl_utils.adjust_vanishing_lines_to_camera(
+        vl_utils.adjust_vanishing_lines_to_matrices(
             self, 
             projection,
             view

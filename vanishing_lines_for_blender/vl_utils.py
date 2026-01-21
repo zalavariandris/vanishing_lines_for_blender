@@ -381,7 +381,7 @@ def ball_control(M:glm.mat4, pivot:glm.vec3, yaw:float, pitch:float) -> glm.mat4
     return M
 
 # adjust vanishing lines to new camera orientation
-def adjust_vanishing_lines_to_camera(vl_settings, projection_matrix:glm.mat4, view_matrix:glm.mat4):
+def adjust_vanishing_lines_to_matrices(vl_settings, projection_matrix:glm.mat4, view_matrix:glm.mat4):
     print("Adjusting vanishing lines to camera orientation...")
 
     first_vanishing_lines =  [(line.start, line.end) for line in vl_settings.first_vanishing_lines]
