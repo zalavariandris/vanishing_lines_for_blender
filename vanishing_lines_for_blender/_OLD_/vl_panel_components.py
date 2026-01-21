@@ -149,7 +149,7 @@ def draw_reference_distance_panel(layout, camera):
         reference_distance_panel.prop(camera.data.vl_settings, "scene_scale", text="Scene Scale")
 
         row = reference_distance_panel.row()
-        row.enabled = camera.data.vl_settings.scene_scale_mode != 'ORIGIN'
+        row.enabled = camera.data.vl_settings.scene_scale_mode != 'ANCHOR'
         # row.prop(camera.data.vl_settings, "reference_distance", text="Reference Distance")
         row.prop(camera.data.vl_settings, "reference_distance_segment", text="Reference Distance Segment")
         reference_distance_panel.separator()

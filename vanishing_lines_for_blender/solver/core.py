@@ -5,6 +5,8 @@ import warnings
 # third party library
 from pyglm import glm
 
+from dataclasses import dataclass
+
 # local imports
 from .constants import (
     EPSILON, 
@@ -15,7 +17,6 @@ from .constants import (
 
 from . import utils
 from . types import (
-    Point2, 
     Line2, 
     Rect, 
     SolverMode, 
@@ -43,8 +44,9 @@ def solve(
         third_vanishing_lines:  List[Line2],
 
         f:float, # focal length (in height units)
-        P:Point2|None,
-        O:Point2|None,
+        P:glm.vec2|None,
+        anchor_screen:glm.vec2,
+        anchor_world:glm.vec3,
 
         reference_axis:ReferenceAxis|None,
         reference_distance_segment:Tuple[float, float], # 2D distance from origin to camera
@@ -54,6 +56,15 @@ def solve(
         second_axis:Axis,
         handedness:Literal['right-handed', 'left-handed']="right-handed" 
     )->Tuple[glm.mat4, glm.mat4]:
+
+    # print(f"Solve")
+    # print(f" Mode: {mode}")
+    # print(f" Focal Length: {f}")
+    # print(f" P: {P}")
+    # print(f" A: {anchor_screen}")
+    # print(f" Reference Axis: {reference_axis}")
+    # print(f" reference_world_size: {reference_world_size}")
+    
 
     match mode:
         case SolverMode.OneVP:
@@ -99,17 +110,10 @@ def solve(
     view = adjust_position_to_origin(
         viewport, 
         projection, 
-        O, 
+        anchor_screen, 
         view,
         distance=reference_world_size
     )
-
-    view = adjust_axis_assignment(
-        first_axis,
-        second_axis,
-        view,
-        handedness
-    )    
     
     if reference_axis is not None:
         view = adjust_scale_to_reference_distance(
@@ -121,48 +125,74 @@ def solve(
             view
         )
 
+    view = adjust_axis_assignment(
+        first_axis,
+        second_axis,
+        view,
+        handedness
+    )
+
+    # finally, translate view matrix by anchor_world
+    view = view * glm.inverse(glm.translate(glm.mat4(1.0), anchor_world))
+
     return projection, view
 
+
 @dataclass
-class UnsolveResult:
-    vp1: glm.vec2
-    vp2: glm.vec2
-    vp3: glm.vec2
-    O: glm.vec2
-    origin_distance: float
+class UnsolveResults:
+    vp1:glm.vec2
+    vp2:glm.vec2
+    vp3:glm.vec2
+    anchor: glm.vec2
+    anchor_distance: float
 
 def unsolve(
-        projection: glm.mat4, 
-        view: glm.mat4,
-        first_axis:Axis,
-        second_axis:Axis
-    ) -> UnsolveResult:
-
-    vp1, vp2, vp3 = utils.calc_vanishing_points_from_camera(
+        viewport:Rect, 
+        projection:glm.mat4, 
+        view:glm.mat4, 
+        anchor_world:glm.vec3,
+        first_axis:Axis, 
+        second_axis:Axis, 
+        handedness:Literal['right-handed', 'left-handed']="right-handed")->UnsolveResults:
+    
+    # unsolve orientaion
+    vp1, vp2, vp3 = utils.orientation_to_three_vanishing_points(
         glm.mat3(view), 
         projection, 
-        Rect(-1,-1,2,2),
-        first_axis=first_axis,
+        viewport, 
+        first_axis=first_axis, 
         second_axis=second_axis
     )
 
-    # compute origin distance
-    O = glm.project(glm.vec3(0,0,0), view, projection, (-1,-1,2,2)).xy
-    ray_origin, ray_target = utils.cast_ray(O, view, projection, glm.vec4(-1,-1,2,2))  # to validate unprojection
-    ray_direction = glm.normalize(ray_target - ray_origin)
-    origin_distance = glm.dot(-ray_origin, ray_direction)
+    # unsolve anchor world
+    anchor_screen = glm.project(anchor_world, view, projection, tuple(viewport)).xy
+    anchor_camera_space = view * glm.vec4(anchor_world, 1.0)
+    is_behind_camera = anchor_camera_space.z > 0
+    anchor_distance = glm.length(glm.vec3(anchor_camera_space))
+    if is_behind_camera:
+        # flip anchor around the rectangle center if distance is negative
+        rect_center = glm.vec2(viewport.x + viewport.width / 2, viewport.y + viewport.height / 2)
+        anchor_screen = rect_center * 2.0 - anchor_screen
+        anchor_distance = -anchor_distance
 
-    return UnsolveResult(vp1, vp2, vp3, O, origin_distance)
+    return UnsolveResults(
+        vp1=vp1,
+        vp2=vp2,
+        vp3=vp3,
+        anchor=anchor_screen,
+        anchor_distance=anchor_distance
+    )
+
 #####################
 # SOLVER COMPONENTS #
 #####################
 
-def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> Point2:
+def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> glm.vec2:
     """
     Compute the least-squares intersection of 2D lines.
     
     Returns:
-        Tuple[float, float]: (The intersection point, The total squared error)
+        glm.vec2: (The intersection point, The total squared error)
     """
     if len(lines) < 2:
         raise VanishingLinesError("At least two lines are required.")
@@ -225,14 +255,14 @@ def compute_vanishing_point(lines: List[Line2], EPSILON: float = 1e-6) -> Point2
     #                2*y * S_bc + 
     #                S_cc)
 
-    return vp.x, vp.y
+    return glm.vec2(vp.x, vp.y)
 
 def orientation_from_one_vanishing_point(
-        viewport:Tuple[float, float, float, float], 
-        vp1:Point2, 
+        viewport:Rect, 
+        vp1:glm.vec2, 
         second_line:Line2, 
         f:float, 
-        P:Point2
+        P:glm.vec2
     )->Tuple[glm.mat4, glm.mat4]:
     # compute projection
     projection = utils.compose_intrinsics(viewport, f, P, DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE)
@@ -263,10 +293,10 @@ def orientation_from_one_vanishing_point(
     return projection, view
 
 def orientation_from_two_vanishing_points(
-        viewport:Tuple[float, float, float, float], 
-        vp1:Point2, 
-        vp2:Point2, 
-        P:Point2
+        viewport:Rect, 
+        vp1:glm.vec2, 
+        vp2:glm.vec2, 
+        P:glm.vec2
     )->Tuple[glm.mat4, glm.mat4]:
     """"""
     vp1 = glm.vec2(*vp1)
@@ -295,10 +325,10 @@ def orientation_from_two_vanishing_points(
     return projection, view
 
 def orientation_from_three_vanishing_points(
-        viewport:Tuple[float, float, float, float], 
-        vp1:Point2, 
-        vp2:Point2, 
-        vp3:Point2
+        viewport:Rect, 
+        vp1:glm.vec2, 
+        vp2:glm.vec2, 
+        vp3:glm.vec2
     )->Tuple[glm.mat4, glm.mat4]:
     """"""
 
@@ -330,10 +360,10 @@ def orientation_from_three_vanishing_points(
     return projection, view
 
 def _impl_compute_orientation_from_single_vanishing_point(
-        Fu:Point2, 
-        P:Point2, 
+        Fu:glm.vec2, 
+        P:glm.vec2, 
         f:float, 
-        horizon_direction:Point2
+        horizon_direction:glm.vec2
     )->glm.mat3:
     """
     Computes the camera orientation matrix from a single vanishing point.
@@ -352,9 +382,9 @@ def _impl_compute_orientation_from_single_vanishing_point(
     return orientation
 
 def _impl_compute_orientation_from_two_vanishing_points(
-        Fu:Point2, # first vanishing point
-        Fv:Point2, # second vanishing point
-        P:Point2,
+        Fu:glm.vec2, # first vanishing point
+        Fv:glm.vec2, # second vanishing point
+        P:glm.vec2,
         f:float
     )->glm.mat3:
 
@@ -371,107 +401,106 @@ def _impl_compute_orientation_from_two_vanishing_points(
 
     return orientation
 
-
 ###########################
 # ADJUST CAMERA FUNCTIONS #
 ###########################
-
+import math
 def adjust_position_to_origin(
-        viewport:Tuple[float, float, float, float],
+        viewport:Rect,
         projection:glm.mat4, 
-        O:Point2, 
+        origin_screen:glm.vec2, 
         view:glm.mat4,
         distance:float=1.0
     )->glm.mat4:
-    
-    O = glm.vec2(*O)
 
-    # # Convert world distance 1.0 to NDC z-coordinate
-    # near = DEFAULT_NEAR_PLANE
-    # far = DEFAULT_FAR_PLANE
-    
-    # # Perspective-correct depth calculation
-    # ndc_z = (far + near) / (far - near) + (2 * far * near) / ((far - near) * distance)
-    # ndc_z = (ndc_z + 1) / 2  # Convert from [-1, 1] to [0, 1]
-    
-    # # # Unproject the origin point at distance 1.0
-    # # origin_3d = glm.unProject(
-    # #     glm.vec3(O.x, O.y, ndc_z),
-    # #     view,
-    # #     projection,
-    # #     glm.vec4(viewport.x, viewport.y, viewport.width, viewport.height)
-    # # )
-    # # # Move camera so this point becomes the world origin
-    # # camera_position = -origin_3d
+    is_behind_camera = distance < 0
+    if is_behind_camera:
+        # flip origin around the rectangle center if distance is negative
+        rect_center = glm.vec2(viewport.x + viewport.width / 2, viewport.y + viewport.height / 2)
+        origin_screen = rect_center * 2.0 - origin_screen
 
-    ray_origin, ray_target = utils.cast_ray(O, view, projection, glm.vec4(*viewport))  # to validate unprojection
+    ray_origin, ray_target = utils.cast_ray(origin_screen, view, projection, viewport)  # to validate unprojection
     ray_direction = glm.normalize(ray_target - ray_origin)
     point_on_ray = ray_direction * distance
     camera_position = point_on_ray
+    view = glm.translate(view, camera_position)
     
-    view = glm.translate(view, camera_position)  # type: ignore[attr-defined]
-
     return view
+
+
+
+import glm
 
 def adjust_scale_to_reference_distance(
-        viewport:Tuple[float, float, float, float],
-        projection:glm.mat4,
-        reference_world_size:float, 
-        reference_axis:ReferenceAxis,
-        reference_distance_segment:Tuple[float, float],
-        view:glm.mat4, 
-    )->glm.mat4:
-    """ Calculate the world distance from origin based on the reference distance mode and value."""
+        viewport: Rect,
+        projection: glm.mat4,
+        reference_world_size: float, 
+        reference_axis: ReferenceAxis,
+        reference_distance_segment: Tuple[float, float],
+        view: glm.mat4, 
+    ) -> glm.mat4:
+    
     reference_offset, reference_length = reference_distance_segment
 
-    # Determine the reference axis vector in world space
+    # --- 1. Determine Axis ---
     match reference_axis:
         case ReferenceAxis.X_Axis:
-            reference_axis_vector = glm.vec3(1, 0, 0)
-
+            ref_axis_vec = glm.vec3(1, 0, 0)
         case ReferenceAxis.Y_Axis:
-            reference_axis_vector = glm.vec3(0, 1, 0)
-
+            ref_axis_vec = glm.vec3(0, 1, 0)
         case ReferenceAxis.Z_Axis:
-            reference_axis_vector = glm.vec3(0, 0, 1)
-
+            ref_axis_vec = glm.vec3(0, 0, 1)
         case ReferenceAxis.Screen | _:
-            # use camera right vector as reference axis
-            right = glm.mat3(glm.inverse(view))[0]   # right vector is +X in view space
-            reference_axis_vector = right
+            # Right vector is column 0 of the inverse view matrix
+            ref_axis_vec = glm.vec3(glm.inverse(view)[0])
 
-    # find reference axis in screen space
-    O_screen = glm.project(glm.vec3(0, 0, 0), view, projection, tuple(viewport)).xy
-    V_screen = glm.project(reference_axis_vector, view, projection, tuple(viewport)).xy
-    dir_screen = glm.normalize(glm.vec2(V_screen.x - O_screen.x, V_screen.y - O_screen.y))
+    # --- 2. Measure current world length on screen ---
+    A_screen = glm.project(glm.vec3(0,0,0), view, projection, tuple(viewport)).xy
+    V_screen = glm.project(glm.vec3(0,0,0) + ref_axis_vec, view, projection, tuple(viewport)).xy
+    
+    delta = V_screen - A_screen
+    if glm.length(delta) < 1e-5: return view
+    dir_screen = glm.normalize(delta)
 
-    # cast rayt from reference points in screen space to intersect with reference axis in world space
-    reference_start_point_screen = O_screen + dir_screen * reference_offset
-    reference_start_ray = utils.cast_ray(reference_start_point_screen, view, projection, tuple(viewport))
-    reference_start_point_world = utils.closest_point_between_lines(
-        (glm.vec3(0,0,0), reference_axis_vector), 
-        reference_start_ray
-    )
+    def get_world_pos(screen_pos):
+        ray = utils.cast_ray(screen_pos, view, projection, viewport)
+        return utils.closest_point_between_lines((glm.vec3(0,0,0), glm.vec3(0,0,0) + ref_axis_vec), ray)
 
-    reference_end_point_screen = O_screen + dir_screen * (reference_offset + reference_length)
-    reference_end_ray = utils.cast_ray(reference_end_point_screen, view, projection, tuple(viewport))
-    reference_end_point_world = utils.closest_point_between_lines(
-        (glm.vec3(0,0,0), reference_axis_vector), 
-        reference_end_ray
-    )
+    p_start = get_world_pos(A_screen + dir_screen * reference_offset)
+    p_end = get_world_pos(A_screen + dir_screen * (reference_offset + reference_length))
+    
+    current_world_length = glm.distance(p_start, p_end)
+    if current_world_length < 1e-5: return view
 
-    # compute the world distance between the two reference points
-    reference_world_length = glm.distance(reference_start_point_world, reference_end_point_world)
+    # --- 3. Calculate Scale Factor ---
+    # To make the object appear at 'reference_world_size', 
+    # we scale the distance between anchor and camera.
+    scale_factor = current_world_length / reference_world_size
 
-    # compute scale factor to match desired distance 
-    scale_factor = reference_world_length / reference_world_size
+    # --- 4. Update Camera Position ---
+    # Extract true camera world position: CamPos = - (Rotation_T * Translation)
+    inv_view = glm.inverse(view)
+    camera_world_pos = glm.vec3(inv_view[3])
+    
+    # Vector from anchor to camera
+    anchor_to_camera = camera_world_pos - glm.vec3(0,0,0)
+    
+    # Move camera along that vector
+    new_camera_world_pos = glm.vec3(0,0,0) + (anchor_to_camera / scale_factor)
 
-    # apply to view matrix
-    view = glm.mat4(view) # make a copy
-    view_position = glm.vec3(view[3])
-    new_view_position = view_position / scale_factor
-    view[3] = glm.vec4(new_view_position, 1.0)
-    return view
+    # --- 5. Reconstruct View Matrix ---
+    # The view matrix is: [ R | -R*Pos ]
+    # We keep the original rotation (upper-left 3x3)
+    new_view = glm.mat4(view) 
+    rotation_mat = glm.mat3(view)
+    
+    # The translation part (column 3) must be: -(Rotation * WorldPos)
+    new_view_translation = -(rotation_mat * new_camera_world_pos)
+    
+    new_view[3] = glm.vec4(new_view_translation, 1.0)
+    
+    return new_view
+
 
 def adjust_axis_assignment(
         first_axis: Axis, 

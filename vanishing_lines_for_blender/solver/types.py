@@ -1,17 +1,15 @@
 from enum import IntEnum
 from typing import Tuple
 from dataclasses import dataclass
-
+from pyglm import glm
 #########
 # TYPES #
 #########
-Point2 = Tuple[float, float]
-Point3 = Tuple[float, float, float]
-Line2 =  Tuple[Point2, Point2] # two endpoints
-Line3 =  Tuple[Point3, Point3] # two endpoints
-Ray2 =   Tuple[Point2, Point2] # origin, direction
-Ray3 =   Tuple[Point3, Point3] # origin, direction
-Plane3 = Tuple[Point3, Point3]  # point, normal
+Line2 = Tuple[glm.vec2, glm.vec2] # two endpoints
+Line3 = Tuple[glm.vec3, glm.vec3] # two endpoints
+Ray2 = Tuple[glm.vec2, glm.vec2] # origin, direction
+Ray3 = Tuple[glm.vec3, glm.vec3] # origin, direction
+Plane3 = Tuple[glm.vec3, glm.vec3]  # point, normal
 
 
 class Axis(IntEnum):
@@ -49,12 +47,12 @@ class Rect:
     height: float
 
     @property
-    def size(self) -> Point2:
-        return self.width, self.height
+    def size(self) -> glm.vec2:
+        return glm.vec2(self.width, self.height)
 
     @property
-    def center(self) -> Point2:
-        return (self.x + self.width / 2, self.y + self.height / 2)
+    def center(self) -> glm.vec2:
+        return glm.vec2(self.x + self.width / 2, self.y + self.height / 2)
     
     @property
     def aspect(self) -> float:
@@ -65,3 +63,15 @@ class Rect:
         yield self.y
         yield self.width
         yield self.height
+
+    def __getitem__(self, index):
+        if index == 0:
+            return self.x
+        elif index == 1:
+            return self.y
+        elif index == 2:
+            return self.width
+        elif index == 3:
+            return self.height
+        else:
+            raise IndexError("Rect index out of range")
