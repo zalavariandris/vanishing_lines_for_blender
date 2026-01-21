@@ -25,6 +25,50 @@ from pyglm import glm
 FONT_SIZE = 16
 LINE_HEIGHT = 18
 
+<<<<<<< HEAD
+=======
+
+def unsolve(projection: glm.mat4, view: glm.mat4):
+    return vp1, vp2, vp3
+
+class VIEW3D_MT_vl_solve_orientation_context(bpy.types.Menu):
+    bl_label = "Vanishing Lines Context Menu"
+    bl_idname = "VIEW3D_MT_vl_solve_orientation_context"
+
+    @classmethod
+    def poll(kls, context):
+        return vl_utils.is_operator_running('VIEW3D_OT_vl_solve_orientation')
+
+    def draw(self, context):
+        layout = self.layout.column()
+        if op:=vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation'):
+            vl_settings = op.vl_settings
+            layout.prop_tabs_enum(vl_settings, 'mode')
+            layout.prop_menu_enum(vl_settings, 'anchor_mode')
+
+            # row = layout.row()
+            # row.enabled = vl_settings.mode in {'ONE_POINT'}
+            # row.prop(context.area.spaces.active.camera.data, 'lens')
+            
+            # row = layout.row()
+            # row.enabled = vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}
+            # row.prop(vl_settings, 'quad_mode')
+
+            # row = layout.row()
+            # row.enabled = vl_settings.mode in {'ONE_POINT', 'TWO_POINT'}
+            # # row.prop(vl_settings, 'enable_manual_principal')
+            # layout.prop_menu_enum(vl_settings, 'first_axis')
+            # layout.prop_menu_enum(vl_settings, 'second_axis')
+            layout.prop_menu_enum(vl_settings, 'scene_scale_mode')
+
+            # layout.prop(vl_settings, 'scene_scale')
+            # col = layout.column()
+            # col.enabled = vl_settings.scene_scale_mode != 'ANCHOR'
+            # col.prop(vl_settings, 'reference_distance_segment', index=0)
+            # col.prop(vl_settings, 'reference_distance_segment', index=1)
+        
+
+>>>>>>> fab3c5a7c425b6e04d9da860da6cea5c44e3bfc2
 class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
     bl_idname = "view3d.vl_solve_orientation"
     bl_label = "Vanishing Lines View Tool"
