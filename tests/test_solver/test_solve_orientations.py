@@ -70,7 +70,7 @@ def test_orientation_with_two_vp():
     #     O=(640,280),
 
     #     reference_axis=solver.types.ReferenceAxis.X_Axis,
-    #     reference_distance_segment=(0,100),
+    #     reference_screen_segment=(0,100),
     #     reference_world_size=1.0,
 
     #     first_axis = solver.types.Axis.NegativeX,
@@ -138,7 +138,7 @@ def test_orientation_with_three_vp():
     #     O=(873,491),
 
     #     reference_axis=solver.types.ReferenceAxis.X_Axis,
-    #     reference_distance_segment=(0,100),
+    #     reference_screen_segment=(0,100),
     #     reference_world_size=1.0,
 
     #     first_axis = solver.types.Axis.NegativeX,

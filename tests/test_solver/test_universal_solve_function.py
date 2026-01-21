@@ -30,7 +30,7 @@ def test_solve_with_one_vp():
         O=(640,200),
 
         reference_axis=solver.types.ReferenceAxis.X_Axis,
-        reference_distance_segment=(0,100),
+        reference_screen_segment=(0,100),
         reference_world_size=1.0,
 
         first_axis = solver.types.Axis.NegativeX,
@@ -81,7 +81,7 @@ def test_solve_with_two_vp():
         O=(640,280),
 
         reference_axis=solver.types.ReferenceAxis.X_Axis,
-        reference_distance_segment=(0,100),
+        reference_screen_segment=(0,100),
         reference_world_size=1.0,
 
         first_axis = solver.types.Axis.NegativeX,
@@ -133,7 +133,7 @@ def test_solve_with_three_vp():
         O=(873,491),
 
         reference_axis=solver.types.ReferenceAxis.X_Axis,
-        reference_distance_segment=(0,100),
+        reference_screen_segment=(0,100),
         reference_world_size=1.0,
 
         first_axis = solver.types.Axis.NegativeX,
@@ -183,7 +183,7 @@ def test_solve_with_no_reference_axis():
         O=(640,280),
 
         reference_axis=None,
-        reference_distance_segment=(0,100),
+        reference_screen_segment=(0,100),
         reference_world_size=ORIGIN_DISTANCE,
 
         first_axis = solver.types.Axis.NegativeX,

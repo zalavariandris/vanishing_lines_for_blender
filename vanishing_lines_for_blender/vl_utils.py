@@ -1,3 +1,4 @@
+
 import bpy
 import math
 import mathutils
@@ -380,12 +381,9 @@ def ball_control(M:glm.mat4, pivot:glm.vec3, yaw:float, pitch:float) -> glm.mat4
     return M
 
 # adjust vanishing lines to new camera orientation
-def adjust_vanishing_lines_to_camera(vl_settings, camera):
+def adjust_vanishing_lines_to_camera(vl_settings, projection_matrix:glm.mat4, view_matrix:glm.mat4):
     print("Adjusting vanishing lines to camera orientation...")
-    projection_matrix, view_matrix = get_camera_matrices(
-        camera_object=camera, 
-        compute_space=solver.types.Rect(-1,-1,2,2)
-    )
+
     first_vanishing_lines =  [(line.start, line.end) for line in vl_settings.first_vanishing_lines]
     second_vanishing_lines = [(line.start, line.end) for line in vl_settings.second_vanishing_lines]
     third_vanishing_lines =  [(line.start, line.end) for line in vl_settings.third_vanishing_lines]
@@ -422,7 +420,6 @@ def adjust_vanishing_lines_to_camera(vl_settings, camera):
             vl_setting_lines[i].start = new_lines[i][0]
             vl_setting_lines[i].end =   new_lines[i][1]
 
-
 def projection_matrix_from_fov(
     fov_y: float,
     aspect_ratio: float,
@@ -456,22 +453,6 @@ def get_running_operator_by_idname(op_idname):
         if op and op.bl_idname == op_idname:
             return op
     return None
-
-def glm_to_blender_mat(glm_mat:glm.mat4) -> mathutils.Matrix:
-    """
-    Converts a glm.mat4 object to a Blender mathutils.Matrix (4x4).
-    """
-    # 1. Feed the 4 columns of the glm.mat4 into the constructor
-    # 2. Transpose the result to flip it from column-major to row-major
-    return mathutils.Matrix(tuple(glm_mat)).transposed()
-
-def glm_from_blender_mat(blender_mat:mathutils.Matrix) -> glm.mat4:
-    """
-    Converts a Blender mathutils.Matrix (4x4) to a glm.mat4 object.
-    """
-    # 1. Transpose the Blender matrix to convert from row-major to column-major
-    # 2. Feed the resulting iterable into the glm.mat4 constructor
-    return glm.mat4(*flatten(blender_mat.transposed()))
 
 def set_view_camera(context, camera_object: bpy.types.Object):
     space = context.space_data
@@ -519,3 +500,34 @@ def get_view_orbit_point(context) -> mathutils.Vector|None:
     
     return space.region_3d.view_location.copy() # note: view_location is actually the Orbit Pivot Point (the target), not the camera's physical position in world space.
  
+def glm_to_blender_mat(glm_mat:glm.mat4) -> mathutils.Matrix:
+    """
+    Converts a glm.mat4 object to a Blender mathutils.Matrix (4x4).
+    """
+    # 1. Feed the 4 columns of the glm.mat4 into the constructor
+    # 2. Transpose the result to flip it from column-major to row-major
+    return mathutils.Matrix(tuple(glm_mat)).transposed()
+
+def glm_from_blender_mat(blender_mat:mathutils.Matrix) -> glm.mat4:
+    """
+    Converts a Blender mathutils.Matrix (4x4) to a glm.mat4 object.
+    """
+    # 1. Transpose the Blender matrix to convert from row-major to column-major
+    # 2. Feed the resulting iterable into the glm.mat4 constructor
+    return glm.mat4(*flatten(blender_mat.transposed()))
+
+def matrix_to_array(mat: mathutils.Matrix) -> list[float]:
+    """
+    Convert a 4x4 mathutils.Matrix to a flat list of 16 floats (row-major order).
+    """
+    if not isinstance(mat, mathutils.Matrix) or len(mat.col) != 4 or len(mat.row) != 4:
+        raise ValueError("Input must be a 4x4 mathutils.Matrix")
+    return [v for row in mat for v in row]
+
+def array_to_matrix(arr: list[float]) -> mathutils.Matrix:
+    """
+    Convert a flat list of 16 floats to a 4x4 mathutils.Matrix (row-major order).
+    """
+    if not isinstance(arr, (list, tuple)) or len(arr) != 16:
+        raise ValueError(f"Input must be a list or tuple of 16 floats got: {arr}")
+    return mathutils.Matrix([arr[i*4:(i+1)*4] for i in range(4)])

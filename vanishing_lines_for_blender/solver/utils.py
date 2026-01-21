@@ -624,7 +624,30 @@ def decompose_extrinsics(view)->Tuple[glm.vec3, glm.quat]:
     
     return translation, quat
 
+def is_frustum_matrix(m: glm.mat4, tol=1e-6):
+    # 1. Perspective check: In a frustum, the W-component must 
+    # depend on -Z (OpenGL standard). 
+    # m[2][3] is the element at row 4, column 3 (0-indexed: [column][row])
+    if abs(m[2][3] + 1.0) > tol:
+        return False
+    
+    # 2. Hard Zeros: These slots MUST be zero in a standard frustum
+    # m[col][row]
+    if abs(m[0][1]) > tol or abs(m[0][3]) > tol: return False # Col 0
+    if abs(m[1][0]) > tol or abs(m[1][3]) > tol: return False # Col 1
+    if abs(m[3][3]) > tol: return False                      # Col 3, Row 4
+    
+    # 3. Determinant check: Must be a valid transformation
+    if abs(glm.determinant(m)) < tol:
+        return False
+
+    return True
+
+
+
 def decompose_frustum(P: glm.mat4)->Tuple[float, float, float, float, float, float]:
+    if not is_frustum_matrix(P):
+        raise ValueError("Matrix is not a valid frustum projection matrix.")
     # near / far
     near = P[3][2] / (P[2][2] - 1.0)
     far  = P[3][2] / (P[2][2] + 1.0)

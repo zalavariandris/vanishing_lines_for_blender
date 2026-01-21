@@ -66,7 +66,7 @@ def test_scale_by_reference_axes(axis: Literal['X_Axis', 'Y_Axis', 'Z_Axis']):
         projection=projection,
         reference_world_size=1.0,
         reference_axis=reference_axis,
-        reference_distance_segment=(0, 0.25),
+        reference_screen_segment=(0, 0.25),
         view=view
     )
 
@@ -88,7 +88,7 @@ def test_scale_by_screen():
         projection=projection,
         reference_world_size=1.0,
         reference_axis=solver.types.ReferenceAxis.Screen,
-        reference_distance_segment=(0, 0.5),
+        reference_screen_segment=(0, 0.5),
         view=view
     )
 
