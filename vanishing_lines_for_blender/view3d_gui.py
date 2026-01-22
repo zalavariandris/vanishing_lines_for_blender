@@ -3,7 +3,7 @@ from typing import Tuple, Callable
 
 from . import vl_utils
 from . import vl_coord_utils
-from .overlay_painter import OverlayPainter
+from .view3d_painter import View3dPainter
 from pyglm import glm
 
 
@@ -59,7 +59,19 @@ class _ControlPoint():
                 self._get_transform = lambda data, prop, idx: getattr(data, prop)[idx]
         else:
             self._get_transform = getter
-        
+
+    def manipulate(self, mouse_x, mouse_y, mouse_down_x, mouse_down_y, value_prev_press_x, value_prev_press_y):
+        mouse_delta_x = mouse_x - mouse_down_x
+        mouse_delta_y = mouse_y - mouse_down_y
+
+        new_x_unproj = value_prev_press_x + mouse_delta_x
+        new_y_unproj = value_prev_press_y + mouse_delta_y
+        self.value = (new_x_unproj, new_y_unproj)
+
+    def paint(self, painter:View3dPainter, hovered:bool=False, active:bool=False):
+        painter.add_point(...)
+        painter.add_annotation(...)
+
     @property
     def value(self)->Tuple[float, float]:
         if self._index is None:
@@ -75,10 +87,10 @@ class _ControlPoint():
             self._set_transform(self._data, self._prop, self._index, value)
             
 
-class View3DUI:
+class View3dGUI:
     def __init__(self):
         self._controls: dict[ControlIdType, _ControlPoint] = dict()
-        self._painter: OverlayPainter = OverlayPainter()
+        self._painter: View3dPainter = View3dPainter()
 
         # interaction
         self._active_id: ControlIdType|None = None
@@ -86,7 +98,6 @@ class View3DUI:
 
         # mouse dragging
         self._is_left_mouse_down = False
-        self._mouse_down_pos: Tuple[float, float] = (0.0, 0.0)
         self._active_down_pos: Tuple[float, float] = (0.0, 0.0)
 
         # coordinate system
@@ -100,7 +111,7 @@ class View3DUI:
         self._controls.clear()
 
     def end(self):
-        self._painter.draw()
+        self._painter.draw(self._view, self._projection, self._viewport)
     
     # Coordinate system
     def set_view(self, view:glm.mat4):
@@ -181,7 +192,6 @@ class View3DUI:
 
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             self._is_left_mouse_down = True
-            self._mouse_down_pos = (event.mouse_region_x, event.mouse_region_y)
 
             # activate cp under mouse
             self._active_id = self.get_closest_id(event.mouse_region_x, event.mouse_region_y)
@@ -222,16 +232,17 @@ class View3DUI:
             elif self._active_id is not None:
                 """Mouse Drag"""
                 # move active control point
-                mouse_x_unproj, mouse_y_unproj = self.unproject((event.mouse_region_x, event.mouse_region_y))
-                mouse_down_x_unproj, mouse_down_y_unproj = self.unproject(self._mouse_down_pos)
+                
 
-                mouse_unproj_delta_x = mouse_x_unproj - mouse_down_x_unproj
-                mouse_unproj_delta_y = mouse_y_unproj - mouse_down_y_unproj
+                mouse_x_unproj, mouse_y_unproj = self.unproject((event.mouse_x-context.region.x, event.mouse_y-context.region.y))
+                mouse_prev_press_x_unproj, mouse_prev_press_y_unproj = self.unproject((event.mouse_prev_press_x-context.region.x, event.mouse_prev_press_y-context.region.y))
+                control_point = self._controls[self._active_id]
 
-                new_x_unproj = self._active_down_pos[0] + mouse_unproj_delta_x
-                new_y_unproj = self._active_down_pos[1] + mouse_unproj_delta_y
+                control_point.manipulate( 
+                    mouse_x_unproj, mouse_y_unproj, 
+                    mouse_prev_press_x_unproj, mouse_prev_press_y_unproj, 
+                    self._active_down_pos[0], self._active_down_pos[1])
 
-                self._controls[self._active_id].value = (new_x_unproj, new_y_unproj)
                 # self.set_control_point(self._active_name, (mouse_x_unproj, mouse_y_unproj))
                 # self.update_solve(context)
 
@@ -295,7 +306,7 @@ class View3DUI:
 
         text = text if text is not None else f"{prop}"
         cp = self._controls[control_id]
-        P = self.project(cp.value)
+        P = cp.value# self.project(cp.value)
         is_active = (self._active_id == control_id)
         is_hovered = (self._hovered_id == control_id)
 
@@ -307,7 +318,6 @@ class View3DUI:
             P,
             point_render_color)
 
-        
         self._painter.add_annotation(
             (P[0]+5, P[1]),
             text=text,
@@ -322,13 +332,18 @@ class View3DUI:
         start_cp = self.prop_point(data, start_prop, text="", color=color)
         end_cp = self.prop_point(data, end_prop, text="", color=color)
 
-        P_start = self.project(start_cp.value)
-        P_end = self.project(end_cp.value)
+        P_start = start_cp.value # self.project(start_cp.value)
+        P_end = end_cp.value # self.project(end_cp.value)
 
         self._painter.add_line(
             P_start,
             P_end,
             color=color)
+        
+    def prop_vl_line(self, data:'bpy.types.ID', *, prop:str, index:int|None=None, 
+        color=(1.0,0.5,0.0,1.0)
+    ):
+        assert self._painter is not None, "Draw layer not initialized"
         
     def prop_distance(self, data:'bpy.types.ID', prop:str, *,
         origin:Tuple[float, float], 
@@ -371,8 +386,8 @@ class View3DUI:
             render_color  = vl_utils.dim_color(color, DIM_FACTOR_INACTIVE)
         
         self._painter.add_line(
-            self.project(origin),
-            self.project(get_transform(data, prop)),
+            origin,
+            get_transform(data, prop),
             color=render_color) # type: ignore
     
     def prop_distance_segment(self, data:'bpy.types.ID', prop:str, *, 
@@ -419,8 +434,8 @@ class View3DUI:
         if self.is_item_active() or self.is_item_hovered():
             highlight = True
 
-        P_start = self.project(start_cp.value)
-        P_end =   self.project(end_cp.value)
+        P_start = start_cp.value
+        P_end =   end_cp.value
 
         render_color  = color if highlight else vl_utils.dim_color(color, DIM_FACTOR_ACTIVE)
         self._painter.add_line(

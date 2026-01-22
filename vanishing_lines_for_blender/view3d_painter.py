@@ -7,6 +7,8 @@ from gpu_extras.batch import batch_for_shader
 from typing import List, Tuple
 import blf
 
+from pyglm import glm
+
 # Constants at module level
 DEFAULT_FONT_SIZE = 12
 DEFAULT_FONT_ID = 0
@@ -14,16 +16,16 @@ ANNOTATION_OFFSET_X = DEFAULT_FONT_SIZE*2/3
 ANNOTATION_OFFSET_Y = DEFAULT_FONT_SIZE*2/3
 
 
-class OverlayPainter:
+class View3dPainter:
     def __init__(self):
         self.shader = gpu.shader.from_builtin('FLAT_COLOR')
 
-        self._point_attributes: dict[str, List[Tuple[float, ...]]] = {
+        self._point_attributes: dict[str, List[Tuple[float, float]]] = {
             "pos":   [],
             "color": [],
         }
 
-        self._line_attributes: dict[str, List[Tuple[float, ...]]] = {
+        self._line_attributes: dict[str, List[Tuple[float, float]]] = {
             "pos":   [],
             "color": [],
         }
@@ -72,14 +74,20 @@ class OverlayPainter:
     def add_annotation(self, pos: Tuple[float, float], text: str, color: Tuple[float, float, float, float], angle: float = 0.0) -> None:
         self._annotations.append((pos, text, color, angle))
 
-    def draw(self) -> None:
+    def draw(self, view:glm.mat4=glm.mat4(1), projection:glm.mat4=glm.mat4(1), viewport:Tuple[float, float, float, float]=(0, 0, 1, 1)) -> None:
         gpu.state.blend_set('ALPHA')
 
-        # Render points
+        def project(P:Tuple[float, float]) -> Tuple[float, float]:
+            projected = glm.project(glm.vec3(P[0], P[1], 0), view, projection, glm.vec4(*viewport))
+            return (projected.x, projected.y)
+
         point_batch = batch_for_shader(
             self.shader, 
             'POINTS', 
-            self._point_attributes
+            content={
+                "pos":   [project(p) for p in self._point_attributes['pos']],
+                "color": self._point_attributes['color'],
+            }
         )
         point_batch.draw(self.shader)
 
@@ -87,7 +95,10 @@ class OverlayPainter:
         lines_batch = batch_for_shader(
             self.shader,
             'LINES',
-            self._line_attributes
+            content={
+                "pos":   [project(p) for p in self._line_attributes['pos']],
+                "color": self._line_attributes['color'],
+            }
         )
         lines_batch.draw(self.shader)
 
@@ -96,7 +107,7 @@ class OverlayPainter:
         blf.size(DEFAULT_FONT_ID, DEFAULT_FONT_SIZE)
         for pos, text, color, angle in self._annotations:
             w, _ = blf.dimensions(DEFAULT_FONT_ID, text)
-            x, y = pos[0], pos[1]
+            x, y = project(pos)
 
             # Center text along angle
             x = x - (w / 2) * math.cos(angle)

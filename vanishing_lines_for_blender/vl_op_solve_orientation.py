@@ -13,7 +13,7 @@ from bpy_extras import view3d_utils
 from pyglm import glm
 
 # local
-from .view3d_ui import View3DUI
+from .view3d_gui import View3dGUI
 from . import vl_properties_camera
 from . import solver
 from . import vl_utils
@@ -261,7 +261,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
 
         # Initialize UIView3D for drawing and interaction in the viewport
-        self.uiview = View3DUI()
+        self.uiview = View3dGUI()
 
         # initial solve
         # self.update_solve(context)
