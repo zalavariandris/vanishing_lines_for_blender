@@ -29,14 +29,27 @@ GetterCallbackType = GetterCallbackWithIndexType | GetterCallbackWithoutType
 ControlIdType = Tuple['bpy.types.ID', str, int|None]
 
 
-class _ControlPoint():
-    def __init__(self, data:'bpy.types.ID', prop:str, index:int|None=None, *, 
-            setter:SetterCallbackType|None=None, 
-            getter:GetterCallbackType|None=None):
-        self._data = data
-        self._prop = prop
-        self._index = index
+class ControlPointWidget():
+    def __init__(self, 
+        data:'bpy.types.ID', 
+        prop:str, *, 
+        text:str|None=None,
+        color:Tuple[float, float, float, float]=(1.0, 1.0, 1.0, 1.0),
+        index:int|None=None, 
+        setter:SetterCallbackType|None=None, 
+        getter:GetterCallbackType|None=None
+    ):
+        
+        # TODO: vallidate data structure
 
+        # Store parameters
+        self.data = data
+        self.prop = prop
+        self.index = index
+        self.text = text if text is not None else f"{prop}"
+        self.color = color
+
+        # TODO: setter and getter transforms will not be needed, with the new widget system
         self._set_transform: SetterCallbackType
         if setter is None:
             if index is None:
@@ -69,27 +82,83 @@ class _ControlPoint():
         self.value = (new_x_unproj, new_y_unproj)
 
     def paint(self, painter:View3dPainter, hovered:bool=False, active:bool=False):
-        painter.add_point(...)
-        painter.add_annotation(...)
+        text = self.text if self.text is not None else f"{self.prop}"
+
+        P = self.value# self.project(cp.value)
+
+        point_render_color = self.color
+        if active or hovered:
+            point_render_color = (1.0, 1.0, 1.0, 1.0)
+
+        painter.add_point(
+            P,
+            point_render_color)
+
+
+        painter.add_annotation(
+            (self.value[0]+5, self.value[1]),
+            text=text,
+            color=point_render_color)
+        
+    def hit_test(self, mouse_x:float, mouse_y:float, threshold:float)->bool:
+        P = self.value # self.project(self.value)
+        dist_sq = (P[0] - mouse_x) ** 2 + (P[1] - mouse_y) ** 2
+        return dist_sq < threshold **2
 
     @property
     def value(self)->Tuple[float, float]:
-        if self._index is None:
-            return self._get_transform(self._data, self._prop)
+        if self.index is None:
+            return self._get_transform(self.data, self.prop)
         else:
-            return self._get_transform(self._data, self._prop, self._index)
+            return self._get_transform(self.data, self.prop, self.index)
     
     @value.setter
     def value(self, value:Tuple[float, float] ):
-        if self._index is None:
-            self._set_transform(self._data, self._prop, value)
+        if self.index is None:
+            self._set_transform(self.data, self.prop, value)
         else:
-            self._set_transform(self._data, self._prop, self._index, value)
+            self._set_transform(self.data, self.prop, self.index, value)
             
+
+class VanishingLineWidget:
+    def __init__(self,
+        data:'bpy.types.ID', 
+        prop:str, *, 
+        text:str|None=None,
+        color:Tuple[float, float, float, float]=(1.0, 1.0, 1.0, 1.0),
+        index:int|None=None
+    ):
+        self.data = data
+        self.prop = prop
+        self.index = index
+        self.text = text if text is not None else f"{prop}"
+        self.color = color
+
+        # TODO: vallidate data structure
+
+
+    def hit_test(self, mouse_x:float, mouse_y:float, threshold:float)->bool:
+        return False
+
+    def paint(self, painter:View3dPainter, hovered:bool=False, active:bool=False):
+        if self.index is not None:
+            start = getattr(self.data, self.prop)[self.index]['start']
+            end = getattr(self.data, self.prop)[self.index]['end']
+        else:
+            start = getattr(self.data, self.prop)['start']
+            end = getattr(self.data, self.prop)['end']
+
+        painter.add_line(start, end, self.color)
+        painter.add_point(start, self.color)
+        painter.add_point(end, self.color)
+
+    def manipulate(self, mouse_x, mouse_y, mouse_down_x, mouse_down_y, value_prev_press_x, value_prev_press_y):
+        ...
+
 
 class View3dGUI:
     def __init__(self):
-        self._controls: dict[ControlIdType, _ControlPoint] = dict()
+        self._widgets: dict[ControlIdType, ControlPointWidget|VanishingLineWidget] = dict()
         self._painter: View3dPainter = View3dPainter()
 
         # interaction
@@ -108,7 +177,7 @@ class View3dGUI:
     def begin(self):
         # self.uiview.update_viewport_state(context)
         self._painter.clear()
-        self._controls.clear()
+        self._widgets.clear()
 
     def end(self):
         self._painter.draw(self._view, self._projection, self._viewport)
@@ -194,11 +263,11 @@ class View3dGUI:
             self._is_left_mouse_down = True
 
             # activate cp under mouse
-            self._active_id = self.get_closest_id(event.mouse_region_x, event.mouse_region_y)
+            self._active_id = self.get_widget_under_mouse(event.mouse_region_x, event.mouse_region_y)
 
             if self._active_id is not None:
                 # store a _copy_ of the control position at mouse down
-                position:Tuple[float, float] = tuple(self._controls[self._active_id].value)
+                position:Tuple[float, float] = tuple(self._widgets[self._active_id].value)
                 self._active_down_pos = position
             # else:
             #     self._active_down_pos = None
@@ -216,7 +285,7 @@ class View3dGUI:
             if not self._is_left_mouse_down:
                 """Mouse Move"""
                 # update hover
-                new_hovered_id = self.get_closest_id(event.mouse_region_x, event.mouse_region_y)
+                new_hovered_id = self.get_widget_under_mouse(event.mouse_region_x, event.mouse_region_y)
 
                 if new_hovered_id != self._hovered_id:
                     self._hovered_id = new_hovered_id
@@ -236,7 +305,7 @@ class View3dGUI:
 
                 mouse_x_unproj, mouse_y_unproj = self.unproject((event.mouse_x-context.region.x, event.mouse_y-context.region.y))
                 mouse_prev_press_x_unproj, mouse_prev_press_y_unproj = self.unproject((event.mouse_prev_press_x-context.region.x, event.mouse_prev_press_y-context.region.y))
-                control_point = self._controls[self._active_id]
+                control_point = self._widgets[self._active_id]
 
                 control_point.manipulate( 
                     mouse_x_unproj, mouse_y_unproj, 
@@ -270,60 +339,85 @@ class View3dGUI:
 
         return False
 
-    # GUI
-    def get_closest_id(self, mouse_region_x: float, mouse_region_y: float, threshold:float=DEFAULT_CLICK_THRESHOLD) -> ControlIdType|None:
-        closest_key:ControlIdType|None = None
-        closest_dist_sq = threshold * threshold
+    #######
+    # GUI #
+    #######
+    # def get_closest_id(self, mouse_region_x: float, mouse_region_y: float, threshold:float=DEFAULT_CLICK_THRESHOLD) -> ControlIdType|None:
+    #     closest_key:ControlIdType|None = None
+    #     closest_dist_sq = threshold * threshold
 
-        for control_id, control_point in reversed(self._controls.items()):
-            P = (self.project(control_point.value))
-            dist_sq = (P[0] - mouse_region_x) ** 2 + (P[1] - mouse_region_y) ** 2
-            if dist_sq < closest_dist_sq:
-                closest_dist_sq = dist_sq
-                closest_key = control_id
+    #     for control_id, control_point in reversed(self._controls.items()):
+    #         P = (self.project(control_point.value))
+    #         dist_sq = (P[0] - mouse_region_x) ** 2 + (P[1] - mouse_region_y) ** 2
+    #         if dist_sq < closest_dist_sq:
+    #             closest_dist_sq = dist_sq
+    #             closest_key = control_id
 
-        return closest_key
+    #     return closest_key
+    
+    def get_widget_under_mouse(self, mouse_region_x: float, mouse_region_y: float, threshold:float=DEFAULT_CLICK_THRESHOLD) -> ControlIdType|None:
+        compute_space_threshold = 0.03 # TODO: make this scale with zoom level
+        mouse_proj =self.unproject((mouse_region_x, mouse_region_y))
+        print("Mouse proj:", mouse_proj)
+        for control_id, control_point in reversed(self._widgets.items()):
+            
+            if control_point.hit_test(mouse_proj[0], mouse_proj[1], compute_space_threshold):
+                return control_id
+
+        return None
    
     def is_item_hovered(self):
-        last_id = next(reversed(self._controls))
+        last_id = next(reversed(self._widgets))
         return self._hovered_id == last_id
     
     def is_item_active(self):
-        last_id = next(reversed(self._controls))
+        last_id = next(reversed(self._widgets))
         return self._active_id == last_id
 
     # Widgets
-    def prop_point(self, data:'bpy.types.ID', prop:str, index:int|None=None, *,
-        text:str|None=None,
-        color=(1.0,0.5,0.0,1.0),
-        set_transform:Callable|None=None, 
-        get_transform:Callable|None=None
-    ) -> _ControlPoint:
-        assert self._painter is not None, "Draw layer not initialized"
-        control_id = (data, prop, index)
-        if control_id not in self._controls:
-            self._controls[control_id] = _ControlPoint(data, prop, index=index, setter=set_transform, getter=get_transform)
+    def add_widget(self, widget:ControlPointWidget|VanishingLineWidget) -> ControlPointWidget|VanishingLineWidget:
+        control_id = (widget.data, widget.prop, widget.index)
+        if control_id not in self._widgets:
+            self._widgets[control_id] = widget
 
-        text = text if text is not None else f"{prop}"
-        cp = self._controls[control_id]
-        P = cp.value# self.project(cp.value)
         is_active = (self._active_id == control_id)
         is_hovered = (self._hovered_id == control_id)
 
-        point_render_color = color
-        if is_active or is_hovered:
-            point_render_color = (1.0, 1.0, 1.0, 1.0)
+        control = self._widgets[control_id]
+        control.paint(self._painter, hovered=is_hovered, active=is_active)
 
-        self._painter.add_point(
-            P,
-            point_render_color)
+        return widget
 
-        self._painter.add_annotation(
-            (P[0]+5, P[1]),
-            text=text,
-            color=point_render_color)
+    def prop_point(self, 
+        data:'bpy.types.ID', 
+        prop:str, 
+        *,
+        text:str|None=None,
+        index:int|None=None,
+        color=(1.0,0.5,0.0,1.0),
+
+        set_transform:Callable|None=None, 
+        get_transform:Callable|None=None
+    ) -> ControlPointWidget:
+        assert self._painter is not None, "Draw layer not initialized"
+        control_id = (data, prop, index)
+        if control_id not in self._widgets:
+            self._widgets[control_id] = ControlPointWidget(data, 
+                prop, 
+                text=text,
+                index=index,
+                color=color, 
+                setter=set_transform, 
+                getter=get_transform)
+
+
+        is_active = (self._active_id == control_id)
+        is_hovered = (self._hovered_id == control_id)
+
+        control = self._widgets[control_id]
+        control.paint(self._painter, hovered=is_hovered, active=is_active)
         
-        return self._controls[control_id]
+        return self._widgets[control_id]
     
     def prop_line(self, data:'bpy.types.ID', *, start_prop:str='start', end_prop:str='end', 
         color=(0.8,0.8,0.8,1.0)
@@ -339,11 +433,6 @@ class View3dGUI:
             P_start,
             P_end,
             color=color)
-        
-    def prop_vl_line(self, data:'bpy.types.ID', *, prop:str, index:int|None=None, 
-        color=(1.0,0.5,0.0,1.0)
-    ):
-        assert self._painter is not None, "Draw layer not initialized"
         
     def prop_distance(self, data:'bpy.types.ID', prop:str, *,
         origin:Tuple[float, float], 
