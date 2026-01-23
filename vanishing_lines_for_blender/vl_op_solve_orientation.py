@@ -276,7 +276,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # )
 
         self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
-            self.view3d_draw, 
+            self.handle_draw, 
             (context, ), 
             'WINDOW', 
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
@@ -343,6 +343,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 
         # capture ui controls events
         changed = self.uiview.event(context, event)
+        self.view3d_event_loop(context)
         if changed:
             vl_settings.solve()
             vl_settings.to_camera(context.space_data.camera)
@@ -490,76 +491,13 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         return {'PASS_THROUGH'}
         
         # return {'RUNNING_MODAL'}
-
-    def update_solve(self, context):
-        camera_object = context.space_data.camera
-        vl_settings = context.space_data.camera.vl_settings
-
-        # vl_settings.solve()
-        # vl_settings.to_camera(camera_object)
-
-        if self._context_area.type == 'VIEW_3D':
-            self._context_area.tag_redraw()
-
-    def status_text(self, header, context):
-        # keyboard
-        header.layout.label(text="",  icon='EVENT_ONEKEY')
-        header.layout.label(text="", icon='EVENT_TWOKEY')
-        header.layout.label(text="", icon='EVENT_THREEKEY')
-        header.layout.label(text="Set 1pt/2pt/3pt mode")
-        header.layout.label(text="Scale mode", icon='EVENT_R')
-        header.layout.label(text="Toggle Quad Mode", icon='EVENT_Q')
-        header.layout.label(text=" Cancel", icon='EVENT_ESC')
-        header.layout.label(text="Finish", icon='EVENT_RETURN')
-
-        # mouse
-        header.layout.label(text="", icon='EVENT_CTRL')
-        header.layout.label(text="Move Origin", icon='MOUSE_MMB_DRAG')
-        header.layout.label(text="", icon='EVENT_CTRL')
-        header.layout.label(text="World Distance", icon='MOUSE_MMB_SCROLL')
-
-        # context menu
-        header.layout.label(text="Options", icon='MOUSE_RMB')
-        
-    def cancel(self, context):
-        print("Cancel Vanishing Lines Orientation Operator")
-        # Restore previous camera state
-        # if context.area.spaces.active.camera and self._initial_camera_matrix is not None:
-        #     camera_object = context.area.spaces.active.camera
-
-        #     camera_object.matrix_world = self._initial_camera_matrix
-        #     camera_object.data.lens = self._initial_camera_lens
-        #     camera_object.data.shift_x = self._initial_camera_shift_x
-        #     camera_object.data.shift_y = self._initial_camera_shift_y
-        
-        self.cleanup(context)
-        
-    def cleanup(self, context):
-        # Unsubscribe from msgbus
-        if self._msgbus_owner is not None:
-            bpy.msgbus.clear_by_owner(self._msgbus_owner)
-            self._msgbus_owner = None
-
-        # remove draw hundler
-        if self._draw_handler is not None:
-            bpy.types.SpaceView3D.draw_handler_remove(self._draw_handler, 'WINDOW')
-            self._draw_handler = None
-        
-        # Redraw area to clear drawings
-        if self._context_area:
-            self._context_area.tag_redraw()
-
-        # Clear status bar
-        bpy.context.workspace.status_text_set(None)
     
-    def view3d_draw(self, context):
+    def view3d_event_loop(self, context):
         # draw only in the correct region
         if context.area != self._context_area:
             return
         
         # get the region
-
-
         self.uiview.begin()
         # get SpaceView3D
         if not context.area.spaces.active or context.area.spaces.active.type != 'VIEW_3D':
@@ -804,6 +742,71 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self.uiview.end()
 
         # self.update_solve(context)
+
+    def update_solve(self, context):
+        camera_object = context.space_data.camera
+        vl_settings = context.space_data.camera.vl_settings
+
+        # vl_settings.solve()
+        # vl_settings.to_camera(camera_object)
+
+        if self._context_area.type == 'VIEW_3D':
+            self._context_area.tag_redraw()
+
+    def status_text(self, header, context):
+        # keyboard
+        header.layout.label(text="",  icon='EVENT_ONEKEY')
+        header.layout.label(text="", icon='EVENT_TWOKEY')
+        header.layout.label(text="", icon='EVENT_THREEKEY')
+        header.layout.label(text="Set 1pt/2pt/3pt mode")
+        header.layout.label(text="Scale mode", icon='EVENT_R')
+        header.layout.label(text="Toggle Quad Mode", icon='EVENT_Q')
+        header.layout.label(text=" Cancel", icon='EVENT_ESC')
+        header.layout.label(text="Finish", icon='EVENT_RETURN')
+
+        # mouse
+        header.layout.label(text="", icon='EVENT_CTRL')
+        header.layout.label(text="Move Origin", icon='MOUSE_MMB_DRAG')
+        header.layout.label(text="", icon='EVENT_CTRL')
+        header.layout.label(text="World Distance", icon='MOUSE_MMB_SCROLL')
+
+        # context menu
+        header.layout.label(text="Options", icon='MOUSE_RMB')
+        
+    def cancel(self, context):
+        print("Cancel Vanishing Lines Orientation Operator")
+        # Restore previous camera state
+        # if context.area.spaces.active.camera and self._initial_camera_matrix is not None:
+        #     camera_object = context.area.spaces.active.camera
+
+        #     camera_object.matrix_world = self._initial_camera_matrix
+        #     camera_object.data.lens = self._initial_camera_lens
+        #     camera_object.data.shift_x = self._initial_camera_shift_x
+        #     camera_object.data.shift_y = self._initial_camera_shift_y
+        
+        self.cleanup(context)
+        
+    def cleanup(self, context):
+        # Unsubscribe from msgbus
+        if self._msgbus_owner is not None:
+            bpy.msgbus.clear_by_owner(self._msgbus_owner)
+            self._msgbus_owner = None
+
+        # remove draw hundler
+        if self._draw_handler is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(self._draw_handler, 'WINDOW')
+            self._draw_handler = None
+        
+        # Redraw area to clear drawings
+        if self._context_area:
+            self._context_area.tag_redraw()
+
+        # Clear status bar
+        bpy.context.workspace.status_text_set(None)
+
+    def handle_draw(self, context):
+        self.uiview.render()
+    
 
 ######################
 def view_menu_func(self, context):

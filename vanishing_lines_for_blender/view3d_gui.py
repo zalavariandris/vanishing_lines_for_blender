@@ -180,6 +180,10 @@ class View3dGUI:
         self._widgets.clear()
 
     def end(self):
+        pass
+        # self._painter.draw(self._view, self._projection, self._viewport)
+
+    def render(self):
         self._painter.draw(self._view, self._projection, self._viewport)
     
     # Coordinate system
