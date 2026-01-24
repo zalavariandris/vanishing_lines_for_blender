@@ -96,7 +96,7 @@ class ControlPointWidget():
 
 
         painter.add_annotation(
-            (self.value[0]+5, self.value[1]),
+            (self.value[0], self.value[1]),
             text=text,
             color=point_render_color)
         
@@ -135,7 +135,6 @@ class VanishingLineWidget:
         self.color = color
 
         # TODO: vallidate data structure
-
 
     def hit_test(self, mouse_x:float, mouse_y:float, threshold:float)->bool:
         return False
@@ -362,7 +361,6 @@ class View3dGUI:
     def get_widget_under_mouse(self, mouse_region_x: float, mouse_region_y: float, threshold:float=DEFAULT_CLICK_THRESHOLD) -> ControlIdType|None:
         compute_space_threshold = 0.03 # TODO: make this scale with zoom level
         mouse_proj =self.unproject((mouse_region_x, mouse_region_y))
-        print("Mouse proj:", mouse_proj)
         for control_id, control_point in reversed(self._widgets.items()):
             
             if control_point.hit_test(mouse_proj[0], mouse_proj[1], compute_space_threshold):
@@ -399,7 +397,6 @@ class View3dGUI:
         text:str|None=None,
         index:int|None=None,
         color=(1.0,0.5,0.0,1.0),
-
         set_transform:Callable|None=None, 
         get_transform:Callable|None=None
     ) -> ControlPointWidget:
@@ -423,65 +420,78 @@ class View3dGUI:
         
         return self._widgets[control_id]
     
-    def prop_line(self, data:'bpy.types.ID', *, start_prop:str='start', end_prop:str='end', 
-        color=(0.8,0.8,0.8,1.0)
-    ):
-        assert self._painter is not None, "Draw layer not initialized"
-        start_cp = self.prop_point(data, start_prop, text="", color=color)
-        end_cp = self.prop_point(data, end_prop, text="", color=color)
+    # def prop_line(self, 
+    #     data:'bpy.types.ID', 
+    #     prop:str, *, 
+    #     index:int|None=None,
+    #     color=(0.8,0.8,0.8,1.0),
+    #     set_transform:Callable|None=None, 
+    #     get_transform:Callable|None=None
+    # ):
+    #     assert self._painter is not None, "Draw layer not initialized"
+    #     if index is not None:
+    #         line = getattr(data, prop)[index]
+    #     else:
+    #         line = getattr(data, prop)
 
-        P_start = start_cp.value # self.project(start_cp.value)
-        P_end = end_cp.value # self.project(end_cp.value)
+    #     # start_cp = self.prop_point(line, 'start', text="", color=color)
+    #     # end_cp = self.prop_point(line, 'end', text="", color=color)
 
-        self._painter.add_line(
-            P_start,
-            P_end,
-            color=color)
+    #     mid_cp = self.prop_point(data, prop, index=index, text="", color=color, 
+    #         set_transform=set_transform,
+    #         get_transform=get_transform)
+
+    #     # draw line
+    #     line = getattr(data, prop)[index]
+    #     self._painter.add_line(
+    #         line.start,
+    #         line.end,
+    #         color=color)
         
-    def prop_distance(self, data:'bpy.types.ID', prop:str, *,
-        origin:Tuple[float, float], 
-        direction:Tuple[float, float]=(1,0), 
-        text:str="",
-        color=(0.0,0.5,1.0,1.0),
-    ):
+    # def prop_distance(self, data:'bpy.types.ID', prop:str, *,
+    #     origin:Tuple[float, float], 
+    #     direction:Tuple[float, float]=(1,0), 
+    #     text:str="",
+    #     color=(0.0,0.5,1.0,1.0),
+    # ):
         
-        def set_transform(data:'bpy.types.ID', prop:str, P:Tuple[float, float]):
-            P = glm.vec2(P[0], P[1])
-            O = glm.vec2(origin[0], origin[1])
-            dir = glm.normalize(glm.vec2(direction[0], direction[1]))
-            distance = glm.dot(P - O, dir)
-            setattr(data, prop, distance)
+    #     def set_transform(data:'bpy.types.ID', prop:str, P:Tuple[float, float]):
+    #         P = glm.vec2(P[0], P[1])
+    #         O = glm.vec2(origin[0], origin[1])
+    #         dir = glm.normalize(glm.vec2(direction[0], direction[1]))
+    #         distance = glm.dot(P - O, dir)
+    #         setattr(data, prop, distance)
 
-        def get_transform(data:'bpy.types.ID', prop:str) -> Tuple[float, float]:
-            distance = getattr(data, prop)
+    #     def get_transform(data:'bpy.types.ID', prop:str) -> Tuple[float, float]:
+    #         distance = getattr(data, prop)
 
-            # set direction magnitude
-            dx, dy = direction
-            l = (dx**2 + dy**2)**0.5
-            dx, dy = dx/l*distance, dy/l*distance
+    #         # set direction magnitude
+    #         dx, dy = direction
+    #         l = (dx**2 + dy**2)**0.5
+    #         dx, dy = dx/l*distance, dy/l*distance
 
-            # get origin
-            Ox, Oy = origin
+    #         # get origin
+    #         Ox, Oy = origin
 
-            # set point position
-            Px = Ox + dx
-            Py = Oy + dy
+    #         # set point position
+    #         Px = Ox + dx
+    #         Py = Oy + dy
 
-            return Px, Py
+    #         return Px, Py
         
-        self.prop_point(data, prop, text=text, color=color, 
-                        set_transform=set_transform,
-                        get_transform=get_transform)
+    #     self.prop_point(data, prop, text=text, color=color, 
+    #                     set_transform=set_transform,
+    #                     get_transform=get_transform)
         
-        if self.is_item_active() or self.is_item_hovered():
-            render_color  = vl_utils.dim_color(color, DIM_FACTOR_ACTIVE)
-        else:
-            render_color  = vl_utils.dim_color(color, DIM_FACTOR_INACTIVE)
+    #     if self.is_item_active() or self.is_item_hovered():
+    #         render_color  = vl_utils.dim_color(color, DIM_FACTOR_ACTIVE)
+    #     else:
+    #         render_color  = vl_utils.dim_color(color, DIM_FACTOR_INACTIVE)
         
-        self._painter.add_line(
-            origin,
-            get_transform(data, prop),
-            color=render_color) # type: ignore
+    #     self._painter.add_line(
+    #         origin,
+    #         get_transform(data, prop),
+    #         color=render_color) # type: ignore
     
     def prop_distance_segment(self, data:'bpy.types.ID', prop:str, *, 
         origin:Tuple[float, float], 

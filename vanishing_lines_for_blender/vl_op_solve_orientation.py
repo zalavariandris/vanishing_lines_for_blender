@@ -14,6 +14,7 @@ from pyglm import glm
 
 # local
 from .view3d_gui import View3dGUI
+from .view3d_painter import View3dPainter
 from . import vl_properties_camera
 from . import solver
 from . import vl_utils
@@ -54,6 +55,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
     _context_space = None
     _msgbus_owner = None  # Owner object for msgbus subscription
     _draw_handler = None  # Store the draw handler reference
+
+    uiview: View3dGUI|None=None  # type: ignore
+    painter = None  # type: ignore
     
     def invoke(self, context, event):
         ##########################################
@@ -262,6 +266,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
         # Initialize UIView3D for drawing and interaction in the viewport
         self.uiview = View3dGUI()
+        self.painter = View3dPainter()
 
         # initial solve
         # self.update_solve(context)
@@ -288,10 +293,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         return {'RUNNING_MODAL'}
     
     def modal(self, context, event):
-        # -------------------------------------------------
-        # Exit conditions
-        # -------------------------------------------------
-        
         if event.type in {'ESC'}:
             self._context_area.tag_redraw()
             self.cleanup(context)
@@ -541,7 +542,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 case solver.types.Axis.PositiveZ | solver.types.Axis.NegativeZ:
                     return BLUE
 
-        axes_mapping = {
+        axis_map = {
             'X+': solver.types.Axis.PositiveX,
             'Y+': solver.types.Axis.PositiveY,
             'Z+': solver.types.Axis.PositiveZ,
@@ -549,20 +550,82 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             'Y-': solver.types.Axis.NegativeY,
             'Z-': solver.types.Axis.NegativeZ
         }
-        first_axis = axes_mapping[vl_settings.first_axis]
-        second_axis = axes_mapping[vl_settings.second_axis]
+        first_axis = axis_map[vl_settings.first_axis]
+        second_axis = axis_map[vl_settings.second_axis]
         third_axis = solver.helpers.third_axis(first_axis, second_axis) # find third axis based on the first two
 
-        # normalize vanishing lines for drawing
+        # create line midpoint handlers
+        def set_midpoint_transform(data:'bpy.types.ID', prop:str, index:int, value:Tuple[float, float]):
+            line = getattr(data, prop)[index]
+            mid_point_x = line.start[0] + (line.end[0] - line.start[0]) / 2
+            mid_point_y = line.start[1] + (line.end[1] - line.start[1]) / 2
+
+            new_mid_x = value[0]
+            new_mid_y = value[1]
+
+            dx = new_mid_x - mid_point_x
+            dy = new_mid_y - mid_point_y
+
+            new_start_x = line.start[0] + dx
+            new_start_y = line.start[1] + dy
+            new_start = (new_start_x, new_start_y)
+            new_end_x = line.end[0] + dx
+            new_end_y = line.end[1] + dy
+            new_end = (new_end_x, new_end_y)
+            getattr(data, prop)[index].start = new_start
+            getattr(data, prop)[index].end = new_end
+
+
+        def set_vl_transform(vp:Tuple[float, float]):
+            def set_vl_midpoint_transform(data:'bpy.types.ID', prop:str, index:int, value:Tuple[float, float]):
+                line = getattr(data, prop)[index]
+
+                # get current start, end point 't' parameter
+                VP = mathutils.Vector((vp[0], vp[1]))
+                P = mathutils.Vector((line.start[0], line.start[1]))
+                Q = mathutils.Vector((line.end[0], line.end[1]))
+                M = (P + Q) / 2
+                D = (VP - M).normalized()
+
+
+                t_start = (P - M).dot(D)
+                t_end = (Q - M).dot(D)
+
+                # get current midpoint
+                M1 = mathutils.Vector((value[0], value[1]))
+                D1 = (VP - M1).normalized()
+
+                # cacl new start, end points based on 't' parameter
+                P1 = M1 + D1 * t_start
+                Q1 = M1 + D1 * t_end
+
+
+                getattr(data, prop)[index].start = P1.x, P1.y
+                getattr(data, prop)[index].end =   Q1.x, Q1.y
+            return set_vl_midpoint_transform
+
+        def get_midpoint_transform(data:'bpy.types.ID', prop:str, index:int) -> Tuple[float, float]:
+            line = getattr(data, prop)[index]
+            mid_x = (line.start[0] + line.end[0]) / 2
+            mid_y = (line.start[1] + line.end[1]) / 2
+            return (mid_x, mid_y)
 
         if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
+            vp1 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl_settings.first_vanishing_lines])
             # Draw first vanishing lines
-            for line in vl_settings.first_vanishing_lines:
-                self.uiview.prop_line(line, color=get_axis_color(first_axis))
+            for idx, line in enumerate(vl_settings.first_vanishing_lines):
+                self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(first_axis))
+                self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(first_axis))
+                self.uiview.prop_point(vl_settings, 'first_vanishing_lines', text="", index=idx, color=get_axis_color(first_axis), set_transform=set_vl_transform(vp1), get_transform=get_midpoint_transform)
+                self.uiview._painter.add_line(line.start, line.end, get_axis_color(first_axis))
 
         if vl_settings.mode in {'ONE_POINT'}:
             # Draw the horizontal line for the vp1 mode:
-            self.uiview.prop_line(vl_settings.second_vanishing_lines[0], color=get_axis_color(second_axis))
+            line = vl_settings.second_vanishing_lines[0]
+            self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(second_axis))
+            self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(second_axis))
+            self.uiview.prop_point(vl_settings, 'second_vanishing_lines', text="", index=0, color=get_axis_color(second_axis), set_transform=set_midpoint_transform, get_transform=get_midpoint_transform)
+            self.uiview._painter.add_line(line.start, line.end, get_axis_color(second_axis))
 
         if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
             if vl_settings.quad_mode:
@@ -572,15 +635,23 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 second_vanishing_lines_coordinates = [(first_line.start, last_line.start), (first_line.end, last_line.end)]
                 
                 for P, Q in second_vanishing_lines_coordinates:
-                    self.uiview._painter.add_line(self.uiview.project(P), self.uiview.project(Q), get_axis_color(second_axis))
+                    self.uiview._painter.add_line(P, Q, get_axis_color(second_axis))
                     
             else:
-                for line in vl_settings.second_vanishing_lines:
-                    self.uiview.prop_line(line, color=get_axis_color(second_axis))
+                vp2 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl_settings.second_vanishing_lines])
+                for idx, line in enumerate(vl_settings.second_vanishing_lines):
+                    self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(second_axis))
+                    self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(second_axis))
+                    self.uiview.prop_point(vl_settings, 'second_vanishing_lines', text="", index=idx, color=get_axis_color(second_axis), set_transform=set_vl_transform(vp2), get_transform=get_midpoint_transform)
+                    self.uiview._painter.add_line(line.start, line.end, get_axis_color(second_axis))
 
         if vl_settings.mode in {'THREE_POINT'}:
-            for line in vl_settings.third_vanishing_lines:
-                self.uiview.prop_line(line, color=get_axis_color(third_axis))
+            vp3 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl_settings.third_vanishing_lines])
+            for idx, line in enumerate(vl_settings.third_vanishing_lines):
+                self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(third_axis))
+                self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(third_axis))
+                self.uiview.prop_point(vl_settings, 'third_vanishing_lines', text="", index=idx, color=get_axis_color(third_axis), set_transform=set_vl_transform(vp3), get_transform=get_midpoint_transform)
+                self.uiview._painter.add_line(line.start, line.end, get_axis_color(third_axis))
 
         ###############################
         # reference distance CONTROLS #
@@ -639,8 +710,10 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
                     for line in vl_settings.first_vanishing_lines:
                         self.uiview._painter.add_line(
-                            self.uiview.project(vl_utils.closest_point_to_target([line.start, line.end], vp1)), 
-                            self.uiview.project(vp1), vl_utils.dim_color(get_axis_color(first_axis)))
+                            vl_utils.closest_point_to_target([line.start, line.end], vp1), 
+                            vp1, 
+                            vl_utils.dim_color(get_axis_color(first_axis))
+                        )
                         
                 except solver.exceptions.VanishingLinesError as e:
                     warnings.warn(f"Could not compute VP1: {e}")
@@ -659,8 +732,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                         
                         for line_start, line_end in second_vanishing_lines:
                             self.uiview._painter.add_line(
-                                self.uiview.project(vl_utils.closest_point_to_target([line_start, line_end], vp2)), 
-                                self.uiview.project(vp2), 
+                                vl_utils.closest_point_to_target([line_start, line_end], vp2), 
+                                vp2, 
                                 vl_utils.dim_color(get_axis_color(second_axis)))
                     except ValueError as e:
                         warnings.warn(f"Could not compute VP2: {e}")
@@ -672,8 +745,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                         
                         for line in vl_settings.second_vanishing_lines:
                             self.uiview._painter.add_line(
-                                self.uiview.project(vl_utils.closest_point_to_target([line.start, line.end], vp2)), 
-                                self.uiview.project(vp2), 
+                                vl_utils.closest_point_to_target([line.start, line.end], vp2), 
+                                vp2, 
                                 vl_utils.dim_color(get_axis_color(second_axis)))
 
                     except ValueError as e:
@@ -687,8 +760,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                     
                     for line in vl_settings.third_vanishing_lines:
                         self.uiview._painter.add_line(
-                            self.uiview.project(vl_utils.closest_point_to_target([line.start, line.end], vp3)), 
-                            self.uiview.project(vp3), 
+                            vl_utils.closest_point_to_target([line.start, line.end], vp3), 
+                            vp3, 
                             vl_utils.dim_color(get_axis_color(third_axis)))
                         
                 except ValueError as e:
@@ -698,13 +771,13 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                     compute_space=solver.types.Rect(-1,-1,2,2))
                 principal, f = solver.utils.decompose_intrinsics(solver.types.Rect(-1,-1,2,2), projection)
                 self.uiview._painter.add_point(
-                    pos=self.uiview.project(principal),
+                    pos=principal,
                     color=glm.vec4(1.0, 0.7, 0.0, 1.0),
                     shape='X',
                 )
 
                 self.uiview._painter.add_annotation(
-                    pos=self.uiview.project(principal),
+                    pos=principal,
                     text="P",
                     color=glm.vec4(1.0, 0.7, 0.0, 1.0)
                 )
@@ -724,8 +797,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 blf.draw(font_id, f"{line}")
 
         ## draw compute space
-        x_min, y_min = self.uiview.project((-1,-1))
-        x_max, y_max = self.uiview.project((1, 1))
+        x_min, y_min = (-1,-1)
+        x_max, y_max = (1, 1)
         self.uiview._painter.add_rect(
             (x_min, y_min),
             (x_max - x_min, y_max - y_min),
@@ -806,6 +879,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
     def handle_draw(self, context):
         self.uiview.render()
+        self.painter.draw()
     
 
 ######################

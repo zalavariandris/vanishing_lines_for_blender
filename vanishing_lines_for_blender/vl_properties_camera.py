@@ -75,6 +75,7 @@ class VLLine(bpy.types.PropertyGroup):
         update=on_property_update
     ) # type: ignore
 
+
 class VLSettings(bpy.types.PropertyGroup):
     proj_array: bpy.props.FloatVectorProperty(
         size=16, 

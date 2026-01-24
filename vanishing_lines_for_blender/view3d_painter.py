@@ -33,6 +33,7 @@ class View3dPainter:
         self._annotations: List[Tuple[Tuple[float, float], str, Tuple[float, float, float, float], float]] = []
 
     def clear(self) -> None:
+        """Clear all stored drawing data."""
         self._point_attributes['pos'].clear()
         self._point_attributes['color'].clear()
         self._line_attributes['pos'].clear()
