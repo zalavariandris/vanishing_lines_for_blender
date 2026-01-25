@@ -48,7 +48,7 @@ def on_property_update(vl_settings, context):
     
     vl_settings = camera_object.vl_settings
     vl_settings.solve() 
-    vl_settings.to_camera(camera_object) # TODO: if uncommented, than initial unsolve will be overridden...
+    # vl_settings.to_camera(camera_object) # TODO
     
 from . import vl_utils
 
@@ -89,6 +89,16 @@ class VLSettings(bpy.types.PropertyGroup):
         subtype='MATRIX',
         default=vl_utils.matrix_to_array(mathutils.Matrix.Identity(4)), 
         options={'HIDDEN'}
+    ) # type: ignore
+
+    fovx: bpy.props.FloatProperty(
+        name="Horizontal FOV",
+        default=math.radians(50.0),
+        min=1.0,
+        max=179.0,
+        description="Horizontal field of view in degrees", 
+        options=set(),
+        update=on_property_update
     ) # type: ignore
 
     initialized: bpy.props.BoolProperty(
@@ -140,15 +150,7 @@ class VLSettings(bpy.types.PropertyGroup):
     #     options=set()
     # ) # type: ignore
 
-    fovx: bpy.props.FloatProperty(
-        name="Horizontal FOV",
-        default=math.radians(50.0),
-        min=1.0,
-        max=179.0,
-        description="Horizontal field of view in degrees", 
-        options=set(),
-        update=on_property_update
-    ) # type: ignore
+
 
     reference_scene_scale: bpy.props.FloatProperty(
         name="Scene Scale",

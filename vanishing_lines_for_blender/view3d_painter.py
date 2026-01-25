@@ -69,7 +69,7 @@ class View3dPainter:
     def add_annotation(self, pos: Tuple[float, float], text: str, color: Tuple[float, float, float, float], angle: float = 0.0) -> None:
         self._annotations.append((pos, text, color, angle))
 
-    def pixel_size(self, view:glm.mat4, projection:glm.mat4, viewport:Tuple[float, float, float, float], at:Tuple[float, float], pos=mathutils.Vector((0,0,0))) -> float:
+    def _pixel_size(self, view:glm.mat4, projection:glm.mat4, viewport:Tuple[float, float, float, float], at:Tuple[float, float], pos=mathutils.Vector((0,0,0))) -> float:
         # Project the point and a slightly offset point
         def project(P:Tuple[float, float]) -> Tuple[float, float]:
             projected = glm.project(glm.vec3(P[0], P[1], 0), view, projection, glm.vec4(*viewport))
@@ -103,6 +103,7 @@ class View3dPainter:
         point_batch.draw(self.shader)
 
         # Render points with X shape
+        # TODO: refactor drawing from data, this is ugly now.
         x_content:dict = {
             'pos': [], 
             'color': []
