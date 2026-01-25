@@ -5,56 +5,9 @@ import mathutils
 import math
 
 from pyglm import glm
-
-
-def set_defaults(vl_settings: 'VLSettings')->None:
-    # if not vl_settings.initialized:
-    vl_settings.anchor_screen =    (0.0, -0.25)
-    vl_settings.principal = (0.0,  0.0)
-        # vl_settings.initialized = True
-
-    vl_settings.first_vanishing_lines.clear()
-    item = vl_settings.first_vanishing_lines.add()
-    item.start = (-0.2, -0.53)
-    item.end =   ( 0.6,  0.12)
-
-    item = vl_settings.first_vanishing_lines.add()
-    item.start = (-0.88, 0.0)
-    item.end =   ( 0.09, 0.20)
-
-    vl_settings.second_vanishing_lines.clear()
-    item = vl_settings.second_vanishing_lines.add()
-    item.start =  (0.22, -0.48)
-    item.end =   (-0.80,  0.05)
-
-    item = vl_settings.second_vanishing_lines.add()
-    item.start =  (0.65, 0.05)
-    item.end =   (-0.10, 0.20)
-
-    vl_settings.third_vanishing_lines.clear()
-    item = vl_settings.third_vanishing_lines.add()
-    item.start = (-0.3, -0.52)
-    item.end =   (-0.4, 0.5)
-
-    item = vl_settings.third_vanishing_lines.add()
-    item.start = (0.3, -0.52)
-    item.end =   (0.4, 0.5)
-
-def on_property_update(vl_settings, context):
-    # print(f"Property updated, {vl_settings.id_data} re-solving...")
-    camera_object = vl_settings.id_data
-    if not isinstance(camera_object.data, bpy.types.Camera):
-        return
-    
-    vl_settings = camera_object.vl_settings
-    vl_settings.solve() 
-    # vl_settings.to_camera(camera_object) # TODO
     
 from . import vl_utils
 
-               
-def unsolve(vl_settings, context):
-    ...
 
 class VLLine(bpy.types.PropertyGroup):
     """A line defined by start and end points in normalized image space."""
@@ -62,17 +15,17 @@ class VLLine(bpy.types.PropertyGroup):
     start: bpy.props.FloatVectorProperty(
         name="Start",
         size=2,
+        subtype='COORDINATES',
         default=(0.0, 0.0),
         description="Start point of the line.",
-        update=on_property_update
     ) # type: ignore
 
     end: bpy.props.FloatVectorProperty(
         name="End",
         size=2,
+        subtype='COORDINATES',
         default=(0.0, 0.0),
         description="End point of the line.",
-        update=on_property_update
     ) # type: ignore
 
 
@@ -98,13 +51,6 @@ class VLSettings(bpy.types.PropertyGroup):
         max=179.0,
         description="Horizontal field of view in degrees", 
         options=set(),
-        update=on_property_update
-    ) # type: ignore
-
-    initialized: bpy.props.BoolProperty(
-        name="Initialized", 
-        default=False, 
-        options={'HIDDEN'}
     ) # type: ignore
 
     mode: bpy.props.EnumProperty(
@@ -116,8 +62,7 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='TWO_POINT',
         description="Number of vanishing points to use for camera calibration", 
-        options=set(),
-        update=on_property_update
+        options=set()
     ) # type: ignore
 
     reference_scale_mode: bpy.props.EnumProperty(
@@ -131,16 +76,14 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='SCREEN',
         description="Method for determining scene scale reference", 
-        options=set(),
-        update=on_property_update
+        options=set()
     ) # type: ignore
 
     quad_mode: bpy.props.BoolProperty(
         name="Quad Mode",
         default=False,
         description="Use quadrilateral corners to define second vanishing point", 
-        options=set(),
-        update=on_property_update
+        options=set()
     ) # type: ignore
 
     # enable_manual_principal: bpy.props.BoolProperty(
@@ -150,8 +93,6 @@ class VLSettings(bpy.types.PropertyGroup):
     #     options=set()
     # ) # type: ignore
 
-
-
     reference_scene_scale: bpy.props.FloatProperty(
         name="Scene Scale",
         default=10.0,
@@ -160,8 +101,7 @@ class VLSettings(bpy.types.PropertyGroup):
         unit='LENGTH',
         subtype='DISTANCE',
         description="Real-world size of the reference measurement for scale calibration", 
-        options=set(),
-        update=on_property_update
+        options=set()
     ) # type: ignore
 
     reference_screen_segment: bpy.props.FloatVectorProperty(
@@ -170,7 +110,6 @@ class VLSettings(bpy.types.PropertyGroup):
         default=(0.0, 0.5),
         description="Start and end points of the reference distance segment for scale measurement", 
         options=set(),
-        update=on_property_update
     ) # type: ignore
 
     first_axis: bpy.props.EnumProperty(
@@ -185,8 +124,7 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='Y+',
         description="First vanishing point axis orientation", 
-        options=set(),
-        update=on_property_update
+        options=set()
     ) # type: ignore
 
     second_axis: bpy.props.EnumProperty(
@@ -201,8 +139,7 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='X-',
         description="Second vanishing point axis orientation", 
-        options=set(),
-        update=on_property_update
+        options=set()
     ) # type: ignore
 
     anchor_screen: bpy.props.FloatVectorProperty(
@@ -210,8 +147,7 @@ class VLSettings(bpy.types.PropertyGroup):
         size=2,
         default=(0.0, 0.0),
         description="Anchor point for reference measurements in normalized image space", 
-        options=set(),
-        update=on_property_update
+        options=set()
     ) # type: ignore
 
     anchor_world: bpy.props.FloatVectorProperty(
@@ -221,8 +157,7 @@ class VLSettings(bpy.types.PropertyGroup):
         subtype='XYZ',
         default=(0.0, 0.0, 0.0),
         description="Anchor point in world space for reference measurements", 
-        options=set(),
-        update=on_property_update
+        options=set()
     ) # type: ignore
     
     principal: bpy.props.FloatVectorProperty(
@@ -230,8 +165,7 @@ class VLSettings(bpy.types.PropertyGroup):
         size=2,
         default=(0.0, 0.0),
         description="Principal point (optical center) in normalized image space", 
-        options=set(),
-        update=on_property_update
+        options=set()
     ) # type: ignore
 
     first_vanishing_lines: bpy.props.CollectionProperty(
@@ -252,7 +186,37 @@ class VLSettings(bpy.types.PropertyGroup):
         options=set()
     ) # type: ignore
 
+    def ensure_vanishing_lines(self):
+        """Ensure there is at least one line in each vanishing line collection."""
+        if len(self.first_vanishing_lines) == 0:
+            item = self.first_vanishing_lines.add()
+            item.start = (-0.2, -0.53)
+            item.end =   ( 0.6,  0.12)
+
+            item = self.first_vanishing_lines.add()
+            item.start = (-0.88, 0.0)
+            item.end =   ( 0.09, 0.20)
+
+        if len(self.second_vanishing_lines) == 0:
+            item = self.second_vanishing_lines.add()
+            item.start =  (0.22, -0.48)
+            item.end =   (-0.80,  0.05)
+
+            item = self.second_vanishing_lines.add()
+            item.start =  (0.65, 0.05)
+            item.end =   (-0.10, 0.20)
+
+        if len(self.third_vanishing_lines) == 0:
+            item = self.third_vanishing_lines.add()
+            item.start = (-0.3, -0.52)
+            item.end =   (-0.4, 0.5)
+
+            item = self.third_vanishing_lines.add()
+            item.start = (0.3, -0.52)
+            item.end =   (0.4, 0.5)
+
     def solve(self):
+        """update projection, and view matrix properties based on current settings"""
         compute_space = solver.types.Rect(-1,-1,2,2)
         try:
             # map props to solver
@@ -335,22 +299,12 @@ class VLSettings(bpy.types.PropertyGroup):
             import traceback
             traceback.print_exc()
 
-    def to_camera(self, camera_object: bpy.types.Object):
-        if not isinstance(camera_object.data, bpy.types.Camera):
-            return
-        
-        vl_utils.apply_solver_results_to_blender_camera(
-            camera_object=camera_object,
-            projection=glm.transpose(vl_utils.glm_from_blender_mat(self.proj_array)), #TODO: why do wee need to transpose here?
-            view=glm.transpose(vl_utils.glm_from_blender_mat(self.view_array)),
-            compute_space=solver.types.Rect(-1,-1,2,2),
-            fit_mode=camera_object.data.sensor_fit
-        )
-
     def unsolve(self):
-        projection:glm.mat4 = glm.transpose(vl_utils.glm_from_blender_mat(self.proj_array))
-        view:glm.mat4 =       glm.transpose(vl_utils.glm_from_blender_mat(self.view_array))
-        
+        viewport = solver.types.Rect(-1,-1,2,2)
+
+        # 1. adjust vanishing lines to current view and projection matrices
+        glm_proj:glm.mat4 = glm.transpose(vl_utils.glm_from_blender_mat(self.proj_array))
+        glm_view:glm.mat4 = glm.transpose(vl_utils.glm_from_blender_mat(self.view_array))
         axis_map = {
             'X+': solver.types.Axis.PositiveX,
             'Y+': solver.types.Axis.PositiveY,
@@ -359,62 +313,78 @@ class VLSettings(bpy.types.PropertyGroup):
             'Y-': solver.types.Axis.NegativeY,
             'Z-': solver.types.Axis.NegativeZ
         }
-        
-        # unsolve_result = solver.core.unsolve(
-        #     viewport=solver.types.Rect(-1,-1,2,2),
-        #     projection=projection,
-        #     view=view,
-        #     anchor_world=glm.vec3(self.anchor_world.x, self.anchor_world.y, self.anchor_world.z),
-        #     reference_axis={
-        #         'ANCHOR': None,
-        #         'SCREEN': solver.types.ReferenceAxis.Screen,
-        #         'X_AXIS': solver.types.ReferenceAxis.X_Axis,
-        #         'Y_AXIS': solver.types.ReferenceAxis.Y_Axis,
-        #         'Z_AXIS': solver.types.ReferenceAxis.Z_Axis
-        #     }[self.reference_scale_mode],
-        #     reference_screen_segment=(self.reference_screen_segment[0], self.reference_screen_segment[1]-self.reference_screen_segment
-        # [0]),
-        #     first_axis=axis_map[self.first_axis],
-        #     second_axis=axis_map[self.second_axis]
-        # )
 
-        ###########
-        # UNSOLVE #
-        # #########
-
-        # adjust vanishing lines
-        viewport = solver.types.Rect(-1,-1,2,2)
-        vp1, vp2, vp3 = solver.utils.orientation_to_three_vanishing_points(
-            glm.mat3(view), 
-            projection, 
-            viewport=viewport, 
-            first_axis=axis_map[self.first_axis], 
-            second_axis=axis_map[self.second_axis]
+        new_first_lines, new_second_lines, new_third_lines = solver.utils.adjust_vanishing_lines_to_camera_orientation(
+            [(line.start, line.end) for line in self.first_vanishing_lines],
+            [(line.start, line.end) for line in self.second_vanishing_lines],
+            [(line.start, line.end) for line in self.third_vanishing_lines],
+            axis_map[self.first_axis],
+            axis_map[self.second_axis],
+            glm.mat3(glm_view),
+            glm_proj,
         )
 
-        vl_utils.adjust_vanishing_lines_to_matrices(
-            self, 
-            projection,
-            view
-        )
+        for vl_setting_lines, new_lines in zip(
+            [self.first_vanishing_lines, self.second_vanishing_lines, self.third_vanishing_lines],
+            [new_first_lines, new_second_lines,new_third_lines]
+        ):
+            for i in range(len(vl_setting_lines)):
+                vl_setting_lines[i].start = new_lines[i][0]
+                vl_setting_lines[i].end =   new_lines[i][1]
 
-        # adjust anchor screen
+        # 2. adjust ANCHOR SCREEN
         anchor_screen:glm.vec2 = glm.project(
             glm.vec3(self.anchor_world.x, self.anchor_world.y, self.anchor_world.z), 
-            view, projection, tuple(viewport)
+            glm_view, glm_proj, tuple(viewport)
         ).xy
-
         self.anchor_screen = (anchor_screen.x, anchor_screen.y)
 
-        # # adjust reference scene scale
-        # match self.reference_scale_mode
-        # glm.unproject()
-        # reference_scene_scale
+        # 3. adjust REFERENCE SCENE SCALE
+        anchor_world = glm.vec3(self.anchor_world[0], self.anchor_world[1], self.anchor_world[2])
+        match self.reference_scale_mode:
+            case 'ANCHOR':
+                # world distance from anchor
+                camera_locationera_quat = solver.utils.decompose_extrinsics(glm_view)
+                anchor_distance = glm.length(anchor_world - camera_locationera_quat.position)
+            case 'SCREEN' | 'X_AXIS' | 'Y_AXIS' | 'Z_AXIS':
+                match self.reference_scale_mode:
+                    case 'X_AXIS':
+                        ref_axis_vec = glm.vec3(1, 0, 0)
+                    case 'Y_AXIS':
+                        ref_axis_vec = glm.vec3(0, 1, 0)
+                    case 'Z_AXIS':
+                        ref_axis_vec = glm.vec3(0, 0, 1)
+                    case 'SCREEN' | _:
+                        # Right vector is column 0 of the inverse view matrix
+                        ref_axis_vec = glm.vec3(glm.inverse(glm_view)[0])
 
-        # # 
-        # fovx
+        # --- 2. Measure current world length on screen ---
+        A_screen = glm.project(anchor_world, glm_view, glm_proj, tuple(viewport)).xy
+        V_screen = glm.project(anchor_world + ref_axis_vec, glm_view, glm_proj, tuple(viewport)).xy
+        dir_screen = glm.normalize(V_screen - anchor_screen)
 
+        def get_world_pos(screen_pos):
+            ray = solver.utils.cast_ray(screen_pos, glm_view, glm_proj, tuple(viewport))
+            return solver.utils.closest_point_between_lines((glm.vec3(0,0,0), glm.vec3(0,0,0) + ref_axis_vec), ray)
 
+        reference_offset, reference_length = self.reference_screen_segment
+        ref_start_world = get_world_pos(A_screen + dir_screen * reference_offset)
+        ref_end_world = get_world_pos(A_screen + dir_screen * (reference_offset + reference_length))
+        world_length = glm.length(ref_end_world - ref_start_world)
+
+        self.reference_scene_scale = world_length
+
+    def to_camera(self, camera_object: bpy.types.Object):
+        if not isinstance(camera_object.data, bpy.types.Camera):
+            return
+        
+        vl_utils.apply_solver_results_to_blender_camera(
+            camera_object=camera_object,
+            projection=glm.transpose(vl_utils.glm_from_blender_mat(self.proj_array)), #TODO: why do wee need to transpose here?
+            view=      glm.transpose(vl_utils.glm_from_blender_mat(self.view_array)),
+            compute_space=solver.types.Rect(-1,-1,2,2),
+            fit_mode=camera_object.data.sensor_fit
+        )
 
 ######################
 # REGISTER FUNCTIONS #

@@ -8,6 +8,13 @@ from . constants import EPSILON
 from . types import Line2, Ray3, Line3, Rect, Axis
 
 
+import functools
+import inspect
+import warnings
+
+string_types = (type(b''), type(u''))
+
+
 ############################
 # 2D-3D GEOMETRY FUNCTIONS #
 ############################
@@ -239,6 +246,7 @@ def intersect_ray_with_rect(P: glm.vec2, Q: glm.vec2, rect: Rect) -> glm.vec2 | 
 
     return P + direction * actual_t
 
+
 #####################
 # UTILITY FUNCTIONS #
 #####################
@@ -402,6 +410,7 @@ def adjust_vanishing_lines_to_camera_orientation(
 ##################
 # GLM EXTENSIONS #
 ##################
+
 def mat3_to_euler_zxy(M: glm.mat3) -> glm.vec3:
     """
     # Assumes R is a flat list of 9 elements (col-major)

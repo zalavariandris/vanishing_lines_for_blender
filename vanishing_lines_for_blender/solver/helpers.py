@@ -10,7 +10,22 @@ from . constants import EPSILON, MAX_VANISHING_POINT_DISTANCE
 
 from . exceptions import VanishingLinesError
 
-def compute_roll_matrix(
+import warnings
+import functools
+
+def deprecated(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):   
+        print(f"Deprecated: '{func.__name__}' is deprecated and will be removed in future versions.")
+        result = func(*args, **kwargs)
+        return result
+    return wrapper
+
+#################
+# Solve Helpers #
+#################
+
+def create_roll_matrix(
         second_vanishing_line:Line2,
         view_matrix:glm.mat4,
         projection_matrix:glm.mat4,
@@ -22,7 +37,6 @@ def compute_roll_matrix(
     Apply a roll correction matrix to the viewmatrix
     to align the horizon based on the second vanishing lines.
     """
-
     # Project the second vanishing line the forward plane in 3D world space
     A, B = glm.vec2(*second_vanishing_line[0]), glm.vec2(*second_vanishing_line[1])
 
@@ -61,6 +75,7 @@ def compute_roll_matrix(
     roll_matrix: glm.mat4 = glm.rotate(glm.mat4(1.0), angle, roll_axis)  # type: ignore[attr-defined]
     return roll_matrix
 
+@deprecated
 def calc_second_vanishing_point_from_focal_length(
         Fu: glm.vec2, 
         f: float, 
@@ -90,7 +105,7 @@ def calc_second_vanishing_point_from_focal_length(
 
     return Fv
 
-def compute_focal_length_from_vanishing_points(
+def calc_focal_length_from_vanishing_points(
         Fu:Tuple[float, float], # first vanishing point
         Fv:Tuple[float, float], # second vanishing point
         P: Tuple[float, float]   # principal point
@@ -153,6 +168,11 @@ def compute_focal_length_from_vanishing_points(
     
     focal_length = math.sqrt(focal_length_squared)
     return focal_length
+
+
+################
+# AXIS helpers #
+################
 
 def vector_from_axis(axis: Axis)->glm.vec3:
     match axis:
@@ -227,6 +247,12 @@ def primary_axis_from_vector(vector: glm.vec3) -> Axis:
     
     return lookup[major_axis_index][0 if is_positive else 1]
 
+
+##########################
+# Vanishing Line helpers #
+##########################
+
+@deprecated
 def adjust_vanishing_lines(
         old_vp:glm.vec2, 
         new_vp:glm.vec2, 
@@ -274,6 +300,7 @@ def adjust_vanishing_lines(
                 new_vanishing_lines[i] = (P, new_moving_point)
     return new_vanishing_lines
 
+@deprecated
 def adjust_vanishing_lines_by_rotation(
         old_vp: glm.vec2, 
         new_vp: glm.vec2, 
@@ -306,6 +333,7 @@ def adjust_vanishing_lines_by_rotation(
     
     return new_vanishing_lines
 
+@deprecated
 def vanishing_points_from_camera(projection: glm.mat4, view: glm.mat4) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
     """Extract vanishing points from camera projection and view matrices.
     

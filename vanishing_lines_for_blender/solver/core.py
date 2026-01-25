@@ -293,7 +293,7 @@ def orientation_from_one_vanishing_point(
     
 
     # Adjust Camera Roll to match second vanishing line
-    view:glm.mat4 = view * helpers.compute_roll_matrix(
+    view:glm.mat4 = view * helpers.create_roll_matrix(
         second_line, # Roll the camera based on the horizon line projected to 3D
         view,
         projection,
@@ -312,7 +312,7 @@ def orientation_from_two_vanishing_points(
     vp1 = glm.vec2(*vp1)
     vp2 = glm.vec2(*vp2)
 
-    f = helpers.compute_focal_length_from_vanishing_points(Fu=vp1,Fv=vp2,P=P)
+    f = helpers.calc_focal_length_from_vanishing_points(Fu=vp1,Fv=vp2,P=P)
 
     # compute projection
     projection = utils.compose_intrinsics(viewport, f, P, DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE)
@@ -347,7 +347,7 @@ def orientation_from_three_vanishing_points(
     vp3 = glm.vec2(*vp3)
 
     P = utils.triangle_orthocenter(vp1, vp2, vp3)
-    f = helpers.compute_focal_length_from_vanishing_points(Fu=vp1,Fv=vp2,P=P)
+    f = helpers.calc_focal_length_from_vanishing_points(Fu=vp1,Fv=vp2,P=P)
 
     # compute projection
     projection = utils.compose_intrinsics(viewport, f, P, DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE)

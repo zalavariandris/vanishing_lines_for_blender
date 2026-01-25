@@ -5,7 +5,7 @@ from . import vl_utils
 from . import vl_coord_utils
 from .view3d_painter import View3dPainter
 from pyglm import glm
-
+import mathutils
 
 # Constants
 CLIP_NEAR = -1000.0
@@ -29,12 +29,12 @@ GetterCallbackType = GetterCallbackWithIndexType | GetterCallbackWithoutType
 ControlIdType = Tuple['bpy.types.ID', str, int|None]
 
 
-class ControlPointWidget():
+class _ControlPointGizmo():
     def __init__(self, 
         data:'bpy.types.ID', 
         prop:str, *, 
         text:str|None=None,
-        color:Tuple[float, float, float, float]=(1.0, 1.0, 1.0, 1.0),
+        color:mathutils.Vector=mathutils.Vector((1.0, 1.0, 1.0, 1.0)),
         index:int|None=None, 
         setter:SetterCallbackType|None=None, 
         getter:GetterCallbackType|None=None
@@ -84,19 +84,19 @@ class ControlPointWidget():
     def paint(self, painter:View3dPainter, hovered:bool=False, active:bool=False):
         text = self.text if self.text is not None else f"{self.prop}"
 
-        P = self.value# self.project(cp.value)
+        pos = mathutils.Vector((self.value[0], self.value[1])) # self.project(cp.value)
 
         point_render_color = self.color
         if active or hovered:
-            point_render_color = (1.0, 1.0, 1.0, 1.0)
+            point_render_color = mathutils.Vector((1.0, 1.0, 1.0, 1.0))
 
-        painter.add_point(
-            P,
+        painter.add_marker(
+            pos,
             point_render_color)
 
 
         painter.add_annotation(
-            (self.value[0], self.value[1]),
+            pos,
             text=text,
             color=point_render_color)
         
@@ -120,18 +120,21 @@ class ControlPointWidget():
             self._set_transform(self.data, self.prop, self.index, value)
             
 
-class VanishingLineWidget:
+class _VanishingLineGizmo:
     def __init__(self,
         data:'bpy.types.ID', 
         prop:str, *, 
         text:str|None=None,
-        color:Tuple[float, float, float, float]=(1.0, 1.0, 1.0, 1.0),
+        color:mathutils.Vector=mathutils.Vector((1.0, 1.0, 1.0, 1.0)),
         index:int|None=None
     ):
         self.data = data
         self.prop = prop
         self.index = index
         self.text = text if text is not None else f"{prop}"
+
+
+        assert isinstance(color, mathutils.Vector) and len(color) == 4, "Color must be a tuple/list of 4 floats (RGBA)"
         self.color = color
 
         # TODO: vallidate data structure
@@ -148,8 +151,8 @@ class VanishingLineWidget:
             end = getattr(self.data, self.prop)['end']
 
         painter.add_line(start, end, self.color)
-        painter.add_point(start, self.color)
-        painter.add_point(end, self.color)
+        painter.add_marker(start, self.color)
+        painter.add_marker(end, self.color)
 
     def manipulate(self, mouse_x, mouse_y, mouse_down_x, mouse_down_y, value_prev_press_x, value_prev_press_y):
         ...
@@ -157,7 +160,7 @@ class VanishingLineWidget:
 
 class View3dGUI:
     def __init__(self):
-        self._widgets: dict[ControlIdType, ControlPointWidget|VanishingLineWidget] = dict()
+        self._widgets: dict[ControlIdType, _ControlPointGizmo|_VanishingLineGizmo] = dict()
         self._painter: View3dPainter = View3dPainter()
 
         # interaction
@@ -376,19 +379,18 @@ class View3dGUI:
         last_id = next(reversed(self._widgets))
         return self._active_id == last_id
 
-    # Widgets
-    def add_widget(self, widget:ControlPointWidget|VanishingLineWidget) -> ControlPointWidget|VanishingLineWidget:
-        control_id = (widget.data, widget.prop, widget.index)
-        if control_id not in self._widgets:
-            self._widgets[control_id] = widget
+    # # Widgets
+    # def add_widget(self, widget:_ControlPointGizmo|_VanishingLineGizmo) -> _ControlPointGizmo|_VanishingLineGizmo:
+    #     control_id = (widget.data, widget.prop, widget.index)
+    #     if control_id not in self._widgets:
+    #         self._widgets[control_id] = widget
 
-        is_active = (self._active_id == control_id)
-        is_hovered = (self._hovered_id == control_id)
+    #     is_active = (self._active_id == control_id)
+    #     is_hovered = (self._hovered_id == control_id)
 
-        control = self._widgets[control_id]
-        control.paint(self._painter, hovered=is_hovered, active=is_active)
+    #     control = self._widgets[control_id]
+    #     control.paint(self._painter, hovered=is_hovered, active=is_active)
 
-        return widget
 
     def prop_point(self, 
         data:'bpy.types.ID', 
@@ -399,11 +401,11 @@ class View3dGUI:
         color=(1.0,0.5,0.0,1.0),
         set_transform:Callable|None=None, 
         get_transform:Callable|None=None
-    ) -> ControlPointWidget:
+    ):
         assert self._painter is not None, "Draw layer not initialized"
         control_id = (data, prop, index)
         if control_id not in self._widgets:
-            self._widgets[control_id] = ControlPointWidget(data, 
+            self._widgets[control_id] = _ControlPointGizmo(data, 
                 prop, 
                 text=text,
                 index=index,
@@ -417,83 +419,11 @@ class View3dGUI:
 
         control = self._widgets[control_id]
         control.paint(self._painter, hovered=is_hovered, active=is_active)
-        
-        return self._widgets[control_id]
     
-    # def prop_line(self, 
-    #     data:'bpy.types.ID', 
-    #     prop:str, *, 
-    #     index:int|None=None,
-    #     color=(0.8,0.8,0.8,1.0),
-    #     set_transform:Callable|None=None, 
-    #     get_transform:Callable|None=None
-    # ):
-    #     assert self._painter is not None, "Draw layer not initialized"
-    #     if index is not None:
-    #         line = getattr(data, prop)[index]
-    #     else:
-    #         line = getattr(data, prop)
-
-    #     # start_cp = self.prop_point(line, 'start', text="", color=color)
-    #     # end_cp = self.prop_point(line, 'end', text="", color=color)
-
-    #     mid_cp = self.prop_point(data, prop, index=index, text="", color=color, 
-    #         set_transform=set_transform,
-    #         get_transform=get_transform)
-
-    #     # draw line
-    #     line = getattr(data, prop)[index]
-    #     self._painter.add_line(
-    #         line.start,
-    #         line.end,
-    #         color=color)
-        
-    # def prop_distance(self, data:'bpy.types.ID', prop:str, *,
-    #     origin:Tuple[float, float], 
-    #     direction:Tuple[float, float]=(1,0), 
-    #     text:str="",
-    #     color=(0.0,0.5,1.0,1.0),
-    # ):
-        
-    #     def set_transform(data:'bpy.types.ID', prop:str, P:Tuple[float, float]):
-    #         P = glm.vec2(P[0], P[1])
-    #         O = glm.vec2(origin[0], origin[1])
-    #         dir = glm.normalize(glm.vec2(direction[0], direction[1]))
-    #         distance = glm.dot(P - O, dir)
-    #         setattr(data, prop, distance)
-
-    #     def get_transform(data:'bpy.types.ID', prop:str) -> Tuple[float, float]:
-    #         distance = getattr(data, prop)
-
-    #         # set direction magnitude
-    #         dx, dy = direction
-    #         l = (dx**2 + dy**2)**0.5
-    #         dx, dy = dx/l*distance, dy/l*distance
-
-    #         # get origin
-    #         Ox, Oy = origin
-
-    #         # set point position
-    #         Px = Ox + dx
-    #         Py = Oy + dy
-
-    #         return Px, Py
-        
-    #     self.prop_point(data, prop, text=text, color=color, 
-    #                     set_transform=set_transform,
-    #                     get_transform=get_transform)
-        
-    #     if self.is_item_active() or self.is_item_hovered():
-    #         render_color  = vl_utils.dim_color(color, DIM_FACTOR_ACTIVE)
-    #     else:
-    #         render_color  = vl_utils.dim_color(color, DIM_FACTOR_INACTIVE)
-        
-    #     self._painter.add_line(
-    #         origin,
-    #         get_transform(data, prop),
-    #         color=render_color) # type: ignore
     
-    def prop_distance_segment(self, data:'bpy.types.ID', prop:str, *, 
+    def prop_distance_segment(self, 
+        data:'bpy.types.ID',
+        prop:str, *, 
         origin:Tuple[float, float], 
         direction:Tuple[float, float]=(1,0),
         text:str|None=None,
@@ -530,15 +460,15 @@ class View3dGUI:
             return Px, Py
         
         highlight = False
-        start_cp = self.prop_point(data, prop, index=0, text="", color=color, set_transform=setter, get_transform=getter)
+        self.prop_point(data, prop, index=0, text="", color=color, set_transform=setter, get_transform=getter)
         if self.is_item_active() or self.is_item_hovered():
             highlight = True
-        end_cp =   self.prop_point(data, prop, index=1, text="", color=color, set_transform=setter, get_transform=getter)
+        self.prop_point(data, prop, index=1, text="", color=color, set_transform=setter, get_transform=getter)
         if self.is_item_active() or self.is_item_hovered():
             highlight = True
 
-        P_start = start_cp.value
-        P_end =   end_cp.value
+        P_start = mathutils.Vector( getter(data, prop, 0) )
+        P_end   = mathutils.Vector( getter(data, prop, 1) )
 
         render_color  = color if highlight else vl_utils.dim_color(color, DIM_FACTOR_ACTIVE)
         self._painter.add_line(
@@ -546,8 +476,6 @@ class View3dGUI:
             P_end,
             color=render_color)
         
-
-
         angle = math.atan2(direction[1], direction[0])
         # make sure angle is between -pi/2 and pi/2 for better readability
         if angle > math.pi/2:
@@ -556,7 +484,7 @@ class View3dGUI:
             angle += math.pi
 
         self._painter.add_annotation(
-            ((P_start[0]+P_end[0])/2, (P_start[1]+P_end[1])/2),
+            P_start.lerp(P_end, 0.5),
             text,
             color=render_color,
             angle=angle)

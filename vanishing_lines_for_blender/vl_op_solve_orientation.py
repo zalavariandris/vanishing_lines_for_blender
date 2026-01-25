@@ -1,4 +1,4 @@
-from typing import Tuple, Callable, overload
+from typing import Tuple, Callable, overload, Iterable
 import math
 import warnings
 
@@ -27,6 +27,59 @@ FONT_SIZE = 16
 LINE_HEIGHT = 18
 
 
+
+
+class MODAL_MT_VLContextMenu(bpy.types.Menu):
+    bl_label = "Vanishing Lines Context Menu"
+    bl_idname = "MODAL_MT_vl_context_menu"
+
+    vl_settings: vl_properties_camera.VLSettingsCamera|None = None  # type: ignore
+
+    fov: bpy.props.FloatProperty(
+        name="Focal Length",
+        default=50.0,
+        description="Set the camera focal length",
+        unit='CAMERA',
+        update=lambda self, context: vl_utils.update_fov_in_running_operator(self.fov, context
+    ) # type: ignore
+
+
+    @classmethod
+    def poll(kls, context):
+        return vl_utils.is_operator_running('VIEW3D_OT_vl_solve_orientation')
+
+    def draw(self, context):
+        layout = self.layout.column()
+        vl_settings = context.space_data.camera.vl_settings # get vl settings from the active camera
+
+        
+
+        if op:=vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation'):
+            # vl_settings = op.get_vl_settings(context)
+            # layout.prop_tabs_enum(vl_settings, 'mode')
+
+            # row = layout.row()
+            # row.enabled = vl_settings.mode in {'ONE_POINT'}
+            # row.prop(context.area.spaces.active.camera.data, 'lens')
+            
+            # row = layout.row()
+            # row.enabled = vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}
+            # row.prop(vl_settings, 'quad_mode')
+
+            # row = layout.row()
+            # row.enabled = vl_settings.mode in {'ONE_POINT', 'TWO_POINT'}
+            # # row.prop(vl_settings, 'enable_manual_principal')
+            # layout.prop_menu_enum(vl_settings, 'first_axis')
+            # layout.prop_menu_enum(vl_settings, 'second_axis')
+            # layout.prop_menu_enum(vl_settings, 'scene_scale_mode')
+
+            # layout.prop(vl_settings, 'scene_scale')
+            # col = layout.column()
+            # col.enabled = vl_settings.scene_scale_mode != 'ORIGIN'
+            # col.prop(vl_settings, 'reference_distance_segment', index=0)
+            # col.prop(vl_settings, 'reference_distance_segment', index=1)
+
+
 class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
     bl_idname = "view3d.vl_solve_orientation"
     bl_label = "Vanishing Lines View Tool"
@@ -53,7 +106,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
     _context_area = None  # Store the area where operator is running
     _context_region = None  # Store the region where operator was invoked
 
-    _msgbus_owner = None  # Owner object for msgbus subscription
+    # _msgbus_owner = None  # Owner object for msgbus subscription
     _draw_handler = None  # Store the draw handler reference
 
     uiview: View3dGUI|None=None  # type: ignore
@@ -87,133 +140,35 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self._initial_camera_shift_x = camera_object.data.shift_x
         self._initial_camera_shift_y = camera_object.data.shift_y
 
-        ######################################
-        # Initialize vl_settings to defaults #
-        ######################################
-        vl_settings = camera_object.vl_settings
-
-        # Get current camera matrices, before set to defaults
+        ############################################
+        # Initialize vl_settings to current camera #
+        ############################################
         glm_proj, glm_view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
+        vl_settings = camera_object.vl_settings # TODO: move vl_settings to operator?
+        vl_settings.ensure_vanishing_lines()
 
-        # Initialize defaults
-        if not vl_settings.initialized:
-            # Load existing parameters from camera
-            vl_properties_camera.set_defaults(vl_settings)
-            vl_settings.initialized = True
-
-        #############################################
-        # Set anchor point based on cursor position #
-        #############################################
+        # Set the anchor point based on cursor position
         cursor = context.scene.cursor.location.copy()
-        
-        # check if cursor is behind the camera
         cursor_camera_space = glm_view * glm.vec4(cursor.x, cursor.y, cursor.z, 1.0)
         is_cursor_behind = cursor_camera_space.z > 0
-
         if is_cursor_behind:
             orbit_location = context.area.spaces.active.region_3d.view_location
             vl_settings.anchor_world = (orbit_location.x, orbit_location.y, orbit_location.z)
         else:
             vl_settings.anchor_world = context.scene.cursor.location.to_tuple()
 
-        ######################################
-        # Match VLSettings to current Camera #
-        ######################################
-        # update vl_settings matrices to current camera
-        vl_settings.proj_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm.transpose(glm_proj)))
-        vl_settings.view_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm.transpose(glm_view)))
+        # Match VLSettings to current Camera
+        vl_settings.proj_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm_proj))
+        vl_settings.view_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm_view))
+        _, f = solver.utils.decompose_intrinsics(solver.types.Rect(-1,-1,2,2), glm_proj)
+        fovx = solver.utils.fov_from_focal_length(f, 2)
+        vl_settings.fovx = fovx
+        vl_settings.unsolve()
 
-        ###########
-        # unsolve #
-        ###########
-        viewport = solver.types.Rect(-1,-1,2,2)
-        axis_map = {
-            'X+': solver.types.Axis.PositiveX,
-            'Y+': solver.types.Axis.PositiveY,
-            'Z+': solver.types.Axis.PositiveZ,
-            'X-': solver.types.Axis.NegativeX,
-            'Y-': solver.types.Axis.NegativeY,
-            'Z-': solver.types.Axis.NegativeZ
-        }
-
-        # I. adjust VANISHING LINES #TODO: refactor this part
-        vp1, vp2, vp3 = solver.utils.orientation_to_three_vanishing_points(
-            glm.mat3(glm_view), 
-            glm_proj, 
-            viewport=viewport, 
-            first_axis=axis_map[vl_settings.first_axis], 
-            second_axis=axis_map[vl_settings.second_axis]
-        )
-
-        vl_utils.adjust_vanishing_lines_to_matrices(
-            vl_settings, 
-            glm_proj,
-            glm_view
-        )
-
-        # II. adjust ANCHOR SCREEN
-        anchor_screen:glm.vec2 = glm.project(
-            glm.vec3(vl_settings.anchor_world.x, vl_settings.anchor_world.y, vl_settings.anchor_world.z), 
-            glm_view, glm_proj, tuple(viewport)
-        ).xy
-        vl_settings.anchor_screen = (anchor_screen.x, anchor_screen.y)
-
-        # III. adjust REFERENCE SCENE SCALE
-        anchor_world = glm.vec3(vl_settings.anchor_world[0], vl_settings.anchor_world[1], vl_settings.anchor_world[2])
-        match vl_settings.reference_scale_mode:
-            case 'ANCHOR':
-                # world distance from anchor
-                camera_locationera_quat = solver.utils.decompose_extrinsics(glm_view)
-                anchor_distance = glm.length(anchor_world - camera_locationera_quat.position)
-            case 'SCREEN' | 'X_AXIS' | 'Y_AXIS' | 'Z_AXIS':
-                match vl_settings.reference_scale_mode:
-                    case 'X_AXIS':
-                        ref_axis_vec = glm.vec3(1, 0, 0)
-                    case 'Y_AXIS':
-                        ref_axis_vec = glm.vec3(0, 1, 0)
-                    case 'Z_AXIS':
-                        ref_axis_vec = glm.vec3(0, 0, 1)
-                    case 'SCREEN' | _:
-                        # Right vector is column 0 of the inverse view matrix
-                        ref_axis_vec = glm.vec3(glm.inverse(glm_view)[0])
-
-        # --- 2. Measure current world length on screen ---
-        A_screen = glm.project(anchor_world, glm_view, glm_proj, tuple(viewport)).xy
-        V_screen = glm.project(anchor_world + ref_axis_vec, glm_view, glm_proj, tuple(viewport)).xy
-        dir_screen = glm.normalize(V_screen - anchor_screen)
-
-        def get_world_pos(screen_pos):
-            ray = solver.utils.cast_ray(screen_pos, glm_view, glm_proj, tuple(viewport))
-            return solver.utils.closest_point_between_lines((glm.vec3(0,0,0), glm.vec3(0,0,0) + ref_axis_vec), ray)
-
-        reference_offset, reference_length = vl_settings.reference_screen_segment
-        ref_start_world = get_world_pos(A_screen + dir_screen * reference_offset)
-        ref_end_world = get_world_pos(A_screen + dir_screen * (reference_offset + reference_length))
-        world_length = glm.length(ref_end_world - ref_start_world)
-
-        vl_settings.reference_scene_scale = world_length
-
-
-        # apply current state, here we ensure that the solve is up to date, but if the usolve was correct, this should not change anything
-        vl_settings.solve()
-        vl_settings.to_camera(context.space_data.camera)
-        self.update_solve(context)
-
-        # Register the statusbar draw callback
-        bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
-
+        ##################################
         # Initialize UIView3D for drawing and interaction in the viewport
+        #################################
         self.uiview = View3dGUI()
-
-
-        # # Subscribe to camera lens changes for this operator instance
-        # self._msgbus_owner = object()
-        # bpy.msgbus.subscribe_rna(
-        #     key=(bpy.types.Camera, "lens"),
-        #     owner=self._msgbus_owner,
-        #     args=(),
-        #     notify=camera_lens_changed,
-        # )
 
         self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
             self.handle_draw, 
@@ -221,9 +176,20 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             'WINDOW', 
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
         )
-
-        self.view3d_event_loop(context)
+        self.view3d_tick(context) # setup initial gui
         context.area.tag_redraw()
+
+        # # Subscribe to camera lens changes for this operator instance
+        # self._msgbus_owner = object()
+        # bpy.msgbus.subscribe_rna(
+        #     key=(camera_object, "data"),
+        #     owner=self._msgbus_owner,
+        #     args=tuple(),
+        #     notify=lambda: self.on_camera_lens_changed(),
+        # )
+
+        # Register the statusbar draw callback
+        bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
 
         # Run the modal operator with correct region context
         with context.temp_override(region=self._context_region):
@@ -254,6 +220,11 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         if context.region.type != 'WINDOW':
             return {'PASS_THROUGH'}
         
+        if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
+            # This triggers the menu at the mouse location
+            bpy.ops.wm.call_menu(name=MODAL_MT_VLContextMenu.bl_idname)
+            return {'RUNNING_MODAL'}
+        
         #########################
         #########################
         vl_settings = context.space_data.camera.vl_settings
@@ -267,14 +238,17 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                     vl_settings.mode = 'ONE_POINT'
                     self.update_solve(context)
                     return {'RUNNING_MODAL'}
+                
                 case 'TWO' | 'NUMPAD_2':
                     vl_settings.mode = 'TWO_POINT'
                     self.update_solve(context)
                     return {'RUNNING_MODAL'}
+                
                 case 'THREE' | 'NUMPAD_3':
                     vl_settings.mode = 'THREE_POINT'
                     self.update_solve(context)
                     return {'RUNNING_MODAL'}
+                
                 case 'Q':
                     vl_settings.quad_mode = not vl_settings.quad_mode
                     self.update_solve(context)
@@ -282,7 +256,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 
         # capture ui controls events
         changed = self.uiview.event(context, event)
-        self.view3d_event_loop(context)
+        self.view3d_tick(context)
         if changed:
             vl_settings.solve()
             vl_settings.to_camera(context.space_data.camera)
@@ -305,7 +279,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 return {'RUNNING_MODAL'}
         
         # match event.type:
-
         #     case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl:
         #         # SMOOTH DOLLY CAMERA
         #         # Match Blender's native dolly speed: proportional to view_distance
@@ -427,11 +400,11 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             #     self._context_area.spaces.active.region_3d.view_camera_offset[1] += offset_delta_y
             #     return {'RUNNING_MODAL'}
 
-        return {'PASS_THROUGH'}
+        # return {'PASS_THROUGH'}
         
-        # return {'RUNNING_MODAL'}
+        return {'RUNNING_MODAL'}
     
-    def view3d_event_loop(self, context):        
+    def view3d_tick(self, context):        
         # get the region
         self.uiview.begin()
         # get SpaceView3D
@@ -456,18 +429,18 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             self.uiview.set_viewport((0, 0, window_region.width, window_region.height))
         ##
 
-        GREEN = (0,1,0,1)
-        RED = (1,0,0,1)
-        BLUE = (0,0.3, 1.0, 1.0)
-        YELLOW = (1,0.9,0,1)
-        ORANGE = (1.0, 0.5, 0.0, 1.0)
+        GREEN =  mathutils.Vector((0,1,0,1))
+        RED =    mathutils.Vector((1,0,0,1))
+        BLUE =   mathutils.Vector((0,0.3, 1.0, 1.0))
+        YELLOW = mathutils.Vector((1,0.9,0,1))
+        ORANGE = mathutils.Vector((1.0, 0.5, 0.0, 1.0))
 
         ###########################
         # Vanishing Line CONTROLS #
         ###########################
         vl_settings = context.space_data.camera.vl_settings
         
-        def get_axis_color(axis:solver.types.Axis) -> Tuple[float, float, float, float]:
+        def get_axis_color(axis:solver.types.Axis) -> mathutils.Vector:
             match axis:
                 case solver.types.Axis.PositiveX | solver.types.Axis.NegativeX:
                     return RED
@@ -635,6 +608,13 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         ###########################################
         # DRAW Extended lines to vanishing points #
         ###########################################
+        
+        def closest_to_point(points: Iterable[Tuple[float, float]], P:Tuple[float, float]) -> Tuple[float, float]:
+            sorted_points = sorted(points, key=lambda Q: (Q[0]-P[0])**2 + (Q[1]-P[1])**2)
+            if len(sorted_points) == 0:
+                raise ValueError("No points provided to find closest point to vanishing point.")
+            return sorted_points[0]
+        
         if not vl_settings.error_message:
             if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
                 try:
@@ -644,8 +624,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
                     for line in vl_settings.first_vanishing_lines:
                         self.uiview._painter.add_line(
-                            vl_utils.closest_point_to_target([line.start, line.end], vp1), 
-                            vp1, 
+                            mathutils.Vector(closest_to_point([line.start, line.end], vp1)), 
+                            mathutils.Vector(vp1), 
                             vl_utils.dim_color(get_axis_color(first_axis))
                         )
                         
@@ -666,7 +646,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                         
                         for line_start, line_end in second_vanishing_lines:
                             self.uiview._painter.add_line(
-                                vl_utils.closest_point_to_target([line_start, line_end], vp2), 
+                                closest_to_point([line_start, line_end], vp2), 
                                 vp2, 
                                 vl_utils.dim_color(get_axis_color(second_axis)))
                     except ValueError as e:
@@ -679,8 +659,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                         
                         for line in vl_settings.second_vanishing_lines:
                             self.uiview._painter.add_line(
-                                vl_utils.closest_point_to_target([line.start, line.end], vp2), 
-                                vp2, 
+                                mathutils.Vector(closest_to_point([line.start, line.end], vp2)), 
+                                mathutils.Vector(vp2), 
                                 vl_utils.dim_color(get_axis_color(second_axis)))
 
                     except ValueError as e:
@@ -694,8 +674,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                     
                     for line in vl_settings.third_vanishing_lines:
                         self.uiview._painter.add_line(
-                            vl_utils.closest_point_to_target([line.start, line.end], vp3), 
-                            vp3, 
+                            mathutils.Vector(closest_to_point([line.start, line.end], vp3)), 
+                            mathutils.Vector(vp3), 
                             vl_utils.dim_color(get_axis_color(third_axis)))
                         
                 except ValueError as e:
@@ -704,16 +684,16 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 projection, view = vl_utils.get_camera_matrices(camera_object=context.area.spaces.active.camera,
                     compute_space=solver.types.Rect(-1,-1,2,2))
                 principal, f = solver.utils.decompose_intrinsics(solver.types.Rect(-1,-1,2,2), projection)
-                self.uiview._painter.add_point(
-                    pos=principal,
-                    color=glm.vec4(1.0, 0.7, 0.0, 1.0),
+                self.uiview._painter.add_marker(
+                    pos=mathutils.Vector(principal),
+                    color=mathutils.Vector((1.0, 0.7, 0.0, 1.0)),
                     shape='x',
                 )
 
                 self.uiview._painter.add_annotation(
-                    pos=principal,
+                    pos=mathutils.Vector(principal),
                     text="P",
-                    color=glm.vec4(1.0, 0.7, 0.0, 1.0)
+                    color=mathutils.Vector((1.0, 0.7, 0.0, 1.0))
                 )
 
         # Draw error messages
@@ -731,34 +711,31 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 blf.draw(font_id, f"{line}")
 
         ## draw compute space
-        x_min, y_min = (-1,-1)
-        x_max, y_max = (1, 1)
+        rect_min = mathutils.Vector((-1,-1))
+        rect_max = mathutils.Vector(( 1, 1))
+        rect_size = rect_max - rect_min
         self.uiview._painter.add_rect(
-            (x_min, y_min),
-            (x_max - x_min, y_max - y_min),
-            color=(0,1,1,0.1)
+            rect_min,
+            rect_size,
+            color=mathutils.Vector((0,1,1,0.1))
         )
 
         ## draw info
         self.uiview._painter.add_annotation(
-            pos=(x_min+(x_max-x_min)/2, y_min),
+            pos=rect_min + mathutils.Vector((rect_size.x/2, 0)),
             text="Vanishing Lines · Beta Version",
-            color=(0,1,1,0.3)
+            color=mathutils.Vector((0,1,1,0.3))
         )
 
         self.uiview.end()
 
-        # self.update_solve(context)
-
     def update_solve(self, context):
         camera_object = context.space_data.camera
-        vl_settings = context.space_data.camera.vl_settings
+        camera_object.vl_settings.solve()
+        camera_object.vl_settings.to_camera(camera_object)
 
-        # vl_settings.solve()
-        # vl_settings.to_camera(camera_object)
-
-        if self._context_area.type == 'VIEW_3D':
-            self._context_area.tag_redraw()
+        self.view3d_tick(context)
+        self._context_area.tag_redraw()
 
     def status_text(self, header, context):
         # keyboard
@@ -794,10 +771,10 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self.cleanup(context)
         
     def cleanup(self, context):
-        # Unsubscribe from msgbus
-        if self._msgbus_owner is not None:
-            bpy.msgbus.clear_by_owner(self._msgbus_owner)
-            self._msgbus_owner = None
+        # # Unsubscribe from msgbus
+        # if self._msgbus_owner is not None:
+        #     bpy.msgbus.clear_by_owner(self._msgbus_owner)
+        #     self._msgbus_owner = None
 
         # remove draw hundler
         if self._draw_handler is not None:
@@ -832,45 +809,44 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         
         self.uiview.render()
     
+    def on_camera_lens_changed(self):
+        """Callback when camera lens changes"""
+        print("camera_lens_changed called")
+        
+        # # Only proceed if the operator is running
+        # op = vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation')
+        # if not op:
+        #     # print("camera_lens_changed: operator not running")
+        #     return
+        
+        # Only update if the changed camera is the one being used by the operator
+        if not self._context_area or not self._context_area.spaces.active.camera:
+            # print("camera_lens_changed: no context area or camera")
+            return
+        
+        def deferred_update():
+            """Deferred update to run outside msgbus callback context"""
+            if op := vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation'):
+                # Find the window containing the stored area
+                for window in bpy.context.window_manager.windows:
+                    if op._context_area in window.screen.areas[:]:
+                        op.update_solve()
+                        op._context_area.tag_redraw()
+                        # print("camera_lens_changed: updated operator")
+                        break
+            return None  # Don't repeat the timer
+        deferred_update()
+        # Schedule update to run outside msgbus callback context
+        
+        # bpy.app.timers.register(deferred_update, first_interval=0.0)
 
 ######################
 def view_menu_func(self, context):
     self.layout.operator("view3d.vl_solve_orientation", text="Vanishing Lines - Orientation")
 
-
-# def camera_lens_changed():
-#     # print("camera_lens_changed called")
-#     """Callback when camera lens changes"""
-#     # Only proceed if the operator is running
-#     op = vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation')
-#     if not op:
-#         # print("camera_lens_changed: operator not running")
-#         return
-    
-#     # Only update if the changed camera is the one being used by the operator
-#     if not op._context_area or not op._context_area.spaces.active.camera:
-#         # print("camera_lens_changed: no context area or camera")
-#         return
-    
-#     def deferred_update():
-#         """Deferred update to run outside msgbus callback context"""
-#         if op := vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation'):
-#             # Find the window containing the stored area
-#             for window in bpy.context.window_manager.windows:
-#                 if op._context_area in window.screen.areas[:]:
-#                     op.update_solve()
-#                     op._context_area.tag_redraw()
-#                     # print("camera_lens_changed: updated operator")
-#                     break
-#         return None  # Don't repeat the timer
-#     deferred_update()
-#     # Schedule update to run outside msgbus callback context
-    
-#     # bpy.app.timers.register(deferred_update, first_interval=0.0)
-
-
 def register():
     # bpy.utils.register_class(VIEW3D_MT_vl_solve_orientation_context)
+    bpy.utils.register_class(MODAL_MT_VLContextMenu)
     bpy.utils.register_class(VIEW3D_OT_vl_solve_orientation)
     bpy.types.VIEW3D_MT_view.append(view_menu_func)
 
@@ -889,6 +865,7 @@ def unregister():
 
     bpy.utils.unregister_class(VIEW3D_OT_vl_solve_orientation)
     bpy.types.VIEW3D_MT_view.remove(view_menu_func)
+    bpy.utils.unregister_class(MODAL_MT_VLContextMenu)
     # bpy.utils.unregister_class(VIEW3D_MT_vl_solve_orientation_context)
 
     

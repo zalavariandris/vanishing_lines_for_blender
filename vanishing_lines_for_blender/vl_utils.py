@@ -21,14 +21,9 @@ def is_operator_running(op_idname):
             return True
     return False
 
-def closest_point_to_target(points: Iterable[Tuple[float, float]], P:Tuple[float, float]) -> Tuple[float, float]:
-    sorted_points = sorted(points, key=lambda Q: (Q[0]-P[0])**2 + (Q[1]-P[1])**2)
-    if len(sorted_points) == 0:
-        raise ValueError("No points provided to find closest point to vanishing point.")
-    return sorted_points[0]
-
-def dim_color(color:Tuple[float, float, float, float], factor:float=0.18)->Tuple[float, float, float, float]:
-    return (color[0], color[1], color[2], color[3]*factor)
+def dim_color(color:mathutils.Vector, factor:float=0.18)->mathutils.Vector:
+    assert isinstance(color, mathutils.Vector) and len(color) == 4, "Color must be a tuple/list of 4 floats (RGBA)"
+    return mathutils.Vector((color[0], color[1], color[2], color[3]*factor))
 
 def flatten(xss):
     return [x for xs in xss for x in xs]
@@ -381,44 +376,44 @@ def ball_control(M:glm.mat4, pivot:glm.vec3, yaw:float, pitch:float) -> glm.mat4
     return M
 
 # adjust vanishing lines to new camera orientation
-def adjust_vanishing_lines_to_matrices(vl_settings, projection_matrix:glm.mat4, view_matrix:glm.mat4):
-    print("Adjusting vanishing lines to camera orientation...")
+# def adjust_vanishing_lines_to_matrices(vl_settings, projection_matrix:glm.mat4, view_matrix:glm.mat4):
+#     print("Adjusting vanishing lines to camera orientation...")
 
-    first_vanishing_lines =  [(line.start, line.end) for line in vl_settings.first_vanishing_lines]
-    second_vanishing_lines = [(line.start, line.end) for line in vl_settings.second_vanishing_lines]
-    third_vanishing_lines =  [(line.start, line.end) for line in vl_settings.third_vanishing_lines]
+#     first_vanishing_lines =  [(line.start, line.end) for line in vl_settings.first_vanishing_lines]
+#     second_vanishing_lines = [(line.start, line.end) for line in vl_settings.second_vanishing_lines]
+#     third_vanishing_lines =  [(line.start, line.end) for line in vl_settings.third_vanishing_lines]
 
-    axes_mapping = {
-        'X+': solver.types.Axis.PositiveX,
-        'Y+': solver.types.Axis.PositiveY,
-        'Z+': solver.types.Axis.PositiveZ,
-        'X-': solver.types.Axis.NegativeX,
-        'Y-': solver.types.Axis.NegativeY,
-        'Z-': solver.types.Axis.NegativeZ
-    }
+#     axes_mapping = {
+#         'X+': solver.types.Axis.PositiveX,
+#         'Y+': solver.types.Axis.PositiveY,
+#         'Z+': solver.types.Axis.PositiveZ,
+#         'X-': solver.types.Axis.NegativeX,
+#         'Y-': solver.types.Axis.NegativeY,
+#         'Z-': solver.types.Axis.NegativeZ
+#     }
 
-    new_line_sets = solver.utils.adjust_vanishing_lines_to_camera_orientation(
-        first_vanishing_lines,
-        second_vanishing_lines,
-        third_vanishing_lines,
-        axes_mapping[vl_settings.first_axis],
-        axes_mapping[vl_settings.second_axis],
-        glm.mat3(view_matrix),
-        projection_matrix,
-    )
+#     new_line_sets = solver.utils.adjust_vanishing_lines_to_camera_orientation(
+#         first_vanishing_lines,
+#         second_vanishing_lines,
+#         third_vanishing_lines,
+#         axes_mapping[vl_settings.first_axis],
+#         axes_mapping[vl_settings.second_axis],
+#         glm.mat3(view_matrix),
+#         projection_matrix,
+#     )
 
-    # update vl_settings lines
-    for vl_setting_lines, new_lines in zip(
-        [
-            vl_settings.first_vanishing_lines, 
-            vl_settings.second_vanishing_lines, 
-            vl_settings.third_vanishing_lines
-        ],
-        new_line_sets
-    ):
-        for i in range(len(vl_setting_lines)):
-            vl_setting_lines[i].start = new_lines[i][0]
-            vl_setting_lines[i].end =   new_lines[i][1]
+#     # update vl_settings lines
+#     for vl_setting_lines, new_lines in zip(
+#         [
+#             vl_settings.first_vanishing_lines, 
+#             vl_settings.second_vanishing_lines, 
+#             vl_settings.third_vanishing_lines
+#         ],
+#         new_line_sets
+#     ):
+#         for i in range(len(vl_setting_lines)):
+#             vl_setting_lines[i].start = new_lines[i][0]
+#             vl_setting_lines[i].end =   new_lines[i][1]
 
 def projection_matrix_from_fov(
     fov_y: float,
@@ -531,3 +526,4 @@ def array_to_matrix(arr: list[float]) -> mathutils.Matrix:
     if not isinstance(arr, (list, tuple)) or len(arr) != 16:
         raise ValueError(f"Input must be a list or tuple of 16 floats got: {arr}")
     return mathutils.Matrix([arr[i*4:(i+1)*4] for i in range(4)])
+
