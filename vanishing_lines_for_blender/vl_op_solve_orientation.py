@@ -1,4 +1,4 @@
-from typing import Tuple, Callable
+from typing import Tuple, Callable, overload
 import math
 import warnings
 
@@ -52,19 +52,17 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
     _middle_mouse_pressed: bool = False
     _context_area = None  # Store the area where operator is running
     _context_region = None  # Store the region where operator was invoked
-    _context_space = None
+
     _msgbus_owner = None  # Owner object for msgbus subscription
     _draw_handler = None  # Store the draw handler reference
 
     uiview: View3dGUI|None=None  # type: ignore
-    painter = None  # type: ignore
     
     def invoke(self, context, event):
         ##########################################
         # Get the camera and the initial context #
         ##########################################
         self._context_area = context.area
-        self._context_space = context.space_data
         
         # Detect quadview and use quad[3] (camera view) if available
         target_region = context.region
@@ -201,75 +199,12 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         vl_settings.to_camera(context.space_data.camera)
         self.update_solve(context)
 
-        # ================================
-
-        # # Set anchor point based on cursor position
-        # cursor = context.scene.cursor.location.copy()
-        # _, view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
-        # cursor_camera_space = view * glm.vec4(cursor.x, cursor.y, cursor.z, 1.0)
-        # is_cursor_behind = cursor_camera_space.z > 0
-        # print("cursor_camera_space.z", cursor_camera_space.z, "is_cursor_behind", is_cursor_behind)
-        # if is_cursor_behind:
-        #     orbit_location = context.area.spaces.active.region_3d.view_location
-        #     vl_settings.anchor_world = (orbit_location.x, orbit_location.y, orbit_location.z)
-        # else:
-        #     print("Setting anchor to cursor location:", cursor)
-        #     vl_settings.anchor_world = context.scene.cursor.location.to_tuple()
-
-        # vl_settings.from_camera(camera_object)
-        # vl_settings.unsolve()
-
-        # vl_utils.adjust_vanishing_lines_to_camera(self.vl_settings, camera_object) # adjust vanishing lines to the current transform of the camera
-        # self.vl_settings.mode = 'TWO_POINT'  # default mode
-        # self.vl_settings.focal_length = camera_object.data.lens # initialize focal length for one point mode. TODO: update this, in other modes, so on switch, the camera lens is preserved
-        # self.vl_settings.reference_scale_mode = 'ANCHOR'
-
-        # reference_axis = {
-        #     'ANCHOR': None,
-        #     'SCREEN': solver.types.ReferenceAxis.Screen,
-        #     'X_AXIS': solver.types.ReferenceAxis.X_Axis,
-        #     'Y_AXIS': solver.types.ReferenceAxis.Y_Axis,
-        #     'Z_AXIS': solver.types.ReferenceAxis.Z_Axis
-        # }[self.vl_settings.reference_scale_mode]
-
-        
-        # match self.vl_settings.anchor_mode:
-        #     case 'CURSOR':
-        #         cursor = context.scene.cursor.location.copy()
-        #         anchor_world = glm.vec3(cursor.x, cursor.y, cursor.z)
-        #     case 'VIEW_ORBIT':
-        #         orbit_location = self._context_space.region_3d.view_location.copy()
-        #         anchor_world = glm.vec3(orbit_location.x, orbit_location.y, orbit_location.z)
-        #     case 'WORLD_ORIGIN':
-        #         anchor_world = glm.vec3(0.0, 0.0, 0.0)
-
-        # projection, view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
-        # unsolve_result = solver.core.unsolve(
-        #     viewport=solver.types.Rect(-1,-1,2,2),
-        #     projection=projection,
-        #     view=view,
-        #     reference_axis=reference_axis
-        #     anchor_world=anchor_world,
-        #     first_axis=solver.types.Axis.PositiveX,
-        #     second_axis=solver.types.Axis.PositiveY
-        # )
-        # print("unsolve_result",unsolve_result)
-        # self.vl_settings.origin = (unsolve_result.anchor.x, unsolve_result.anchor.y)
-        # # Always set reference_scale_mode and scene_scale to the unsolve result
-        # self.vl_settings.reference_scale_mode = 'ANCHOR'
-        # self.vl_settings.scene_scale = unsolve_result.anchor_distance
-        # if unsolve_result.anchor_distance < 0:
-        #     print("[invoke] Origin is behind the camera. Negative scene_scale:", unsolve_result.anchor_distance)
-
         # Register the statusbar draw callback
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
 
         # Initialize UIView3D for drawing and interaction in the viewport
         self.uiview = View3dGUI()
-        self.painter = View3dPainter()
 
-        # initial solve
-        # self.update_solve(context)
 
         # # Subscribe to camera lens changes for this operator instance
         # self._msgbus_owner = object()
@@ -282,10 +217,13 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
         self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
             self.handle_draw, 
-            (context, ), 
+            tuple(), 
             'WINDOW', 
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
         )
+
+        self.view3d_event_loop(context)
+        context.area.tag_redraw()
 
         # Run the modal operator with correct region context
         with context.temp_override(region=self._context_region):
@@ -493,11 +431,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         
         # return {'RUNNING_MODAL'}
     
-    def view3d_event_loop(self, context):
-        # draw only in the correct region
-        if context.area != self._context_area:
-            return
-        
+    def view3d_event_loop(self, context):        
         # get the region
         self.uiview.begin()
         # get SpaceView3D
@@ -773,7 +707,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 self.uiview._painter.add_point(
                     pos=principal,
                     color=glm.vec4(1.0, 0.7, 0.0, 1.0),
-                    shape='X',
+                    shape='x',
                 )
 
                 self.uiview._painter.add_annotation(
@@ -845,7 +779,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
         # context menu
         header.layout.label(text="Options", icon='MOUSE_RMB')
-        
+    
     def cancel(self, context):
         print("Cancel Vanishing Lines Orientation Operator")
         # Restore previous camera state
@@ -877,23 +811,32 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # Clear status bar
         bpy.context.workspace.status_text_set(None)
 
-    def handle_draw(self, context):
+    def handle_draw(self):
+        # draw only in the correct region TODO: this is probably too much
+        context = bpy.context
+        if context.area != self._context_area:
+            return
+        
+        if context.region.type != 'WINDOW':
+            return
+        
+        if context.space_data.type != 'VIEW_3D':
+            return
+        
+        quads = context.space_data.region_quadviews
+        if quads and context.region_data != quads[3]:
+            return
+
+        if context.region != self._context_region:
+            return
+        
         self.uiview.render()
-        self.painter.draw()
     
 
 ######################
 def view_menu_func(self, context):
     self.layout.operator("view3d.vl_solve_orientation", text="Vanishing Lines - Orientation")
 
-# def rv3d_draw_function():
-#     # global draw_list
-#     """Wrapper function to call the draw_view method of the operator instance."""
-#     # print("rv3d_draw_function")
-#     if op:=vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation'):
-#         # Only draw in the area and region where the operator was invoked
-#         if bpy.context.area == op._context_area and bpy.context.region == op._context_region:
-#             op.view3d_draw(bpy.context)
 
 # def camera_lens_changed():
 #     # print("camera_lens_changed called")

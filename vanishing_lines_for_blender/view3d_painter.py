@@ -6,7 +6,7 @@ from gpu_extras.batch import batch_for_shader
 
 from typing import List, Tuple
 import blf
-
+import mathutils
 from pyglm import glm
 
 # Constants at module level
@@ -20,10 +20,7 @@ class View3dPainter:
     def __init__(self):
         self.shader = gpu.shader.from_builtin('FLAT_COLOR')
 
-        self._point_attributes: dict[str, List[Tuple[float, float]]] = {
-            "pos":   [],
-            "color": [],
-        }
+        self._points: List[Tuple[Tuple[float, float], Tuple[float, float, float, float], Literal['.', 'X']]] = []
 
         self._line_attributes: dict[str, List[Tuple[float, float]]] = {
             "pos":   [],
@@ -34,8 +31,7 @@ class View3dPainter:
 
     def clear(self) -> None:
         """Clear all stored drawing data."""
-        self._point_attributes['pos'].clear()
-        self._point_attributes['color'].clear()
+        self._points.clear()
         self._line_attributes['pos'].clear()
         self._line_attributes['color'].clear()
         self._annotations.clear()
@@ -60,20 +56,33 @@ class View3dPainter:
         self.add_line((x1, y1), (x0, y1), color)  # bottom
         self.add_line((x0, y1), (x0, y0), color)  # left
 
-    def add_point(self, pos: Tuple[float, float], color: Tuple[float, float, float, float], shape:Literal['.', 'X'] = '.') -> None:
+    def add_point(self, pos: Tuple[float, float], color: Tuple[float, float, float, float], shape:Literal['.', 'x'] = '.') -> None:
         match shape:
-            case 'X' | 'x':
+            case 'x':
+                self._points.append((pos, color, shape))
                 offset = DEFAULT_FONT_SIZE / 3
-                self.add_line(pos, (pos[0] + offset, pos[1] + offset), color)  # to top-right
-                self.add_line(pos, (pos[0] - offset, pos[1] - offset), color)  # to bottom-left
-                self.add_line(pos, (pos[0] + offset, pos[1] - offset), color)  # to bottom-right
-                self.add_line(pos, (pos[0] - offset, pos[1] + offset), color)  # to top-left
             case '.':
-                self._point_attributes['pos'].append(pos)
-                self._point_attributes['color'].append(color)
+                self._points.append((pos, color, shape))
+            case _:
+                raise ValueError(f"Unsupported shape '{shape}' for add_point. Use '.' or 'X'.")
 
     def add_annotation(self, pos: Tuple[float, float], text: str, color: Tuple[float, float, float, float], angle: float = 0.0) -> None:
         self._annotations.append((pos, text, color, angle))
+
+    def pixel_size(self, view:glm.mat4, projection:glm.mat4, viewport:Tuple[float, float, float, float], at:Tuple[float, float], pos=mathutils.Vector((0,0,0))) -> float:
+        # Project the point and a slightly offset point
+        def project(P:Tuple[float, float]) -> Tuple[float, float]:
+            projected = glm.project(glm.vec3(P[0], P[1], 0), view, projection, glm.vec4(*viewport))
+            return (projected.x, projected.y)
+        
+        p_mid = project(pos)
+        p_offset = project((pos[0] + 0.01, pos[1])) # 0.01 is a small world-space delta
+
+        dist_px = math.sqrt((p_offset[0] - p_mid[0])**2 + (p_offset[1] - p_mid[1])**2)
+        world_delta = 0.01
+
+        pixel_size = world_delta / (dist_px / 1.0)
+        return pixel_size
 
     def draw(self, view:glm.mat4=glm.mat4(1), projection:glm.mat4=glm.mat4(1), viewport:Tuple[float, float, float, float]=(0, 0, 1, 1)) -> None:
         gpu.state.blend_set('ALPHA')
@@ -81,16 +90,41 @@ class View3dPainter:
         def project(P:Tuple[float, float]) -> Tuple[float, float]:
             projected = glm.project(glm.vec3(P[0], P[1], 0), view, projection, glm.vec4(*viewport))
             return (projected.x, projected.y)
-
+        
+        # Render points with dot shape
         point_batch = batch_for_shader(
             self.shader, 
             'POINTS', 
             content={
-                "pos":   [project(p) for p in self._point_attributes['pos']],
-                "color": self._point_attributes['color'],
+                "pos":   [project(attr[0]) for attr in self._points if attr[2] == '.'],
+                "color": [attr[1] for attr in self._points if attr[2] == '.' ],
             }
         )
         point_batch.draw(self.shader)
+
+        # Render points with X shape
+        x_content:dict = {
+            'pos': [], 
+            'color': []
+        }
+        for pos, color, shape in [attr for attr in self._points if attr[2] == 'x']:
+            if shape == 'x':
+                shape_size = DEFAULT_FONT_SIZE / 3
+                P = project(pos)
+                x_content["pos"].extend([
+                    (P[0] - shape_size, P[1] - shape_size),
+                    (P[0] + shape_size, P[1] + shape_size),
+                    (P[0] - shape_size, P[1] + shape_size),
+                    (P[0] + shape_size, P[1] - shape_size),
+                ])
+                x_content["color"].extend([color, color, color, color])
+                
+        x_batch = batch_for_shader(
+            self.shader,
+            'LINES',
+            content=x_content
+        )
+        x_batch.draw(self.shader)
 
         # Render lines
         lines_batch = batch_for_shader(
