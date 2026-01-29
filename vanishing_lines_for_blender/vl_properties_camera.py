@@ -55,17 +55,6 @@ class VLSettings(bpy.types.PropertyGroup):
         description="Reference to a Blender camera object"
     ) # type: ignore
 
-    fovx: bpy.props.FloatProperty(
-        name="Horizontal FOV",
-        default=math.radians(50.0),
-        min=math.radians(1.0),
-        max=math.radians(179.0),
-        description="Horizontal field of view", 
-        options=set(),
-        subtype='ANGLE',
-        update=on_fovx_update
-    ) # type: ignore
-
     mode: bpy.props.EnumProperty(
         name="Perspective Mode",
         items=[
@@ -77,6 +66,17 @@ class VLSettings(bpy.types.PropertyGroup):
         description="Number of vanishing points to use for camera calibration", 
         options=set(),
         update=on_prop_update
+    ) # type: ignore
+
+    fovx: bpy.props.FloatProperty(
+        name="Horizontal FOV",
+        default=math.radians(50.0),
+        min=math.radians(1.0),
+        max=math.radians(179.0),
+        description="Horizontal field of view", 
+        options=set(),
+        subtype='ANGLE',
+        update=on_fovx_update
     ) # type: ignore
 
     reference_scale_mode: bpy.props.EnumProperty(

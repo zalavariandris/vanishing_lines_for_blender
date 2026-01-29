@@ -201,6 +201,7 @@ class View3dGUI:
     def set_coordinate_system_to_camera_frame(self, context):
         # Set UIVIEW camera, so _compute space_ matches _camera frame_, respect to _sensor fit_
         camera_frame = vl_coord_utils.get_camera_frame(context)
+
         output_aspect = context.scene.render.resolution_x / context.scene.render.resolution_y
         sensor_fit = context.space_data.camera.data.sensor_fit
         
@@ -258,13 +259,6 @@ class View3dGUI:
 
 
         """Mouse Events"""
-
-        if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
-            """Wheel Events"""
-            if area.type == 'VIEW_3D':
-                area.tag_redraw()
-            return False
-
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             self._is_left_mouse_down = True
 
@@ -283,7 +277,7 @@ class View3dGUI:
                 area.tag_redraw()
 
             if self._active_id is not None:
-                return False
+                return True
             else:
                 return False
         
@@ -307,8 +301,6 @@ class View3dGUI:
             elif self._active_id is not None:
                 """Mouse Drag"""
                 # move active control point
-                
-
                 mouse_x_unproj, mouse_y_unproj = self.unproject((event.mouse_x-context.region.x, event.mouse_y-context.region.y))
                 mouse_prev_press_x_unproj, mouse_prev_press_y_unproj = self.unproject((event.mouse_prev_press_x-context.region.x, event.mouse_prev_press_y-context.region.y))
                 control_point = self._widgets[self._active_id]
@@ -339,7 +331,7 @@ class View3dGUI:
                 if area.type == 'VIEW_3D':
                     area.tag_redraw()
                 
-                return False
+                return True
             else:
                 return False
 

@@ -2,7 +2,7 @@
 import bpy
 import math
 import mathutils
-from typing import Tuple, Iterable, cast
+from typing import List, Tuple, Iterable, cast
 from . import solver
 from pyglm import glm
 import warnings
@@ -24,9 +24,6 @@ def is_operator_running(op_idname):
 def dim_color(color:mathutils.Vector, factor:float=0.18)->mathutils.Vector:
     assert isinstance(color, mathutils.Vector) and len(color) == 4, "Color must be a tuple/list of 4 floats (RGBA)"
     return mathutils.Vector((color[0], color[1], color[2], color[3]*factor))
-
-def flatten(xss):
-    return [x for xs in xss for x in xs]
 
 ###################
 # BLENDER HELPERS #
@@ -110,218 +107,6 @@ def apply_solver_results_to_blender_camera(
     camera_data.shift_x = shift_x/2
     camera_data.shift_y = shift_y/2
 
-def apply_orientation_to_blender_camera(
-        view: glm.mat4,
-        camera_object: bpy.types.Object
-    ) -> None:
-    """
-    Apply orientation from solver view matrix to Blender camera object.
-    Keeps the current camera position, only changes rotation.
-    
-    Args:
-        view: Solver view matrix (glm.mat4)
-        camera_object: Blender camera object to modify
-    """
-    if not isinstance(camera_object.data, bpy.types.Camera):
-        raise TypeError("Expected a Camera data-block")
-    
-    if not isinstance(view, glm.mat4):
-        raise TypeError("Expected view to be glm.mat4")
-    
-    # Get current camera position
-    current_transform = glm_from_blender_mat(camera_object.matrix_world)
-    current_position = glm.vec3(current_transform[3])
-    
-    # Apply new orientation (rotation only)
-    new_transform = glm.inverse(view)
-    
-    # Keep the current position
-    new_transform[3] = glm.vec4(current_position, 1.0)
-    
-    # Apply to Blender camera
-    transform_list = [[v for v in row] for row in glm.transpose(new_transform)]
-    camera_object.matrix_world = mathutils.Matrix(transform_list)
-
-def apply_projection_to_blender_camera(
-        projection: glm.mat4,
-        camera_object: bpy.types.Object,
-        compute_space: Tuple[float, float, float, float],
-        fit_mode: Literal['HORIZONTAL', 'VERTICAL', 'AUTO']
-    ) -> None:
-    """
-    Apply projection matrix to Blender camera (focal length and lens shift).
-    
-    Args:
-        projection: Projection matrix from solver
-        camera_object: Blender camera object to modify
-        compute_space: The viewport used for computation (e.g., (-1, -1, 2, 2))
-        fit_mode: How to fit the compute space ('HORIZONTAL', 'VERTICAL', 'AUTO')
-    """
-    if not isinstance(camera_object.data, bpy.types.Camera):
-        raise TypeError("Expected a Camera data-block")
-    
-    if tuple(compute_space) != (-1, -1, 2, 2):
-        raise ValueError(f"Compute space other than [-1,-1,2,2] is not supported; got {compute_space}.")
-    
-    # Decompose intrinsics to get principal point and focal length
-    P, f = solver.utils.decompose_intrinsics(solver.types.Rect(*compute_space), projection)
-    camera_data: bpy.types.Camera = cast(bpy.types.Camera, camera_object.data)
-    camera_data.sensor_fit = fit_mode
-
-    # Calculate and apply focal length based on fit mode
-    match fit_mode:
-        case 'AUTO':
-            effective_sensor_size = camera_data.sensor_width
-            focal_length = f / compute_space[2] * effective_sensor_size
-            if abs(camera_data.lens - focal_length) > 0.0000001:
-                camera_data.lens = focal_length
-
-        case 'HORIZONTAL':
-            focal_length = f / compute_space[2] * camera_data.sensor_width
-            if abs(camera_data.lens - focal_length) > 0.0000001:
-                camera_data.lens = focal_length
-            
-        case 'VERTICAL':
-            focal_length = f / compute_space[3] * camera_data.sensor_height
-            if abs(camera_data.lens - focal_length) > 0.0000001:
-                camera_data.lens = focal_length
-
-    # Apply lens shift from principal point
-    center_x = compute_space[0] + compute_space[2] / 2
-    center_y = compute_space[1] + compute_space[3] / 2
-    shift_x = -(P.x - center_x) / (compute_space[2] / 2)
-    shift_y = -(P.y - center_y) / (compute_space[3] / 2)
-
-    camera_data.shift_x = shift_x / 2
-    camera_data.shift_y = shift_y / 2
-
-def adjust_camera_to_keep_point_at_screen_position(
-        camera_object: bpy.types.Object,
-        anchor_point: glm.vec3,
-        target_screen_position: glm.vec2,
-        projection: glm.mat4,
-        compute_space: Tuple[float, float, float, float]
-    ) -> None:
-    """
-    Adjust camera position so that a world point projects to specific screen coordinates.
-    Uses ray casting to maintain the exact distance to the pivot point.
-    
-    Args:
-        camera_object: Blender camera object to modify
-        world_point: Point in 3D world space (the pivot point)
-        target_screen_position: Target screen position (x, y in screen/compute space)
-        projection: Projection matrix
-        compute_space: Compute space as (x, y, width, height)
-    """
-    # Get current camera transform
-    current_transform = glm_from_blender_mat(camera_object.matrix_world)
-    current_camera_pos = glm.vec3(current_transform[3])
-    
-    # Calculate distance from current camera to world point
-    target_distance = glm.length(anchor_point - current_camera_pos)
-    
-    # Get current view matrix
-    current_view = glm_from_blender_mat(camera_object.matrix_world.inverted())
-    
-    # Create a view matrix with rotation only (no translation)
-    view_rotation_only = glm.mat4(
-        current_view[0],
-        current_view[1],
-        current_view[2],
-        glm.vec4(0, 0, 0, 1)
-    )
-    
-    # Define viewport
-    viewport = glm.vec4(compute_space[0], compute_space[1], compute_space[2], compute_space[3])
-
-    proj, view = get_camera_matrices(camera_object)
-    
-    # Unproject the screen position at near and far plane to get ray direction
-    near_point = glm.unProject(
-        glm.vec3(target_screen_position.x, target_screen_position.y, 0.0),
-        view_rotation_only, 
-        projection, 
-        viewport
-    )
-    far_point = glm.unProject(
-        glm.vec3(target_screen_position.x, target_screen_position.y, 1.0),
-        view_rotation_only, 
-        projection, 
-        viewport
-    )
-    
-    # Calculate ray direction (from camera into scene)
-    ray_direction = glm.normalize(far_point - near_point)
-    
-    # Calculate camera position: world_point - distance * ray_direction
-    # This places the camera at 'target_distance' away from world_point, opposite to ray_direction
-    new_camera_position = anchor_point - target_distance * ray_direction
-    
-    # Update camera position
-    current_transform[3] = glm.vec4(new_camera_position, 1.0)
-    
-    # Apply to Blender camera
-    transform_list = [[v for v in row] for row in glm.transpose(current_transform)]
-    camera_object.matrix_world = mathutils.Matrix(transform_list)
-
-def apply_solver_results_to_view3d(
-        projection: glm.mat4,
-        view: glm.mat4, 
-        area: bpy.types.Area,
-        compute_space: Tuple[float, float, float, float],
-        fit_mode: Literal['COVER', 'CONTAIN', 'HORIZONTAL', 'VERTICAL'] = 'COVER'
-    ) -> None:
-    """
-    Apply solver results to Blender 3D Viewport
-    Args:
-        results: Solver results with transform and FOV
-        area: Blender 3D Viewport area
-        compute_space: The viewport used for computation (e.g., [-1,-1,2,2])
-        fit_mode: How to fit the compute space to the region space
-    1. 'HORIZONTAL': Fit based on horizontal dimension
-    2. 'VERTICAL': Fit based on vertical dimension
-    3. 'CONTAIN': Fit based on larger dimension
-    3. 'COVER': Fit based on larger dimension
-    """
-
-    if fit_mode != 'COVER':
-        raise NotImplementedError("Only 'COVER' fit_mode is implemented for View3D.")
-    
-    space = area.spaces.active
-    window_region = next((r for r in area.regions if r.type == 'WINDOW'), None)
-    if not window_region:
-        raise ValueError("No WINDOW region found in area")
-    
-    ## apply solver results to blender view
-    match space.region_3d.view_perspective:
-        case 'CAMERA':
-            camera_object = space.camera
-            apply_solver_results_to_blender_camera(
-                projection=projection, 
-                view=view, 
-                camera_object=camera_object, 
-                compute_space=compute_space, 
-                fit_mode=camera_object.data.sensor_fit
-            )
-
-        case 'PERSP':
-            viewport = 0, 0, window_region.width, window_region.height
-            principal, focal_length = solver.utils.decompose_intrinsics(solver.types.Rect(*viewport), projection)
-            region_aspect = window_region.width / window_region.height
-            if region_aspect >= 1.0:
-                new_lens = focal_length*36 / window_region.width * 2 * region_aspect
-            else:
-                new_lens = focal_length*36 / window_region.height * 2
-            
-            # Only set if value actually changed to avoid triggering msgbus callbacks
-            if abs(space.lens - new_lens) > 0.0000001:
-                space.lens = new_lens
-
-            space.region_3d.view_matrix = glm_to_blender_mat(view)
-
-        case 'ORTHO':
-            assert False, "Should not reach here, ORTHO case handled above."
-
 def get_camera_matrices(
     camera_object: bpy.types.Object,
     compute_space: solver.types.Rect
@@ -374,6 +159,18 @@ def ball_control(M:glm.mat4, pivot:glm.vec3, yaw:float, pitch:float) -> glm.mat4
     M = glm.rotate(glm.mat4(1.0), yaw, vertical_axis) * glm.rotate(glm.mat4(1.0), pitch, horizontal_axis) * M
     
     return M
+
+def find_nearest_point(points: List[mathutils.Vector], target_point:mathutils.Vector) -> mathutils.Vector:
+    points = list(points)  # make a copy to avoid modifying the original list
+    assert all(isinstance(Q, mathutils.Vector) for Q in points), "All points must be mathutils.Vector"
+    assert isinstance(target_point, mathutils.Vector), "P must be a mathutils.Vector"
+    
+
+    sorted_points = sorted(points, key=lambda Q: (Q-target_point).length_squared)
+
+    if len(sorted_points) == 0:
+        raise ValueError("No points provided to find closest point to vanishing point.")
+    return sorted_points[0]
 
 # adjust vanishing lines to new camera orientation
 # def adjust_vanishing_lines_to_matrices(vl_settings, projection_matrix:glm.mat4, view_matrix:glm.mat4):
@@ -509,7 +306,8 @@ def glm_from_blender_mat(blender_mat:mathutils.Matrix) -> glm.mat4:
     """
     # 1. Transpose the Blender matrix to convert from row-major to column-major
     # 2. Feed the resulting iterable into the glm.mat4 constructor
-    return glm.mat4(*flatten(blender_mat.transposed()))
+    flattened = [x for xs in blender_mat.transposed() for x in xs]
+    return glm.mat4(*flatten())
 
 def matrix_to_array(mat: mathutils.Matrix) -> list[float]:
     """

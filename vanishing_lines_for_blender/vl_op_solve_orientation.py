@@ -1,4 +1,4 @@
-from typing import Tuple, Callable, overload, Iterable
+from typing import List, Tuple, Callable, overload, Iterable
 import math
 import warnings
 
@@ -61,12 +61,12 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
         vl_settings = context.space_data.camera.vl_settings # get vl settings from the active camera
         layout = self.layout
         
-        layout.prop(vl_settings, 'fovx')
         layout.prop_tabs_enum(vl_settings, 'mode')
+
 
         row = layout.row()
         row.enabled = vl_settings.mode in {'ONE_POINT'}
-        row.prop(context.area.spaces.active.camera.data, 'lens')
+        row.prop(vl_settings, 'fovx')
         
         row = layout.row()
         row.enabled = vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}
@@ -77,11 +77,11 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
         # row.prop(vl_settings, 'enable_manual_principal')
         layout.prop_menu_enum(vl_settings, 'first_axis')
         layout.prop_menu_enum(vl_settings, 'second_axis')
-        layout.prop_menu_enum(vl_settings, 'scene_scale_mode')
+        layout.prop_menu_enum(vl_settings, 'reference_scale_mode')
 
         layout.prop(vl_settings, 'scene_scale')
         col = layout.column()
-        col.enabled = vl_settings.scene_scale_mode != 'ORIGIN'
+        col.enabled = vl_settings.reference_scale_mode != 'ORIGIN'
         col.prop(vl_settings, 'reference_distance_segment', index=0)
         col.prop(vl_settings, 'reference_distance_segment', index=1)
 
@@ -145,6 +145,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self._initial_camera_shift_x = camera_object.data.shift_x
         self._initial_camera_shift_y = camera_object.data.shift_y
 
+        # update last camera view matrix, to compare changes later
+        self._last_camera_view_matrix = camera_object.matrix_world.copy()
+
         # --- GET VL_SETTINGS ---
         vl_settings = camera_object.vl_settings # TODO: move vl_settings to operator?
 
@@ -167,10 +170,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             vl_settings.anchor_world = context.scene.cursor.location.to_tuple()
 
         # Match VLSettings to current Camera
-        # vl_settings.proj_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm_proj))
-        # vl_settings.view_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm_view))
-        # _, f = solver.utils.decompose_intrinsics(solver.types.Rect(-1,-1,2,2), glm_proj)
-
         vl_settings.fovx = camera_object.data.angle_x
         vl_settings.unsolve()
         vl_settings.auto_solve = True
@@ -186,9 +185,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             'WINDOW', 
             'POST_PIXEL' # POST_VIEW | POS_PIXEL | ...
         )
-        self.view3d_tick(context) # setup initial gui
+        self.view3d_gui_loop(context) # setup initial gui
         context.area.tag_redraw()
-
 
         # Register the statusbar draw callback
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
@@ -227,9 +225,18 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             bpy.ops.wm.call_menu(name=MODAL_MT_VLContextMenu.bl_idname)
             return {'RUNNING_MODAL'}
         
+        if context.area.spaces.active.region_3d.view_perspective != 'CAMERA':
+            self.cleanup(context)
+            return {'FINISHED'}
+        
         #########################
         #########################
         vl_settings = context.space_data.camera.vl_settings
+
+        # Check if 3D view is still in camera mode
+        if vl_settings.camera_object != self._context_area.spaces.active.camera:
+            self.cleanup(context)
+            return {'FINISHED'}
         
         ##########################
         # Handle Keyboard Events #
@@ -238,37 +245,32 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             match event.type:
                 case 'ONE' | 'NUMPAD_1':
                     vl_settings.mode = 'ONE_POINT'
+                    self.view3d_gui_loop(context)
+                    self._context_area.tag_redraw()
                     return {'RUNNING_MODAL'}
                 
                 case 'TWO' | 'NUMPAD_2':
                     vl_settings.mode = 'TWO_POINT'
+                    self.view3d_gui_loop(context)
+                    self._context_area.tag_redraw()
                     return {'RUNNING_MODAL'}
                 
                 case 'THREE' | 'NUMPAD_3':
                     vl_settings.mode = 'THREE_POINT'
+                    self.view3d_gui_loop(context)
+                    self._context_area.tag_redraw()
                     return {'RUNNING_MODAL'}
                 
                 case 'Q':
                     vl_settings.quad_mode = not vl_settings.quad_mode
+                    self.view3d_gui_loop(context)
+                    self._context_area.tag_redraw()
                     return {'RUNNING_MODAL'}
                 
         # capture ui controls events
         changed = self.uiview.event(context, event)
-        self.view3d_tick(context)
-
-        # CONTEXT MENUI #
-        # ############# #
-        
-        # ##########################
-        # Handle NAVIGATION Events #
-        # ##########################
-        if event.type == 'MIDDLEMOUSE':
-            if event.value == 'PRESS':
-                self._middle_mouse_pressed = True
-                return {'RUNNING_MODAL'}
-            elif event.value == 'RELEASE':
-                self._middle_mouse_pressed = False
-                return {'RUNNING_MODAL'}
+        self.view3d_gui_loop(context)
+        return {'RUNNING_MODAL'}
         
         # match event.type:
         #     case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl:
@@ -394,9 +396,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
         # return {'PASS_THROUGH'}
         
-        return {'RUNNING_MODAL'}
-    
-    def view3d_tick(self, context):        
+    def view3d_gui_loop(self, context):    
         # get the region
         self.uiview.begin()
         # get SpaceView3D
@@ -473,7 +473,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             new_end = (new_end_x, new_end_y)
             getattr(data, prop)[index].start = new_start
             getattr(data, prop)[index].end = new_end
-
 
         def set_vl_transform(vp:Tuple[float, float]):
             def set_vl_midpoint_transform(data:'bpy.types.ID', prop:str, index:int, value:Tuple[float, float]):
@@ -600,13 +599,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         ###########################################
         # DRAW Extended lines to vanishing points #
         ###########################################
-        
-        def closest_to_point(points: Iterable[Tuple[float, float]], P:Tuple[float, float]) -> Tuple[float, float]:
-            sorted_points = sorted(points, key=lambda Q: (Q[0]-P[0])**2 + (Q[1]-P[1])**2)
-            if len(sorted_points) == 0:
-                raise ValueError("No points provided to find closest point to vanishing point.")
-            return sorted_points[0]
-        
+            
         if not vl_settings.error_message:
             if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
                 try:
@@ -616,7 +609,10 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
                     for line in vl_settings.first_vanishing_lines:
                         self.uiview._painter.add_line(
-                            mathutils.Vector(closest_to_point([line.start, line.end], vp1)), 
+                            mathutils.Vector(vl_utils.find_nearest_point(
+                                map(mathutils.Vector, [line.start, line.end]), 
+                                mathutils.Vector(vp1)
+                            )), 
                             mathutils.Vector(vp1), 
                             vl_utils.dim_color(get_axis_color(first_axis))
                         )
@@ -636,11 +632,15 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
                         vp2 = solver.core.compute_vanishing_point(second_vanishing_lines)
                         
-                        for line_start, line_end in second_vanishing_lines:
+                        for line in second_vanishing_lines:
                             self.uiview._painter.add_line(
-                                closest_to_point([line_start, line_end], vp2), 
-                                vp2, 
-                                vl_utils.dim_color(get_axis_color(second_axis)))
+                                mathutils.Vector(vl_utils.find_nearest_point(
+                                    map(mathutils.Vector, [line[0], line[1]]), 
+                                    mathutils.Vector(vp2)
+                                )), 
+                                mathutils.Vector(vp2), 
+                                vl_utils.dim_color(get_axis_color(second_axis))
+                            )
                     except ValueError as e:
                         warnings.warn(f"Could not compute VP2: {e}")
                 else:
@@ -650,10 +650,15 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                             for line in vl_settings.second_vanishing_lines])
                         
                         for line in vl_settings.second_vanishing_lines:
+                            # vl = 
                             self.uiview._painter.add_line(
-                                mathutils.Vector(closest_to_point([line.start, line.end], vp2)), 
+                                mathutils.Vector(vl_utils.find_nearest_point(
+                                    map(mathutils.Vector, [line.start, line.end]), 
+                                    mathutils.Vector(vp2)
+                                )), 
                                 mathutils.Vector(vp2), 
-                                vl_utils.dim_color(get_axis_color(second_axis)))
+                                vl_utils.dim_color(get_axis_color(second_axis))
+                            )
 
                     except ValueError as e:
                         warnings.warn(f"Could not compute VP2: {e}")
@@ -666,7 +671,10 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                     
                     for line in vl_settings.third_vanishing_lines:
                         self.uiview._painter.add_line(
-                            mathutils.Vector(closest_to_point([line.start, line.end], vp3)), 
+                            mathutils.Vector(vl_utils.find_nearest_point(
+                                map(mathutils.Vector, [line.start, line.end]), 
+                                mathutils.Vector(vp3)
+                            )), 
                             mathutils.Vector(vp3), 
                             vl_utils.dim_color(get_axis_color(third_axis)))
                         
@@ -675,6 +683,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
                 projection, view = vl_utils.get_camera_matrices(camera_object=context.area.spaces.active.camera,
                     compute_space=solver.types.Rect(-1,-1,2,2))
+                
                 principal, f = solver.utils.decompose_intrinsics(solver.types.Rect(-1,-1,2,2), projection)
                 self.uiview._painter.add_marker(
                     pos=mathutils.Vector(principal),
@@ -720,7 +729,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         )
 
         self.uiview.end()
-
 
     def status_text(self, header, context):
         # keyboard
@@ -769,6 +777,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         bpy.context.workspace.status_text_set(None)
 
     def handle_draw(self):
+        if bpy.context.area.spaces.active.region_3d.view_perspective != 'CAMERA':
+            return
         # draw only in the correct region TODO: this is probably too much
         context = bpy.context
         if context.area != self._context_area:
@@ -789,6 +799,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         
         self.uiview.render()
     
+
     
 ######################
 def view_menu_func(self, context):
