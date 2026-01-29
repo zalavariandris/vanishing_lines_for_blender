@@ -112,7 +112,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
     _context_area = None  # Store the area where operator is running
     _context_region = None  # Store the region where operator was invoked
 
-    # _msgbus_owner = None  # Owner object for msgbus subscription
     _draw_handler = None  # Store the draw handler reference
 
     uiview: View3dGUI|None=None  # type: ignore
@@ -190,14 +189,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self.view3d_tick(context) # setup initial gui
         context.area.tag_redraw()
 
-        # # Subscribe to camera lens changes for this operator instance
-        # self._msgbus_owner = object()
-        # bpy.msgbus.subscribe_rna(
-        #     key=(camera_object, "data"),
-        #     owner=self._msgbus_owner,
-        #     args=tuple(),
-        #     notify=lambda: self.on_camera_lens_changed(),
-        # )
 
         # Register the statusbar draw callback
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
@@ -247,34 +238,24 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             match event.type:
                 case 'ONE' | 'NUMPAD_1':
                     vl_settings.mode = 'ONE_POINT'
-                    self.update_solve(context)
                     return {'RUNNING_MODAL'}
                 
                 case 'TWO' | 'NUMPAD_2':
                     vl_settings.mode = 'TWO_POINT'
-                    self.update_solve(context)
                     return {'RUNNING_MODAL'}
                 
                 case 'THREE' | 'NUMPAD_3':
                     vl_settings.mode = 'THREE_POINT'
-                    self.update_solve(context)
                     return {'RUNNING_MODAL'}
                 
                 case 'Q':
                     vl_settings.quad_mode = not vl_settings.quad_mode
-                    self.update_solve(context)
                     return {'RUNNING_MODAL'}
                 
         # capture ui controls events
         changed = self.uiview.event(context, event)
         self.view3d_tick(context)
-        # if changed:
-        #     vl_settings.solve()
-        #     vl_settings.to_camera(context.space_data.camera)
-        #     self.update_solve(context)
-        #     return {'RUNNING_MODAL'}  
 
-        # ############# #
         # CONTEXT MENUI #
         # ############# #
         
@@ -740,13 +721,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
         self.uiview.end()
 
-    def update_solve(self, context):
-        # camera_object = context.space_data.camera
-        # camera_object.vl_settings.solve()
-        # camera_object.vl_settings.to_camera(camera_object)
-
-        self.view3d_tick(context)
-        self._context_area.tag_redraw()
 
     def status_text(self, header, context):
         # keyboard
@@ -782,11 +756,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self.cleanup(context)
         
     def cleanup(self, context):
-        # # Unsubscribe from msgbus
-        # if self._msgbus_owner is not None:
-        #     bpy.msgbus.clear_by_owner(self._msgbus_owner)
-        #     self._msgbus_owner = None
-
         # remove draw hundler
         if self._draw_handler is not None:
             bpy.types.SpaceView3D.draw_handler_remove(self._draw_handler, 'WINDOW')
@@ -820,37 +789,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         
         self.uiview.render()
     
-    def on_camera_lens_changed(self):
-        """Callback when camera lens changes"""
-        print("camera_lens_changed called")
-        
-        # # Only proceed if the operator is running
-        # op = vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation')
-        # if not op:
-        #     # print("camera_lens_changed: operator not running")
-        #     return
-        
-        # Only update if the changed camera is the one being used by the operator
-        if not self._context_area or not self._context_area.spaces.active.camera:
-            # print("camera_lens_changed: no context area or camera")
-            return
-        
-        def deferred_update():
-            """Deferred update to run outside msgbus callback context"""
-            if op := vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation'):
-                # Find the window containing the stored area
-                for window in bpy.context.window_manager.windows:
-                    if op._context_area in window.screen.areas[:]:
-                        op.update_solve()
-                        op._context_area.tag_redraw()
-                        # print("camera_lens_changed: updated operator")
-                        break
-            return None  # Don't repeat the timer
-        deferred_update()
-        # Schedule update to run outside msgbus callback context
-        
-        # bpy.app.timers.register(deferred_update, first_interval=0.0)
-
+    
 ######################
 def view_menu_func(self, context):
     self.layout.operator("view3d.vl_solve_orientation", text="Vanishing Lines - Orientation")
