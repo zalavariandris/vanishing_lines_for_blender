@@ -8,16 +8,29 @@ from pyglm import glm
     
 from . import vl_utils
 
+def on_prop_update(self, context):
+    # camera_object =   # ensure update is called on the PropertyGroup instance
+    vl_settings:VLSettings = self.id_data.vl_settings
+    # vl_settings:VLSettings = camera_object.vl_settings
+    if vl_settings.auto_solve:
+        vl_settings.solve()
+
+def on_fovx_update(self, context):
+    vl_settings:VLSettings = self.id_data.vl_settings
+    if vl_settings.mode == 'ONE_POINT':
+        if vl_settings.auto_solve:
+            vl_settings.solve()
+
 
 class VLLine(bpy.types.PropertyGroup):
     """A line defined by start and end points in normalized image space."""
-    
     start: bpy.props.FloatVectorProperty(
         name="Start",
         size=2,
         subtype='COORDINATES',
         default=(0.0, 0.0),
         description="Start point of the line.",
+        update=on_prop_update
     ) # type: ignore
 
     end: bpy.props.FloatVectorProperty(
@@ -26,31 +39,31 @@ class VLLine(bpy.types.PropertyGroup):
         subtype='COORDINATES',
         default=(0.0, 0.0),
         description="End point of the line.",
+        update=on_prop_update
     ) # type: ignore
 
 
 class VLSettings(bpy.types.PropertyGroup):
-    proj_array: bpy.props.FloatVectorProperty(
-        size=16, 
-        subtype='MATRIX', 
-        default=vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm.perspective(45.0, 1.0, 0.1, 100.0))), 
-        options={'HIDDEN'}
+    auto_solve: bpy.props.BoolProperty(
+        name="Auto Solve",
+        default=True,
     ) # type: ignore
 
-    view_array: bpy.props.FloatVectorProperty(
-        size=16,
-        subtype='MATRIX',
-        default=vl_utils.matrix_to_array(mathutils.Matrix.Identity(4)), 
-        options={'HIDDEN'}
+    camera_object: bpy.props.PointerProperty(
+        name="Camera Object",
+        type=bpy.types.Object,
+        description="Reference to a Blender camera object"
     ) # type: ignore
 
     fovx: bpy.props.FloatProperty(
         name="Horizontal FOV",
         default=math.radians(50.0),
-        min=1.0,
-        max=179.0,
-        description="Horizontal field of view in degrees", 
+        min=math.radians(1.0),
+        max=math.radians(179.0),
+        description="Horizontal field of view", 
         options=set(),
+        subtype='ANGLE',
+        update=on_fovx_update
     ) # type: ignore
 
     mode: bpy.props.EnumProperty(
@@ -62,7 +75,8 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='TWO_POINT',
         description="Number of vanishing points to use for camera calibration", 
-        options=set()
+        options=set(),
+        update=on_prop_update
     ) # type: ignore
 
     reference_scale_mode: bpy.props.EnumProperty(
@@ -76,14 +90,16 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='SCREEN',
         description="Method for determining scene scale reference", 
-        options=set()
+        options=set(),
+        update=on_prop_update
     ) # type: ignore
 
     quad_mode: bpy.props.BoolProperty(
         name="Quad Mode",
         default=False,
         description="Use quadrilateral corners to define second vanishing point", 
-        options=set()
+        options=set(),
+        update=on_prop_update
     ) # type: ignore
 
     # enable_manual_principal: bpy.props.BoolProperty(
@@ -101,7 +117,8 @@ class VLSettings(bpy.types.PropertyGroup):
         unit='LENGTH',
         subtype='DISTANCE',
         description="Real-world size of the reference measurement for scale calibration", 
-        options=set()
+        options=set(),
+        update=on_prop_update
     ) # type: ignore
 
     reference_screen_segment: bpy.props.FloatVectorProperty(
@@ -110,6 +127,7 @@ class VLSettings(bpy.types.PropertyGroup):
         default=(0.0, 0.5),
         description="Start and end points of the reference distance segment for scale measurement", 
         options=set(),
+        update=on_prop_update
     ) # type: ignore
 
     first_axis: bpy.props.EnumProperty(
@@ -124,7 +142,8 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='Y+',
         description="First vanishing point axis orientation", 
-        options=set()
+        options=set(),
+        update=on_prop_update
     ) # type: ignore
 
     second_axis: bpy.props.EnumProperty(
@@ -139,7 +158,8 @@ class VLSettings(bpy.types.PropertyGroup):
         ],
         default='X-',
         description="Second vanishing point axis orientation", 
-        options=set()
+        options=set(),
+        update=on_prop_update
     ) # type: ignore
 
     anchor_screen: bpy.props.FloatVectorProperty(
@@ -147,7 +167,8 @@ class VLSettings(bpy.types.PropertyGroup):
         size=2,
         default=(0.0, 0.0),
         description="Anchor point for reference measurements in normalized image space", 
-        options=set()
+        options=set(),
+        update=on_prop_update
     ) # type: ignore
 
     anchor_world: bpy.props.FloatVectorProperty(
@@ -157,7 +178,8 @@ class VLSettings(bpy.types.PropertyGroup):
         subtype='XYZ',
         default=(0.0, 0.0, 0.0),
         description="Anchor point in world space for reference measurements", 
-        options=set()
+        options=set(),
+        update=on_prop_update
     ) # type: ignore
     
     principal: bpy.props.FloatVectorProperty(
@@ -165,7 +187,8 @@ class VLSettings(bpy.types.PropertyGroup):
         size=2,
         default=(0.0, 0.0),
         description="Principal point (optical center) in normalized image space", 
-        options=set()
+        options=set(),
+        update=on_prop_update
     ) # type: ignore
 
     first_vanishing_lines: bpy.props.CollectionProperty(
@@ -217,6 +240,7 @@ class VLSettings(bpy.types.PropertyGroup):
 
     def solve(self):
         """update projection, and view matrix properties based on current settings"""
+        print("[VLSettings.solve] Solving camera parameters from vanishing lines...")
         compute_space = solver.types.Rect(-1,-1,2,2)
         try:
             # map props to solver
@@ -261,6 +285,9 @@ class VLSettings(bpy.types.PropertyGroup):
             if self.reference_scene_scale < 0:
                 print("[update_solve] Origin is behind the camera. Negative scene_scale:", self.reference_scene_scale)
 
+            if self.mode == 'ONE_POINT':
+                ... # TODO: query the fov from the camera?
+                
             projection, view = solver.core.solve(
                 mode = mode,
                 viewport=compute_space,
@@ -281,12 +308,25 @@ class VLSettings(bpy.types.PropertyGroup):
                 second_axis=second_axis
             )
 
-            bl_proj = vl_utils.glm_to_blender_mat(projection)
-            bl_view = vl_utils.glm_to_blender_mat(view)
-            self.proj_array = vl_utils.matrix_to_array(bl_proj)
-            self.view_array = vl_utils.matrix_to_array(bl_view)
-                    
-            # Clear previous error message
+            if self.mode in {'TWO_POINT', 'THREE_POINT'}:
+                _, f = solver.utils.decompose_intrinsics(compute_space, projection)
+                self.fovx = solver.utils.fov_from_focal_length(f, compute_space.width)
+
+            if (self.camera_object 
+                and isinstance(self.camera_object, bpy.types.Object) 
+                and self.camera_object.data
+                and isinstance(self.camera_object.data, bpy.types.Camera)
+            ):
+                vl_utils.apply_solver_results_to_blender_camera(
+                    camera_object=self.camera_object,
+                    projection=projection, #TODO: why do wee need to transpose here?
+                    view=view,
+                    compute_space=(-1,-1,2,2),
+                    fit_mode=self.camera_object.data.sensor_fit
+                )
+            else:
+                print("[VLSettings.unsolve] No valid camera object assigned.")
+
             self.error_message = ""
 
         except solver.exceptions.VanishingLinesError as e:
@@ -300,11 +340,18 @@ class VLSettings(bpy.types.PropertyGroup):
             traceback.print_exc()
 
     def unsolve(self):
+        if not (self.camera_object 
+            and isinstance(self.camera_object, bpy.types.Object) 
+            and self.camera_object.data
+            and isinstance(self.camera_object.data, bpy.types.Camera)
+        ):
+            print("[VLSettings.unsolve] No valid camera object assigned.")
+            return
+        
         viewport = solver.types.Rect(-1,-1,2,2)
 
         # 1. adjust vanishing lines to current view and projection matrices
-        glm_proj:glm.mat4 = glm.transpose(vl_utils.glm_from_blender_mat(self.proj_array))
-        glm_view:glm.mat4 = glm.transpose(vl_utils.glm_from_blender_mat(self.view_array))
+        glm_proj, glm_view = vl_utils.get_camera_matrices(self.camera_object, solver.types.Rect(-1,-1,2,2))
         axis_map = {
             'X+': solver.types.Axis.PositiveX,
             'Y+': solver.types.Axis.PositiveY,
@@ -374,17 +421,7 @@ class VLSettings(bpy.types.PropertyGroup):
 
         self.reference_scene_scale = world_length
 
-    def to_camera(self, camera_object: bpy.types.Object):
-        if not isinstance(camera_object.data, bpy.types.Camera):
-            return
-        
-        vl_utils.apply_solver_results_to_blender_camera(
-            camera_object=camera_object,
-            projection=glm.transpose(vl_utils.glm_from_blender_mat(self.proj_array)), #TODO: why do wee need to transpose here?
-            view=      glm.transpose(vl_utils.glm_from_blender_mat(self.view_array)),
-            compute_space=solver.types.Rect(-1,-1,2,2),
-            fit_mode=camera_object.data.sensor_fit
-        )
+
 
 ######################
 # REGISTER FUNCTIONS #

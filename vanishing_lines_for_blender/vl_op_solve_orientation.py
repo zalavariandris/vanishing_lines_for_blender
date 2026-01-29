@@ -33,51 +33,57 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
     bl_label = "Vanishing Lines Context Menu"
     bl_idname = "MODAL_MT_vl_context_menu"
 
-    vl_settings: vl_properties_camera.VLSettingsCamera|None = None  # type: ignore
-
-    fov: bpy.props.FloatProperty(
-        name="Focal Length",
-        default=50.0,
-        description="Set the camera focal length",
-        unit='CAMERA',
-        update=lambda self, context: vl_utils.update_fov_in_running_operator(self.fov, context
-    ) # type: ignore
-
 
     @classmethod
     def poll(kls, context):
-        return vl_utils.is_operator_running('VIEW3D_OT_vl_solve_orientation')
+        print("poll")
+        is_operator_running = vl_utils.is_operator_running('VIEW3D_OT_vl_solve_orientation')
+        view_perspective = context.area.spaces.active.region_3d.view_perspective
+
+        print("op running:", is_operator_running,"view_perspective:", view_perspective)
+        if not is_operator_running:
+            return False
+        
+        if not context.area.spaces.active.region_3d.view_perspective == 'CAMERA':
+            return
+        
+        print("allow")
+        return True
 
     def draw(self, context):
-        layout = self.layout.column()
-        vl_settings = context.space_data.camera.vl_settings # get vl settings from the active camera
-
+        if not vl_utils.is_operator_running('VIEW3D_OT_vl_solve_orientation'):
+            return False
+        
+        if not context.area.spaces.active.region_3d.view_perspective == 'CAMERA':
+            return
         
 
-        if op:=vl_utils.get_running_operator_by_idname('VIEW3D_OT_vl_solve_orientation'):
-            # vl_settings = op.get_vl_settings(context)
-            # layout.prop_tabs_enum(vl_settings, 'mode')
+        vl_settings = context.space_data.camera.vl_settings # get vl settings from the active camera
+        layout = self.layout
+        
+        layout.prop(vl_settings, 'fovx')
+        layout.prop_tabs_enum(vl_settings, 'mode')
 
-            # row = layout.row()
-            # row.enabled = vl_settings.mode in {'ONE_POINT'}
-            # row.prop(context.area.spaces.active.camera.data, 'lens')
-            
-            # row = layout.row()
-            # row.enabled = vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}
-            # row.prop(vl_settings, 'quad_mode')
+        row = layout.row()
+        row.enabled = vl_settings.mode in {'ONE_POINT'}
+        row.prop(context.area.spaces.active.camera.data, 'lens')
+        
+        row = layout.row()
+        row.enabled = vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}
+        row.prop(vl_settings, 'quad_mode')
 
-            # row = layout.row()
-            # row.enabled = vl_settings.mode in {'ONE_POINT', 'TWO_POINT'}
-            # # row.prop(vl_settings, 'enable_manual_principal')
-            # layout.prop_menu_enum(vl_settings, 'first_axis')
-            # layout.prop_menu_enum(vl_settings, 'second_axis')
-            # layout.prop_menu_enum(vl_settings, 'scene_scale_mode')
+        row = layout.row()
+        row.enabled = vl_settings.mode in {'ONE_POINT', 'TWO_POINT'}
+        # row.prop(vl_settings, 'enable_manual_principal')
+        layout.prop_menu_enum(vl_settings, 'first_axis')
+        layout.prop_menu_enum(vl_settings, 'second_axis')
+        layout.prop_menu_enum(vl_settings, 'scene_scale_mode')
 
-            # layout.prop(vl_settings, 'scene_scale')
-            # col = layout.column()
-            # col.enabled = vl_settings.scene_scale_mode != 'ORIGIN'
-            # col.prop(vl_settings, 'reference_distance_segment', index=0)
-            # col.prop(vl_settings, 'reference_distance_segment', index=1)
+        layout.prop(vl_settings, 'scene_scale')
+        col = layout.column()
+        col.enabled = vl_settings.scene_scale_mode != 'ORIGIN'
+        col.prop(vl_settings, 'reference_distance_segment', index=0)
+        col.prop(vl_settings, 'reference_distance_segment', index=1)
 
 
 class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
@@ -126,7 +132,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         
         self._context_region = target_region
         
-        # Get the camera object
+        # Get viewport camera
         self._context_area.spaces.active.region_3d.view_perspective = 'CAMERA'
         camera_object = self._context_area.spaces.active.camera
 
@@ -140,11 +146,15 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self._initial_camera_shift_x = camera_object.data.shift_x
         self._initial_camera_shift_y = camera_object.data.shift_y
 
+        # --- GET VL_SETTINGS ---
+        vl_settings = camera_object.vl_settings # TODO: move vl_settings to operator?
+
         ############################################
         # Initialize vl_settings to current camera #
         ############################################
         glm_proj, glm_view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
-        vl_settings = camera_object.vl_settings # TODO: move vl_settings to operator?
+        vl_settings.camera_object = camera_object
+        vl_settings.auto_solve = False
         vl_settings.ensure_vanishing_lines()
 
         # Set the anchor point based on cursor position
@@ -158,12 +168,13 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             vl_settings.anchor_world = context.scene.cursor.location.to_tuple()
 
         # Match VLSettings to current Camera
-        vl_settings.proj_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm_proj))
-        vl_settings.view_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm_view))
-        _, f = solver.utils.decompose_intrinsics(solver.types.Rect(-1,-1,2,2), glm_proj)
-        fovx = solver.utils.fov_from_focal_length(f, 2)
-        vl_settings.fovx = fovx
+        # vl_settings.proj_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm_proj))
+        # vl_settings.view_array = vl_utils.matrix_to_array(vl_utils.glm_to_blender_mat(glm_view))
+        # _, f = solver.utils.decompose_intrinsics(solver.types.Rect(-1,-1,2,2), glm_proj)
+
+        vl_settings.fovx = camera_object.data.angle_x
         vl_settings.unsolve()
+        vl_settings.auto_solve = True
 
         ##################################
         # Initialize UIView3D for drawing and interaction in the viewport
@@ -257,11 +268,11 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # capture ui controls events
         changed = self.uiview.event(context, event)
         self.view3d_tick(context)
-        if changed:
-            vl_settings.solve()
-            vl_settings.to_camera(context.space_data.camera)
-            self.update_solve(context)
-            return {'RUNNING_MODAL'}  
+        # if changed:
+        #     vl_settings.solve()
+        #     vl_settings.to_camera(context.space_data.camera)
+        #     self.update_solve(context)
+        #     return {'RUNNING_MODAL'}  
 
         # ############# #
         # CONTEXT MENUI #
@@ -730,9 +741,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self.uiview.end()
 
     def update_solve(self, context):
-        camera_object = context.space_data.camera
-        camera_object.vl_settings.solve()
-        camera_object.vl_settings.to_camera(camera_object)
+        # camera_object = context.space_data.camera
+        # camera_object.vl_settings.solve()
+        # camera_object.vl_settings.to_camera(camera_object)
 
         self.view3d_tick(context)
         self._context_area.tag_redraw()

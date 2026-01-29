@@ -53,7 +53,12 @@ def rotate_point_around_center(point: glm.vec2, center: glm.vec2, rotation_angle
     # Translate back
     return glm.vec2(rotated_x, rotated_y) + center
 
-def focal_length_from_fov(fovy, size)->float:
+def focal_length_from_fov(fovy:float, size)->float:
+    """
+    fovx in radians
+    size: sensor size
+    return: focal length in same units as size
+    """
     return (size / 2) / math.tan(fovy / 2)
 
 def fov_from_focal_length(f, size)->float:
