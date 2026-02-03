@@ -46,7 +46,7 @@ if __name__ == "__main__":
     project_root = Path(__file__).parent.parent
     sys.path.insert(0, str(project_root / "vanishing_lines_for_blender"))
 
-from vanishing_lines_for_blender import vl_coord_utils
+from vanishing_lines_for_blender import vl_utils
 
 wide_output = (1920, 1080)
 tall_output = (1080, 1920)

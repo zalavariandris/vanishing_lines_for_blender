@@ -17,12 +17,11 @@ DIST_DIR = "dist"
 SOURCE = [
     "blender_manifest.toml",
     "__init__.py",
-    "overlay_painter.py",
-    "view3d_ui.py",
-    "vl_params.py",
+    "view3d_painter.py",
+    "view3d_gui.py",
+    "vl_ppropss.py",
     "vl_utils.py",
-    "vl_coord_utils.py",
-    "vanishing_lines_tool.py",
+    "vl_operators.py",
     "solver/**/*"
 ]
 

@@ -1,10 +1,10 @@
-from . import vl_properties_camera
-from . import vl_op_solve_orientation
+from . import vl_props
+from . import vl_operators
 
 def register():
-    vl_properties_camera.register()
-    vl_op_solve_orientation.register()
+    vl_props.register()
+    vl_operators.register()
 
 def unregister():
-    vl_op_solve_orientation.unregister()
-    vl_properties_camera.unregister()
+    vl_operators.unregister()
+    vl_props.unregister()

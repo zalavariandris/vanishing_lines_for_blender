@@ -14,76 +14,65 @@ from pyglm import glm
 
 # local
 from .view3d_gui import View3dGUI
-from .view3d_painter import View3dPainter
-from . import vl_properties_camera
-from . import solver
+from .view3d_painter import View3dPainter, dim_color
+from . import vl_props
 from . import vl_utils
-from . import vl_properties_camera
-
-from pyglm import glm
+from . import solver
 
 # Constants
 FONT_SIZE = 16
 LINE_HEIGHT = 18
 
 
-
-
 class MODAL_MT_VLContextMenu(bpy.types.Menu):
     bl_label = "Vanishing Lines Context Menu"
     bl_idname = "MODAL_MT_vl_context_menu"
 
-
     @classmethod
-    def poll(kls, context):
-        print("poll")
-        is_operator_running = vl_utils.is_operator_running('VIEW3D_OT_vl_solve_orientation')
-        view_perspective = context.area.spaces.active.region_3d.view_perspective
-
-        print("op running:", is_operator_running,"view_perspective:", view_perspective)
-        if not is_operator_running:
-            return False
+    def poll(cls, context):
         
+        vl = vl_props.get_current(context)
+        if not vl.active:
+            return False
+
         if not context.area.spaces.active.region_3d.view_perspective == 'CAMERA':
             return
         
-        print("allow")
         return True
 
     def draw(self, context):
-        if not vl_utils.is_operator_running('VIEW3D_OT_vl_solve_orientation'):
+        vl = vl_props.get_current(context)
+        if not vl.active:
             return False
         
         if not context.area.spaces.active.region_3d.view_perspective == 'CAMERA':
             return
         
-
-        vl_settings = context.space_data.camera.vl_settings # get vl settings from the active camera
         layout = self.layout
+        assert layout is not None, "Layout is None in VL Context Menu"
         
-        layout.prop_tabs_enum(vl_settings, 'mode')
-
+        layout.prop_tabs_enum(vl, 'mode')
 
         row = layout.row()
-        row.enabled = vl_settings.mode in {'ONE_POINT'}
-        row.prop(vl_settings, 'fovx')
+        row.enabled = vl.mode in {'ONE_POINT'}
+        row.prop(vl, 'fovx')
         
         row = layout.row()
-        row.enabled = vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}
-        row.prop(vl_settings, 'quad_mode')
+        row.enabled = vl.mode in {'TWO_POINT', 'THREE_POINT'}
+        row.prop(vl, 'quad_mode')
 
         row = layout.row()
-        row.enabled = vl_settings.mode in {'ONE_POINT', 'TWO_POINT'}
-        # row.prop(vl_settings, 'enable_manual_principal')
-        layout.prop_menu_enum(vl_settings, 'first_axis')
-        layout.prop_menu_enum(vl_settings, 'second_axis')
-        layout.prop_menu_enum(vl_settings, 'reference_scale_mode')
+        row.enabled = vl.mode in {'ONE_POINT', 'TWO_POINT'}
+        # row.prop(vl, 'enable_manual_principal')
+        layout.prop_menu_enum(vl, 'first_axis')
+        layout.prop_menu_enum(vl, 'second_axis')
+        layout.prop_menu_enum(vl, 'reference_scale_mode')
 
-        layout.prop(vl_settings, 'scene_scale')
+        layout.prop(vl, 'reference_scene_scale')
         col = layout.column()
-        col.enabled = vl_settings.reference_scale_mode != 'ORIGIN'
-        col.prop(vl_settings, 'reference_distance_segment', index=0)
-        col.prop(vl_settings, 'reference_distance_segment', index=1)
+        col.enabled = vl.reference_scale_mode != 'ORIGIN'
+        col.prop(vl, 'reference_screen_segment', index=0)
+        col.prop(vl, 'reference_screen_segment', index=1)
 
 
 class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
@@ -148,31 +137,33 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # update last camera view matrix, to compare changes later
         self._last_camera_view_matrix = camera_object.matrix_world.copy()
 
-        # --- GET VL_SETTINGS ---
-        vl_settings = camera_object.vl_settings # TODO: move vl_settings to operator?
+        # --- GET VLProps ---
+        vl = vl_props.get_current(context)
 
         ############################################
-        # Initialize vl_settings to current camera #
+        # Initialize vl_props to current camera #
         ############################################
-        glm_proj, glm_view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
-        vl_settings.camera_object = camera_object
-        vl_settings.auto_solve = False
-        vl_settings.ensure_vanishing_lines()
+        vl.camera_object = camera_object
+        vl.active = True
+        vl.auto_solve = False
+        vl_props.ensure_vanishing_lines(vl)
 
         # Set the anchor point based on cursor position
+        glm_proj, glm_view = vl_utils.get_camera_matrices(camera_object, solver.types.Rect(-1,-1,2,2))
+        
         cursor = context.scene.cursor.location.copy()
         cursor_camera_space = glm_view * glm.vec4(cursor.x, cursor.y, cursor.z, 1.0)
         is_cursor_behind = cursor_camera_space.z > 0
         if is_cursor_behind:
             orbit_location = context.area.spaces.active.region_3d.view_location
-            vl_settings.anchor_world = (orbit_location.x, orbit_location.y, orbit_location.z)
+            vl.anchor_world = (orbit_location.x, orbit_location.y, orbit_location.z)
         else:
-            vl_settings.anchor_world = context.scene.cursor.location.to_tuple()
+            vl.anchor_world = context.scene.cursor.location.to_tuple()
 
-        # Match VLSettings to current Camera
-        vl_settings.fovx = camera_object.data.angle_x
-        vl_settings.unsolve()
-        vl_settings.auto_solve = True
+        # Match VLProps to current Camera
+        vl.fovx = camera_object.data.angle_x
+        vl_props.unsolve(vl)
+        vl.auto_solve = True
 
         ##################################
         # Initialize UIView3D for drawing and interaction in the viewport
@@ -197,6 +188,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         return {'RUNNING_MODAL'}
     
     def modal(self, context, event):
+        vl = vl_props.get_current(context)
+
         if event.type in {'ESC'}:
             self._context_area.tag_redraw()
             self.cleanup(context)
@@ -228,41 +221,34 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         if context.area.spaces.active.region_3d.view_perspective != 'CAMERA':
             self.cleanup(context)
             return {'FINISHED'}
-        
-        #########################
-        #########################
-        vl_settings = context.space_data.camera.vl_settings
 
-        # Check if 3D view is still in camera mode
-        if vl_settings.camera_object != self._context_area.spaces.active.camera:
+        if vl.camera_object != self._context_area.spaces.active.camera:
             self.cleanup(context)
             return {'FINISHED'}
         
-        ##########################
-        # Handle Keyboard Events #
-        ##########################
+        # --- Handle Keyboard Events
         if event.value == 'PRESS':
             match event.type:
                 case 'ONE' | 'NUMPAD_1':
-                    vl_settings.mode = 'ONE_POINT'
+                    vl.mode = 'ONE_POINT'
                     self.view3d_gui_loop(context)
                     self._context_area.tag_redraw()
                     return {'RUNNING_MODAL'}
                 
                 case 'TWO' | 'NUMPAD_2':
-                    vl_settings.mode = 'TWO_POINT'
+                    vl.mode = 'TWO_POINT'
                     self.view3d_gui_loop(context)
                     self._context_area.tag_redraw()
                     return {'RUNNING_MODAL'}
                 
                 case 'THREE' | 'NUMPAD_3':
-                    vl_settings.mode = 'THREE_POINT'
+                    vl.mode = 'THREE_POINT'
                     self.view3d_gui_loop(context)
                     self._context_area.tag_redraw()
                     return {'RUNNING_MODAL'}
                 
                 case 'Q':
-                    vl_settings.quad_mode = not vl_settings.quad_mode
+                    vl.quad_mode = not vl.quad_mode
                     self.view3d_gui_loop(context)
                     self._context_area.tag_redraw()
                     return {'RUNNING_MODAL'}
@@ -270,133 +256,74 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # capture ui controls events
         changed = self.uiview.event(context, event)
         self.view3d_gui_loop(context)
+        
+        if event.type == 'MIDDLEMOUSE':
+            if event.value == 'PRESS':
+                self._middle_mouse_pressed = True
+            elif event.value == 'RELEASE':
+                self._middle_mouse_pressed = False
+        
+        # --- MOUSE INPUT ---
+        match event.type:
+            case 'WHEELUPMOUSE' | 'WHEELDOWNMOUSE':
+                # Adjust reference scene scale
+                distance = vl.reference_scene_scale
+                base_zoom = 1.1 # Base zoom factor (1.1 = 10% per wheel step)
+                wheel_direction = -1 if event.type == 'WHEELUPMOUSE' else 1
+                distance_scale = math.log2(distance + 1.0)
+                zoom_factor = math.pow(base_zoom, wheel_direction * distance_scale)
+                vl.reference_scene_scale *= zoom_factor
+                
+                return {'RUNNING_MODAL'}
+            
+            case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl:
+                # Adjust reference scene scale
+                distance = vl.reference_scene_scale
+                base_zoom = 1.003 # Base zoom factor (1.1 = 10% per wheel step)
+                delta_y = event.mouse_prev_y - event.mouse_y
+                distance_scale = math.log2(distance + 1.0)
+                zoom_factor = math.pow(base_zoom, delta_y * distance_scale)
+                vl.reference_scene_scale *= zoom_factor
+                
+                return {'RUNNING_MODAL'}
+ 
+            case 'MOUSEMOVE' if self._middle_mouse_pressed:
+                # Pan camera TODO: refactor, this is duplicated code and unnecesseraly complex. find an elegant solution
+                view_camera_zoom =   context.space_data.region_3d.view_camera_zoom
+                view_camera_offset = context.space_data.region_3d.view_camera_offset
+                sensor_fit =         context.space_data.camera.data.sensor_fit  # get the camera associated with the viewport
+                output_size =        context.scene.render.resolution_x, context.scene.render.resolution_y
+                region_size =        context.region.width, context.region.height
+
+                mouse_prev_x, mouse_prev_y = vl_utils._map_region_to_output(
+                    fit_mode = sensor_fit,
+                    output_size = output_size,
+                    region_size = region_size,
+                    view_camera_zoom = view_camera_zoom,
+                    view_camera_offset = view_camera_offset,
+                    region_coords = (event.mouse_prev_x, event.mouse_prev_y))
+                
+                mouse_x, mouse_y = vl_utils._map_region_to_output(
+                    fit_mode = sensor_fit,
+                    output_size = output_size,
+                    region_size = region_size,
+                    view_camera_zoom = view_camera_zoom,
+                    view_camera_offset = view_camera_offset,
+                    region_coords = (event.mouse_x, event.mouse_y))
+                
+                mouse_delta_x, mouse_delta_y = mouse_x - mouse_prev_x , mouse_y - mouse_prev_y
+
+                vl.anchor_screen = (
+                    vl.anchor_screen[0] + mouse_delta_x/output_size[0]*2, # TODO
+                    vl.anchor_screen[1] + mouse_delta_y/output_size[0]*2
+                )
+                
+                return {'RUNNING_MODAL'}
+
         return {'RUNNING_MODAL'}
         
-        # match event.type:
-        #     case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl:
-        #         # SMOOTH DOLLY CAMERA
-        #         # Match Blender's native dolly speed: proportional to view_distance
-        #         camera = self._context_area.spaces.active.camera
-        #         rv3d = self._context_area.spaces.active.region_3d
-                
-        #         # Blender dolly formula: zfac = 1.0 + (pixel_delta * 0.01 * dist)
-        #         # For wheel events, we simulate ~20 pixel movement per wheel step
-        #         pixel_delta = event.mouse_y - event.mouse_prev_y
-        #         zfac = 1.0 + (pixel_delta/20 * 0.003 * rv3d.view_distance)
-                
-        #         # Move camera along its local Z-axis by (1 - zfac) * dist
-        #         dolly_distance = (1.0 - zfac) * rv3d.view_distance
-        #         forward = camera.matrix_world.to_3x3() @ mathutils.Vector((0, 0, 1.0))
-        #         camera.location += forward * dolly_distance
-        #         vl_utils.adjust_vanishing_lines_to_camera(camera)
-        #         return {'RUNNING_MODAL'}
-            
-        #     case 'WHEELUPMOUSE' | 'WHEELDOWNMOUSE':
-        #         # STEP DOLLY CAMERA
-        #         # Match Blender's native dolly speed: proportional to view_distance
-        #         camera = self._context_area.spaces.active.camera
-        #         rv3d = self._context_area.spaces.active.region_3d
-                
-        #         # Blender dolly formula: zfac = 1.0 + (pixel_delta * 0.01 * dist)
-        #         # For wheel events, we simulate ~20 pixel movement per wheel step
-        #         pixel_delta = 1 if event.type == 'WHEELUPMOUSE' else -1
-        #         zfac = 1.0 + (pixel_delta * 0.003 * rv3d.view_distance)
-                
-        #         # Move camera along its local Z-axis by (1 - zfac) * dist
-        #         dolly_distance = (1.0 - zfac) * rv3d.view_distance
-        #         forward = camera.matrix_world.to_3x3() @ mathutils.Vector((0, 0, 1.0))
-        #         camera.location += forward * dolly_distance
-        #         vl_utils.adjust_vanishing_lines_to_camera(camera)
-        #         return {'RUNNING_MODAL'}
-            
-        #     case 'MOUSEMOVE' if self._middle_mouse_pressed and event.shift:
-        #         def pan_camera(camera, rv3d, region, delta_x, delta_y, pivot):
-        #             """
-        #             Pan camera by screen-space delta using Blender's built-in projection.
-        #             pivot: the point to keep in focus (like view pivot)
-        #             """
-        #             # Original screen coordinate of pivot
-        #             pivot_2d = view3d_utils.location_3d_to_region_2d(region, rv3d, pivot)
-
-        #             # New 2D coordinate with mouse delta
-        #             new_2d = pivot_2d + mathutils.Vector((delta_x, delta_y))
-
-        #             # Project back into world space at pivot depth
-        #             new_world = view3d_utils.region_2d_to_location_3d(region, rv3d, new_2d, pivot)
-
-        #             # Offset vector
-        #             offset = pivot - new_world
-
-        #             # Move camera by that offset
-        #             camera.location += offset
-
-        #         camera = self._context_area.spaces.active.camera
-        #         rv3d = self._context_area.spaces.active.region_3d
-        #         region = context.region
-
-        #         delta_x = event.mouse_x - event.mouse_prev_x
-        #         delta_y = event.mouse_y - event.mouse_prev_y    
-
-        #         # pivot = center of view or custom pivot point
-        #         pivot = rv3d.view_location
-
-        #         pan_camera(camera, rv3d, region, delta_x, delta_y, pivot)
-        #         vl_utils.adjust_vanishing_lines_to_camera(camera)
-        #         return {'RUNNING_MODAL'}
-            
-            # case 'MOUSEMOVE' if self._middle_mouse_pressed:
-            #     # ORBIT CAMERA
-            #     print("orbit camera")
-            #     camera = self._context_area.spaces.active.camera
-            #     camera_transform = vl_utils.glm_from_blender_mat(camera.matrix_world)
-            #     delta_x = event.mouse_prev_x - event.mouse_x
-            #     delta_y = event.mouse_prev_y - event.mouse_y
-            #     camera.matrix_world = vl_utils.glm_to_blender_mat(
-            #         vl_utils.ball_control(camera_transform, glm.vec3(0,0,0), delta_x * 0.01, delta_y * 0.01))
-            #     vl_utils.adjust_vanishing_lines_to_camera(camera)
-            #     return {'RUNNING_MODAL'}
-            
-            # case 'WHEELUPMOUSE' | 'WHEELDOWNMOUSE':
-            #     # Adjust camera zoom
-            #     self._context_area.spaces.active.region_3d.view_camera_zoom += (1 if event.type == 'WHEELUPMOUSE' else -1) * 6
-            #     return {'RUNNING_MODAL'}
-            
-            # case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl and event.alt and vl_settings.mode == 'ONE_POINT':
-            #     # Adjust focal length
-            #     delta = event.mouse_prev_y - event.mouse_y
-            #     camera_object = self._context_area.spaces.active.camera
-            #     camera_object.data.lens *= math.pow(1.1, -delta * 0.03)
-            #     self.update_solve()
-            #     return {'RUNNING_MODAL'}
-                                            
-            #     # # Move origin / Pan Camera # TODO: actually move the camera, and update the origin accordingly?
-            #     # proj_mouse_x, proj_mouse_y = self.uiview.unproject((event.mouse_x, event.mouse_y))
-            #     # proj_mouse_prev_x, proj_mouse_prev_y = self.uiview.unproject((event.mouse_prev_x, event.mouse_prev_y))
-            #     # proj_mouse_delta_x = proj_mouse_prev_x - proj_mouse_x
-            #     # proj_mouse_delta_y = proj_mouse_prev_y - proj_mouse_y
-            #     # vl_settings.origin[0] -= proj_mouse_delta_x
-            #     # vl_settings.origin[1] -= proj_mouse_delta_y
-            #     return {'RUNNING_MODAL'}
-            
-            # case 'MOUSEMOVE' if self._middle_mouse_pressed:
-            #     # Pan camera
-            #     mouse_delta_x = event.mouse_prev_x - event.mouse_x
-            #     mouse_delta_y = event.mouse_prev_y - event.mouse_y
-            #     region = context.region
-
-            #     # Get zoom factor to match coordinate projection
-            #     view_camera_zoom = self._context_area.spaces.active.region_3d.view_camera_zoom
-            #     zoom_fac = ((math.sqrt(2.0) + view_camera_zoom / 50.0) ** 2) / 4.0  # Blender magic zoom formula
-
-            #     offset_delta_x = mouse_delta_x / (2.0 * zoom_fac * region.width)
-            #     offset_delta_y = mouse_delta_y / (2.0 * zoom_fac * region.height)
-            #     self._context_area.spaces.active.region_3d.view_camera_offset[0] += offset_delta_x
-            #     self._context_area.spaces.active.region_3d.view_camera_offset[1] += offset_delta_y
-            #     return {'RUNNING_MODAL'}
-
-        # return {'PASS_THROUGH'}
-        
-    def view3d_gui_loop(self, context):    
+    def view3d_gui_loop(self, context):
+        assert self.uiview is not None, "UIView3D not initialized"
         # get the region
         self.uiview.begin()
         # get SpaceView3D
@@ -430,7 +357,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         ###########################
         # Vanishing Line CONTROLS #
         ###########################
-        vl_settings = context.space_data.camera.vl_settings
+        vl = vl_props.get_current(context)
         
         def get_axis_color(axis:solver.types.Axis) -> mathutils.Vector:
             match axis:
@@ -440,17 +367,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                     return GREEN
                 case solver.types.Axis.PositiveZ | solver.types.Axis.NegativeZ:
                     return BLUE
-
-        axis_map = {
-            'X+': solver.types.Axis.PositiveX,
-            'Y+': solver.types.Axis.PositiveY,
-            'Z+': solver.types.Axis.PositiveZ,
-            'X-': solver.types.Axis.NegativeX,
-            'Y-': solver.types.Axis.NegativeY,
-            'Z-': solver.types.Axis.NegativeZ
-        }
-        first_axis = axis_map[vl_settings.first_axis]
-        second_axis = axis_map[vl_settings.second_axis]
+        
+        first_axis = vl_utils.to_solver_axis(vl.first_axis)
+        second_axis = vl_utils.to_solver_axis(vl.second_axis)
         third_axis = solver.helpers.third_axis(first_axis, second_axis) # find third axis based on the first two
 
         # create line midpoint handlers
@@ -508,68 +427,68 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             mid_y = (line.start[1] + line.end[1]) / 2
             return (mid_x, mid_y)
 
-        if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
-            vp1 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl_settings.first_vanishing_lines])
+        if vl.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
+            vp1 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl.first_vanishing_lines])
             # Draw first vanishing lines
-            for idx, line in enumerate(vl_settings.first_vanishing_lines):
+            for idx, line in enumerate(vl.first_vanishing_lines):
                 self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(first_axis))
                 self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(first_axis))
-                self.uiview.prop_point(vl_settings, 'first_vanishing_lines', text="", index=idx, color=get_axis_color(first_axis), set_transform=set_vl_transform(vp1), get_transform=get_midpoint_transform)
+                self.uiview.prop_point(vl, 'first_vanishing_lines', text="", index=idx, color=get_axis_color(first_axis), set_transform=set_vl_transform(vp1), get_transform=get_midpoint_transform)
                 self.uiview._painter.add_line(line.start, line.end, get_axis_color(first_axis))
 
-        if vl_settings.mode in {'ONE_POINT'}:
+        if vl.mode in {'ONE_POINT'}:
             # Draw the horizontal line for the vp1 mode:
-            line = vl_settings.second_vanishing_lines[0]
+            line = vl.second_vanishing_lines[0]
             self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(second_axis))
             self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(second_axis))
-            self.uiview.prop_point(vl_settings, 'second_vanishing_lines', text="", index=0, color=get_axis_color(second_axis), set_transform=set_midpoint_transform, get_transform=get_midpoint_transform)
+            self.uiview.prop_point(vl, 'second_vanishing_lines', text="", index=0, color=get_axis_color(second_axis), set_transform=set_midpoint_transform, get_transform=get_midpoint_transform)
             self.uiview._painter.add_line(line.start, line.end, get_axis_color(second_axis))
 
-        if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
-            if vl_settings.quad_mode:
+        if vl.mode in {'TWO_POINT', 'THREE_POINT'}:
+            if vl.quad_mode:
                 # transpose first vanishing lines for quad mode
-                first_line = vl_settings.first_vanishing_lines[ 0]
-                last_line =  vl_settings.first_vanishing_lines[-1]
+                first_line = vl.first_vanishing_lines[ 0]
+                last_line =  vl.first_vanishing_lines[-1]
                 second_vanishing_lines_coordinates = [(first_line.start, last_line.start), (first_line.end, last_line.end)]
                 
                 for P, Q in second_vanishing_lines_coordinates:
                     self.uiview._painter.add_line(P, Q, get_axis_color(second_axis))
                     
             else:
-                vp2 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl_settings.second_vanishing_lines])
-                for idx, line in enumerate(vl_settings.second_vanishing_lines):
+                vp2 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl.second_vanishing_lines])
+                for idx, line in enumerate(vl.second_vanishing_lines):
                     self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(second_axis))
                     self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(second_axis))
-                    self.uiview.prop_point(vl_settings, 'second_vanishing_lines', text="", index=idx, color=get_axis_color(second_axis), set_transform=set_vl_transform(vp2), get_transform=get_midpoint_transform)
+                    self.uiview.prop_point(vl, 'second_vanishing_lines', text="", index=idx, color=get_axis_color(second_axis), set_transform=set_vl_transform(vp2), get_transform=get_midpoint_transform)
                     self.uiview._painter.add_line(line.start, line.end, get_axis_color(second_axis))
 
-        if vl_settings.mode in {'THREE_POINT'}:
-            vp3 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl_settings.third_vanishing_lines])
-            for idx, line in enumerate(vl_settings.third_vanishing_lines):
+        if vl.mode in {'THREE_POINT'}:
+            vp3 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl.third_vanishing_lines])
+            for idx, line in enumerate(vl.third_vanishing_lines):
                 self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(third_axis))
                 self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(third_axis))
-                self.uiview.prop_point(vl_settings, 'third_vanishing_lines', text="", index=idx, color=get_axis_color(third_axis), set_transform=set_vl_transform(vp3), get_transform=get_midpoint_transform)
+                self.uiview.prop_point(vl, 'third_vanishing_lines', text="", index=idx, color=get_axis_color(third_axis), set_transform=set_vl_transform(vp3), get_transform=get_midpoint_transform)
                 self.uiview._painter.add_line(line.start, line.end, get_axis_color(third_axis))
 
         ###############################
         # reference distance CONTROLS #
         ###############################
-        # anchor_is_behind = vl_settings.scene_scale < 0
+        # anchor_is_behind = vl.scene_scale < 0
         # if not anchor_is_behind:
-        if vl_settings.reference_scale_mode != 'ANCHOR':
+        if vl.reference_scale_mode != 'ANCHOR':
             def get_distance_measurement_direction() -> Tuple[float, float]:
-                if vl_settings.reference_scale_mode == 'SCREEN':
+                if vl.reference_scale_mode == 'SCREEN':
                     return (1.0,0.0)
                 else:
                     axis_vectors = {'X_AXIS': (1, 0, 0), 'Y_AXIS': (0, 1, 0), 'Z_AXIS': (0, 0, 1)}
-                    axis_vector = axis_vectors[vl_settings.reference_scale_mode]
+                    axis_vector = axis_vectors[vl.reference_scale_mode]
 
                     region = context.region
                     rv3d = context.area.spaces.active.region_3d
                     R = view3d_utils.location_3d_to_region_2d(region, rv3d, axis_vector)
                     R = self.uiview.unproject((R.x, R.y))
                     R = mathutils.Vector((R[0], R[1]))
-                    O = mathutils.Vector((vl_settings.anchor_screen[0], vl_settings.anchor_screen[1]))
+                    O = mathutils.Vector((vl.anchor_screen[0], vl.anchor_screen[1]))
 
                     dir_vector = (R - O).normalized()
                     return dir_vector.x, dir_vector.y
@@ -586,45 +505,44 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 case 'INCHES':
                     length_unit = "in"
                 
-            self.uiview.prop_distance_segment(vl_settings, "reference_screen_segment", 
-                origin=vl_settings.anchor_screen,
+            self.uiview.prop_distance_segment(vl, "reference_screen_segment", 
+                origin=vl.anchor_screen,
                 direction=get_distance_measurement_direction(),
-                text=f"{vl_settings.reference_scene_scale:.2f}{length_unit}",
+                text=f"{vl.reference_scene_scale:.2f}{length_unit}",
                 color=ORANGE)
         
-        _ = self.uiview.prop_point(vl_settings, "anchor_screen",    
+        _ = self.uiview.prop_point(vl, "anchor_screen",    
             text="O",
             color=YELLOW)
         
         ###########################################
         # DRAW Extended lines to vanishing points #
         ###########################################
+
+        
             
-        if not vl_settings.error_message:
-            if vl_settings.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
+        if not vl.error_message:
+            if vl.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
                 try:
                     vp1 = solver.core.compute_vanishing_point([
                         (glm.vec2(*line.start), glm.vec2(*line.end)) 
-                        for line in vl_settings.first_vanishing_lines])
+                        for line in vl.first_vanishing_lines])
 
-                    for line in vl_settings.first_vanishing_lines:
+                    for line in vl.first_vanishing_lines:
+                        start, end = vl_utils.extend_line(mathutils.Vector(line.start), mathutils.Vector(line.end), mathutils.Vector(vp1))
                         self.uiview._painter.add_line(
-                            mathutils.Vector(vl_utils.find_nearest_point(
-                                map(mathutils.Vector, [line.start, line.end]), 
-                                mathutils.Vector(vp1)
-                            )), 
-                            mathutils.Vector(vp1), 
-                            vl_utils.dim_color(get_axis_color(first_axis))
+                            start, end, 
+                            dim_color(get_axis_color(first_axis))
                         )
                         
                 except solver.exceptions.VanishingLinesError as e:
                     warnings.warn(f"Could not compute VP1: {e}")
 
-            if vl_settings.mode in {'TWO_POINT', 'THREE_POINT'}:
-                if vl_settings.quad_mode:
+            if vl.mode in {'TWO_POINT', 'THREE_POINT'}:
+                if vl.quad_mode:
                     try:
-                        first_line = vl_settings.first_vanishing_lines[ 0]
-                        last_line =  vl_settings.first_vanishing_lines[-1]
+                        first_line = vl.first_vanishing_lines[ 0]
+                        last_line =  vl.first_vanishing_lines[-1]
 
                         second_vanishing_lines = [
                             (glm.vec2(first_line.start.x, first_line.start.y), glm.vec2(last_line.start.x, last_line.start.y)),
@@ -633,13 +551,10 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                         vp2 = solver.core.compute_vanishing_point(second_vanishing_lines)
                         
                         for line in second_vanishing_lines:
+                            start, end = vl_utils.extend_line(mathutils.Vector(line[0]), mathutils.Vector(line[1]), mathutils.Vector(vp2))
                             self.uiview._painter.add_line(
-                                mathutils.Vector(vl_utils.find_nearest_point(
-                                    map(mathutils.Vector, [line[0], line[1]]), 
-                                    mathutils.Vector(vp2)
-                                )), 
-                                mathutils.Vector(vp2), 
-                                vl_utils.dim_color(get_axis_color(second_axis))
+                                start, end,
+                                dim_color(get_axis_color(second_axis))
                             )
                     except ValueError as e:
                         warnings.warn(f"Could not compute VP2: {e}")
@@ -647,36 +562,30 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                     try:
                         vp2 = solver.core.compute_vanishing_point([
                             (glm.vec2(*line.start), glm.vec2(*line.end)) 
-                            for line in vl_settings.second_vanishing_lines])
+                            for line in vl.second_vanishing_lines])
                         
-                        for line in vl_settings.second_vanishing_lines:
-                            # vl = 
+                        for line in vl.second_vanishing_lines:
+                            start, end = vl_utils.extend_line(mathutils.Vector(line.start), mathutils.Vector(line.end), mathutils.Vector(vp2))
                             self.uiview._painter.add_line(
-                                mathutils.Vector(vl_utils.find_nearest_point(
-                                    map(mathutils.Vector, [line.start, line.end]), 
-                                    mathutils.Vector(vp2)
-                                )), 
-                                mathutils.Vector(vp2), 
-                                vl_utils.dim_color(get_axis_color(second_axis))
+                                start, end,
+                                dim_color(get_axis_color(second_axis))
                             )
 
                     except ValueError as e:
                         warnings.warn(f"Could not compute VP2: {e}")
 
-            if vl_settings.mode in {'THREE_POINT'}:
+            if vl.mode in {'THREE_POINT'}:
                 try:
                     vp3 = solver.core.compute_vanishing_point([
                         (glm.vec2(*line.start), glm.vec2(*line.end)) 
-                        for line in vl_settings.third_vanishing_lines])
+                        for line in vl.third_vanishing_lines])
                     
-                    for line in vl_settings.third_vanishing_lines:
+                    for line in vl.third_vanishing_lines:
+                        start, end = vl_utils.extend_line(mathutils.Vector(line.start), mathutils.Vector(line.end), mathutils.Vector(vp3))
                         self.uiview._painter.add_line(
-                            mathutils.Vector(vl_utils.find_nearest_point(
-                                map(mathutils.Vector, [line.start, line.end]), 
-                                mathutils.Vector(vp3)
-                            )), 
-                            mathutils.Vector(vp3), 
-                            vl_utils.dim_color(get_axis_color(third_axis)))
+                            start, end,
+                            dim_color(get_axis_color(third_axis))
+                        )
                         
                 except ValueError as e:
                     warnings.warn(f"Could not compute VP3: {e}")
@@ -698,7 +607,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 )
 
         # Draw error messages
-        if error_msg:=vl_settings.error_message:
+        if error_msg:=vl.error_message:
             lines = str(error_msg).splitlines()
             text_block_height = LINE_HEIGHT * len(lines)
             text_block_width = max([blf.dimensions(0, line)[0] for line in lines])
@@ -764,6 +673,10 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self.cleanup(context)
         
     def cleanup(self, context):
+        vl = vl_props.get_current(context)
+        vl.active = False
+        vl.auto_solve = False
+
         # remove draw hundler
         if self._draw_handler is not None:
             bpy.types.SpaceView3D.draw_handler_remove(self._draw_handler, 'WINDOW')
@@ -800,7 +713,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         self.uiview.render()
     
 
-    
 ######################
 def view_menu_func(self, context):
     self.layout.operator("view3d.vl_solve_orientation", text="Vanishing Lines - Orientation")

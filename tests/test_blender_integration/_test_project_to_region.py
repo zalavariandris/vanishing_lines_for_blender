@@ -46,7 +46,7 @@ if __name__ == "__main__":
     project_root = Path(__file__).parent.parent
     sys.path.insert(0, str(project_root / "vanishing_lines_for_blender"))
 
-from vanishing_lines_for_blender import vl_coord_utils
+from vanishing_lines_for_blender import vl_utils
 
 wide_output = (1920, 1080)
 tall_output = (1080, 1920)
@@ -83,7 +83,7 @@ def test_project_output_to_region(
     region_coords):
     
     # output_coords = (output_size[0]*2/3, output_size[1]*2/3)
-    project_result = vl_coord_utils._project_output_to_region(
+    project_result = vl_utils._map_output_to_region(
         fit_mode=sensor_fit,
         output_size=output_size,
         region_size=region_size,
@@ -105,7 +105,7 @@ def test_unproject_output_from_region(
     region_coords):
     
     # output_coords = (output_size[0]*2/3, output_size[1]*2/3)
-    project_result = vl_coord_utils._unproject_output_from_region(
+    project_result = vl_utils._unproject_output_from_region(
         fit_mode=sensor_fit,
         output_size=output_size,
         region_size=region_size,
@@ -155,7 +155,7 @@ def test_project_sensor_to_region(
     sensor_coords,
     region_coords):
     
-    project_result = vl_coord_utils._project_sensor_to_region(
+    project_result = vl_utils._project_sensor_to_region(
         fit_mode=fit_mode,
         output_size=output_size,
         region_size=region_size,
@@ -179,7 +179,7 @@ def test_unproject_sensor_to_region(
     sensor_coords,
     region_coords):
     
-    unproject_result = vl_coord_utils._unproject_sensor_from_region(
+    unproject_result = vl_utils._unproject_sensor_from_region(
         fit_mode=fit_mode,
         output_size=output_size,
         region_size=region_size,
@@ -231,7 +231,7 @@ def test_project_compute_to_region(
     compute_coords,
     region_coords):
     
-    project_result = vl_coord_utils._project_compute_to_region(
+    project_result = vl_utils._project_compute_to_region(
         fit_mode=fit_mode,
         compute_rect=(-1,-1, 2, 2),
         output_size=output_size,
@@ -256,7 +256,7 @@ def test_unproject_compute_from_region(
     compute_coords,
     region_coords):
     
-    unproject_result = vl_coord_utils._unproject_compute_from_region(
+    unproject_result = vl_utils._unproject_compute_from_region(
         fit_mode=fit_mode,
         compute_rect=(-1,-1, 2, 2),
         output_size=output_size,
@@ -302,7 +302,7 @@ class MockContext:
         })()
 
 # from vanishing_lines_for_blender import uiview3d
-# from vanishing_lines_for_blender import vl_coord_utils
+# from vanishing_lines_for_blender import vl_utils
 
 # @pytest.mark.parametrize("fit_mode, region_size, output_size, sensor_size, compute_coords, region_coords",
 #   compute_combinations)

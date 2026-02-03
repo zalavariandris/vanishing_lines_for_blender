@@ -1,13 +1,17 @@
 import math
-from typing import Tuple, Callable
+from typing import Tuple, Callable, Any
 
-from . import vl_utils
-from . import vl_coord_utils
-from .view3d_painter import View3dPainter
-from pyglm import glm
+# blender
 import mathutils
 
-# Constants
+# third party
+from pyglm import glm
+
+# local
+from . import vl_utils
+from .view3d_painter import View3dPainter, dim_color
+
+# -- Constants --
 CLIP_NEAR = -1000.0
 CLIP_FAR = 1000.0
 DEFAULT_CLICK_THRESHOLD = 22.0
@@ -15,7 +19,7 @@ DEFAULT_CLICK_THRESHOLD = 22.0
 DIM_FACTOR_ACTIVE = 0.3
 DIM_FACTOR_INACTIVE = 0.1
 
-from typing import Any
+# -- Types --
 SetterCallbackWithIndexType = Callable[[Any, Any, int,  Any], None]
 SetterCallbackWithoutType =   Callable[[Any, Any, Any],       None]
 
@@ -25,10 +29,9 @@ GetterCallbackWithoutType =   Callable[[Any, Any],      Tuple[float, float]]
 SetterCallbackType = SetterCallbackWithIndexType | SetterCallbackWithoutType
 GetterCallbackType = GetterCallbackWithIndexType | GetterCallbackWithoutType
 
-
 ControlIdType = Tuple['bpy.types.ID', str, int|None]
 
-
+# -- Classes --
 class _ControlPointGizmo():
     def __init__(self, 
         data:'bpy.types.ID', 
@@ -200,7 +203,7 @@ class View3dGUI:
 
     def set_coordinate_system_to_camera_frame(self, context):
         # Set UIVIEW camera, so _compute space_ matches _camera frame_, respect to _sensor fit_
-        camera_frame = vl_coord_utils.get_camera_frame(context)
+        camera_frame = vl_utils.get_camera_frame(context)
 
         output_aspect = context.scene.render.resolution_x / context.scene.render.resolution_y
         sensor_fit = context.space_data.camera.data.sensor_fit
@@ -462,7 +465,7 @@ class View3dGUI:
         P_start = mathutils.Vector( getter(data, prop, 0) )
         P_end   = mathutils.Vector( getter(data, prop, 1) )
 
-        render_color  = color if highlight else vl_utils.dim_color(color, DIM_FACTOR_ACTIVE)
+        render_color  = color if highlight else dim_color(color, DIM_FACTOR_ACTIVE)
         self._painter.add_line(
             P_start,
             P_end,

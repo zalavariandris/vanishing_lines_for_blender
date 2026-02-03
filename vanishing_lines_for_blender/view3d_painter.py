@@ -1,41 +1,52 @@
 import math
+from typing import Literal, List, Tuple
+from dataclasses import dataclass
+
+# blender
 import bpy
 import gpu
-from typing import Literal
 from gpu_extras.batch import batch_for_shader
-
-from typing import List, Tuple
 import blf
 import mathutils
+
+# third party
 from pyglm import glm
 
-# Constants at module level
+
+# -- Constants --
 DEFAULT_FONT_SIZE = 12
 DEFAULT_FONT_ID = 0
 ANNOTATION_OFFSET_X = DEFAULT_FONT_SIZE*2/3
 ANNOTATION_OFFSET_Y = DEFAULT_FONT_SIZE*2/3
 
 
-from dataclasses import dataclass
+# -- Helpers --
+def dim_color(color:mathutils.Vector, factor:float=0.18)->mathutils.Vector:
+    assert isinstance(color, mathutils.Vector) and len(color) == 4, "Color must be a tuple/list of 4 floats (RGBA)"
+    return mathutils.Vector((color[0], color[1], color[2], color[3]*factor))
 
+
+# -- Classes --
 @dataclass
 class _Annotation:
     pos: mathutils.Vector
     text: str
-    color: mathutils.Color
+    color: mathutils.Vector
     angle: float = 0.0
+
 
 @dataclass
 class _Marker:
     pos: mathutils.Vector
-    color: mathutils.Color
+    color: mathutils.Vector
     shape: Literal['.', 'x']
+
 
 @dataclass
 class _Line:
     start: mathutils.Vector
     end: mathutils.Vector
-    color: mathutils.Color
+    color: mathutils.Vector
 
 
 class View3dPainter:

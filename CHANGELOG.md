@@ -24,7 +24,11 @@
 - [ ] review types. make them consistent
 - [ ] revieow #TODO notes
 
+
+
 # TODO:
+- [ ] ADD adjustiung scene scale with scrollwheel
+- [X] Add scene scale to the context menu
 - [ ] TEST unsolve.
 - [ ] let appropriate events PASS THROUGH
 - [ ] add plane switches
@@ -44,7 +48,7 @@
 - [x] FIX: origin annotation seem to be drawn twice?, also dont draw the value on hover
 - [ ] FIX: two point mode. first axis i Y second axis is Z and up. move tha axis when its almost vertical, the up vector flips downwards.
 - [ ] FIX when axis changed on the right mouse context menu, updates are not triggered. 
-- [ ] this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS is_operator_running takes bl_id or bl_idname?
+- [ ] ~~this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS is_operator_running takes bl_id or bl_idname?~~
 - [x] FIX 🔥 when camera is too close to the origin (scene scale is small), there is an uncaught error. 
   -> with the orientation tool this is not an issue anymore
 - [x] FIX when camera sensor fit set to auto and sensor_width is less than sensor_height there is a mismatch! TODO: this bug was not caught by the tests

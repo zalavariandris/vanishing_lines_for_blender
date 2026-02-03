@@ -280,24 +280,22 @@ def orientation_to_three_vanishing_points(
     """
     vpX, vpY, vpZ = _impl_orientation_to_three_vanishing_points(view_matrix, projection_matrix, viewport)
     
-    # If no axis assignment provided, return in default X, Y, Z order
-    if first_axis is None:
-        return vpX, vpY, vpZ
-    
     # Map axes to their corresponding vanishing points
     from . import types
     def get_vp_for_axis(axis: 'types.Axis') -> glm.vec2:
         """Map axis enum to corresponding vanishing point."""
-        axis_type = abs(axis.value)  # Get base axis (1=X, 2=Y, 3=Z)
-        if axis_type == 1:  # X axis
-            return vpX
-        elif axis_type == 2:  # Y axis
-            return vpY
-        else:  # Z axis
-            return vpZ
+        match axis:
+            case Axis.PositiveX | Axis.NegativeX:
+                return vpX
+            case Axis.PositiveY | Axis.NegativeY:
+                return vpY
+            case Axis.PositiveZ | Axis.NegativeZ:
+                return vpZ
+            case _:
+                raise ValueError(f"Invalid axis: {axis}")
     
     vp1 = get_vp_for_axis(first_axis)
-    vp2 = get_vp_for_axis(second_axis) if second_axis else vpY
+    vp2 = get_vp_for_axis(second_axis)
     
     # Calculate third axis from first and second
     from . import helpers
@@ -379,7 +377,6 @@ def adjust_vanishing_lines_to_camera_orientation(
     ) -> List[List[Line2]]:
         # Map vanishing points by axis assignment
 
-        
         vp1, vp2, vp3 = orientation_to_three_vanishing_points(
             glm.mat3(view_matrix), 
             projection_matrix, 
