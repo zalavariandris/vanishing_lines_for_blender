@@ -21,6 +21,7 @@
 - [ ] mock bpy: fake-bpy-module
 
 ## Review
+- [ ] review Axes from the user perspective
 - [ ] review types. make them consistent
 - [ ] review #TODO notes
 

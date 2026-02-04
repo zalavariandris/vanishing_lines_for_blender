@@ -137,6 +137,30 @@ class VLProps(bpy.types.PropertyGroup):
         update=on_prop_update
     ) # type: ignore
 
+    axes: bpy.props.EnumProperty(
+        name="Axes",
+        items=[
+            ('X+Y-', "X+ Y-", ""),  ('X-Y-', "X- Y-", ""),
+            ('X+Y+', "X+ Y+", ""),  ('X-Y+', "X- Y+", ""),
+            ('X+Z-', "X+ Z-", ""),  ('X-Z-', "X- Z-", ""),
+            ('X+Z+', "X+ Z+", ""),  ('X-Z+', "X- Z+", ""),
+
+            ('Y+X-', "Y+ X-", ""),  ('Y-X-', "Y- X-", ""),
+            ('Y+X+', "Y+ X+", ""),  ('Y-X+', "Y- X+", ""),
+            ('Y+Z-', "Y+ Z-", ""),  ('Y-Z-', "Y- Z-", ""),
+            ('Y+Z+', "Y+ Z+", ""),  ('Y-Z+', "Y- Z+", ""),
+            
+            ('Z+X-', "Z+ X-", ""),  ('Z-X-', "Z- X-", ""),
+            ('Z+X+', "Z+ X+", ""),  ('Z-X+', "Z- X+", ""),
+            ('Z+Y-', "Z+ Y-", ""),  ('Z-Y-', "Z- Y-", ""),
+            ('Z+Y+', "Z+ Y+", ""),  ('Z-Y+', "Z- Y+", "")
+        ],
+        default='Y+X-',
+        description="Order of axes for vanishing points", 
+        options=set(),
+        # update=on_prop_update
+    ) # type: ignore
+
     first_axis: bpy.props.EnumProperty(
         name="First Axis",
         items=[
