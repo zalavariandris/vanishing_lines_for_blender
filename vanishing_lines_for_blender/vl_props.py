@@ -140,15 +140,27 @@ class VLProps(bpy.types.PropertyGroup):
     first_axis: bpy.props.EnumProperty(
         name="First Axis",
         items=[
-            ('X+', "X+", "Positive X axis direction"),
-            ('X-', "X-", "Negative X axis direction"),
-            ('Y+', "Y+", "Positive Y axis direction"),
-            ('Y-', "Y-", "Negative Y axis direction"),
-            ('Z+', "Z+", "Positive Z axis direction"),
-            ('Z-', "Z-", "Negative Z axis direction")
+            ('X', "X", "Positive X axis direction"),
+            ('Y', "Y", "Positive Y axis direction"),
+            ('Z', "Z", "Positive Z axis direction")
+            # ('X-', "X-", "Negative X axis direction"),
+            # ('Y-', "Y-", "Negative Y axis direction"),
+            # ('Z-', "Z-", "Negative Z axis direction")
         ],
-        default='Y+',
+        default='Y',
         description="First vanishing point axis orientation", 
+        options=set(),
+        update=on_prop_update
+    ) # type: ignore
+
+    first_axis_sign: bpy.props.EnumProperty(
+        name="First Axis Sign",
+        items=[
+            ('POSITIVE', "+", "Positive direction"),
+            ('NEGATIVE', "-", "Negative direction")
+        ],
+        default='POSITIVE',
+        description="Sign of the first vanishing point axis orientation", 
         options=set(),
         update=on_prop_update
     ) # type: ignore
@@ -156,15 +168,27 @@ class VLProps(bpy.types.PropertyGroup):
     second_axis: bpy.props.EnumProperty(
         name="Second Axis",
         items=[
-            ('X+', "X+", "Positive X axis direction"),
-            ('X-', "X-", "Negative X axis direction"),
-            ('Y+', "Y+", "Positive Y axis direction"),
-            ('Y-', "Y-", "Negative Y axis direction"),
-            ('Z+', "Z+", "Positive Z axis direction"),
-            ('Z-', "Z-", "Negative Z axis direction")
+            ('X', "X", "Positive X axis direction"),
+            ('Y', "Y", "Positive Y axis direction"),
+            ('Z', "Z", "Positive Z axis direction")
+            # ('X-', "X-", "Negative X axis direction"),
+            # ('Y-', "Y-", "Negative Y axis direction"),
+            # ('Z-', "Z-", "Negative Z axis direction")
         ],
-        default='X-',
+        default='X',
         description="Second vanishing point axis orientation", 
+        options=set(),
+        update=on_prop_update
+    ) # type: ignore
+
+    second_axis_sign: bpy.props.EnumProperty(
+        name="Second Axis Sign",
+        items=[
+            ('POSITIVE', "+", "Positive direction"),
+            ('NEGATIVE', "-", "Negative direction")
+        ],
+        default='NEGATIVE',
+        description="Sign of the second vanishing point axis orientation",
         options=set(),
         update=on_prop_update
     ) # type: ignore
@@ -260,8 +284,8 @@ def solve(vl:VLProps):
 
         reference_axis = vl_utils.to_solver_reference_axis(vl.reference_scale_mode)
 
-        first_axis = vl_utils.to_solver_axis(vl.first_axis)
-        second_axis = vl_utils.to_solver_axis(vl.second_axis)
+        first_axis = vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign)
+        second_axis = vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
 
         second_vanishing_lines = [(line.start, line.end) for line in vl.second_vanishing_lines]
         if vl.quad_mode and mode in {solver.types.SolverMode.TwoVP, solver.types.SolverMode.ThreeVP}:
@@ -318,11 +342,12 @@ def solve(vl:VLProps):
                 fit_mode=vl.camera_object.data.sensor_fit
             )
         else:
-            print("[VLProps.unsolve] No valid camera object assigned.")
+            print("[VLProps.solve] No valid camera object assigned.")
 
         vl.error_message = ""
 
     except solver.exceptions.VanishingLinesError as e:
+        print("[VLProps.solve] VanishingLinesError:", str(e))
         # Store error message in vanishing_lines.error_message
         error_type = type(e).__name__  # Gets 'ValueError' as a string
         error_message = str(e)         # Gets the actual message you wrote in 'raise'
@@ -345,21 +370,13 @@ def unsolve(vl:VLProps):
 
     # 1. adjust vanishing lines to current view and projection matrices
     glm_proj, glm_view = vl_utils.get_camera_matrices(vl.camera_object, solver.types.Rect(-1,-1,2,2))
-    axis_map = {
-        'X+': solver.types.Axis.PositiveX,
-        'Y+': solver.types.Axis.PositiveY,
-        'Z+': solver.types.Axis.PositiveZ,
-        'X-': solver.types.Axis.NegativeX,
-        'Y-': solver.types.Axis.NegativeY,
-        'Z-': solver.types.Axis.NegativeZ
-    }
 
     new_first_lines, new_second_lines, new_third_lines = solver.utils.adjust_vanishing_lines_to_camera_orientation(
         [(line.start, line.end) for line in vl.first_vanishing_lines],
         [(line.start, line.end) for line in vl.second_vanishing_lines],
         [(line.start, line.end) for line in vl.third_vanishing_lines],
-        axis_map[vl.first_axis],
-        axis_map[vl.second_axis],
+        vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign),
+        vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign),
         glm.mat3(glm_view),
         glm_proj,
     )
@@ -373,7 +390,7 @@ def unsolve(vl:VLProps):
             vl_setting_lines[i].end =   new_lines[i][1]
 
     # --- 3. adjust axis signs, to match closest vanishing points ---
-    def resolve_axis_sign(view:glm.mat4, axis:Literal['X', 'Y', 'Z']) -> int:
+    def resolve_axis_sign(view:glm.mat4, axis:Literal['X', 'Y', 'Z']) -> Literal['POSITIVE', 'NEGATIVE']:
         view_mat3 = glm.mat3(glm_view)
 
         # 2. Define your world axes
@@ -392,9 +409,9 @@ def unsolve(vl:VLProps):
         # In GLM/Blender view space, -Z is forward.
         # If view_direction.z is negative, it's pointing away from the camera.
         if view_direction.z < 0:
-            return +1
+            return 'POSITIVE'
         else:
-            return -1
+            return 'NEGATIVE'
 
     map_axis = {
         'X+': ('X', +1),
@@ -404,11 +421,8 @@ def unsolve(vl:VLProps):
         'Y-': ('Y', -1),
         'Z-': ('Z', -1)
     }
-    first_axis_sign = resolve_axis_sign(glm_view, vl.first_axis[0])
-    second_axis_sign = resolve_axis_sign(glm_view, vl.second_axis[0])
-
-    vl.first_axis = f"{vl.first_axis[0]}{'+' if first_axis_sign > 0 else '-'}"
-    vl.second_axis = f"{vl.second_axis[0]}{'+' if second_axis_sign > 0 else '-'}"
+    vl.first_axis_sign =  resolve_axis_sign(glm_view, vl.first_axis)
+    vl.second_axis_sign = resolve_axis_sign(glm_view, vl.second_axis)
 
     # -- adjust ANCHOR SCREEN --
     anchor_screen:glm.vec2 = glm.project(

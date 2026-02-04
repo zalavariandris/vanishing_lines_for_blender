@@ -37,7 +37,7 @@ class _ControlPointGizmo():
         data:'bpy.types.ID', 
         prop:str, *, 
         text:str|None=None,
-        color:mathutils.Vector=mathutils.Vector((1.0, 1.0, 1.0, 1.0)),
+        color:mathutils.Vector|None=None,
         index:int|None=None, 
         setter:SetterCallbackType|None=None, 
         getter:GetterCallbackType|None=None
@@ -49,7 +49,7 @@ class _ControlPointGizmo():
         self.data = data
         self.prop = prop
         self.index = index
-        self.text = text if text is not None else f"{prop}"
+        self.text = text
         self.color = color
 
         # TODO: setter and getter transforms will not be needed, with the new widget system
@@ -89,7 +89,7 @@ class _ControlPointGizmo():
 
         pos = mathutils.Vector((self.value[0], self.value[1])) # self.project(cp.value)
 
-        point_render_color = self.color
+        point_render_color = self.color if self.color is not None else mathutils.Vector((1.0, 1.0, 1.0, 1.0))
         if active or hovered:
             point_render_color = mathutils.Vector((1.0, 1.0, 1.0, 1.0))
 
@@ -100,7 +100,7 @@ class _ControlPointGizmo():
 
         painter.add_annotation(
             pos,
-            text=text,
+            text=f"{text}",
             color=point_render_color)
         
     def hit_test(self, mouse_x:float, mouse_y:float, threshold:float)->bool:

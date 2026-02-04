@@ -63,9 +63,9 @@ class View3dPainter:
         self._annotations.clear()
 
     def add_line(self, start: mathutils.Vector, end: mathutils.Vector, color: mathutils.Vector) -> None:
-        assert isinstance(start, mathutils.Vector) and len(start) == 2, "Position must be a 2D mathutils.Vector"
-        assert isinstance(end, mathutils.Vector) and len(end) == 2, "Position must be a 2D mathutils.Vector"
-        assert isinstance(color, mathutils.Vector) and len(color) == 4, "Color must be a tuple/list of 4 floats (RGBA)"
+        assert isinstance(start, mathutils.Vector) and len(start) == 2, f"Position must be a 2D mathutils.Vector got: {start}"
+        assert isinstance(end, mathutils.Vector) and len(end) == 2,     f"Position must be a 2D mathutils.Vector got: {end}"
+        assert isinstance(color, mathutils.Vector) and len(color) == 4, f"Color must be a tuple/list of 4 floats (RGBA), got {color}"
 
         self._lines.append(_Line(start, end, color))
 
@@ -87,14 +87,16 @@ class View3dPainter:
         self.add_line(mathutils.Vector((x0, y1)), mathutils.Vector((x0, y0)), color)  # left
 
     def add_marker(self, pos: mathutils.Vector, color: mathutils.Vector, shape:Literal['.', 'x'] = '.') -> None:
-        assert isinstance(pos, mathutils.Vector) and len(pos) == 2, "Position must be a 2D mathutils.Vector"
-        assert isinstance(color, mathutils.Vector) and len(color) == 4, "Color must be a tuple/list of 4 floats (RGBA)"
+        assert isinstance(pos, mathutils.Vector) and len(pos) == 2, f"Position must be a 2D mathutils.Vector got: {pos}"
+        assert isinstance(color, mathutils.Vector) and len(color) == 4, f"Color must be a tuple/list of 4 floats (RGBA), got {color}"
         
         self._markers.append(_Marker(pos, color, shape))
 
-    def add_annotation(self, pos: mathutils.Vector, text: str, color: mathutils.Vector, angle: float = 0.0) -> None:
-        assert isinstance(pos, mathutils.Vector) and len(pos) == 2, "Position must be a 2D mathutils.Vector"
-        assert isinstance(color, mathutils.Vector) and len(color) == 4, "Color must be a tuple/list of 4 floats (RGBA)"
+    def add_annotation(self, pos: mathutils.Vector, text: str, color: mathutils.Vector=None, angle: float = 0.0) -> None:
+        assert isinstance(pos, mathutils.Vector) and len(pos) == 2, f"Position must be a 2D mathutils.Vector got: {pos}"
+        assert color is None or (isinstance(color, mathutils.Vector) and len(color) == 4), f"Color must be a tuple/list of 4 floats (RGBA), got {color}"
+        if color is None:
+            color = mathutils.Vector((1.0, 1.0, 1.0, 1.0))
         self._annotations.append(_Annotation(pos, text, color, angle))
 
     def _pixel_size(self, view:glm.mat4, projection:glm.mat4, viewport:Tuple[float, float, float, float], at:Tuple[float, float], pos=mathutils.Vector((0,0,0))) -> float:

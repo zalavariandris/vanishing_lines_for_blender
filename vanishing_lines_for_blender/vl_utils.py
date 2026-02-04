@@ -528,23 +528,41 @@ def to_solver_mode(mode_str:str) -> 'solver.types.SolverMode':
         case _:
             raise ValueError(f"Unknown mode string: {mode_str}")
         
-def to_solver_axis(axis_str:str) -> 'solver.types.Axis':
+def to_solver_axis(axis_str:str, axis_sign:str) -> 'solver.types.Axis':
     """Convert VLProps axis string to solver axis enum."""
-    match axis_str:
-        case 'X+':
+    match axis_str, axis_sign:
+        case 'X', 'POSITIVE':
             return solver.types.Axis.PositiveX
-        case 'Y+':
+        case 'Y', 'POSITIVE':
             return solver.types.Axis.PositiveY
-        case 'Z+':
+        case 'Z', 'POSITIVE':
             return solver.types.Axis.PositiveZ
-        case 'X-':
+        case 'X', 'NEGATIVE':
             return solver.types.Axis.NegativeX
-        case 'Y-':
+        case 'Y', 'NEGATIVE':
             return solver.types.Axis.NegativeY
-        case 'Z-':
+        case 'Z', 'NEGATIVE':
             return solver.types.Axis.NegativeZ
         case _:
             raise ValueError(f"Unknown axis string: {axis_str}")
+        
+def from_solver_axis(axis:'solver.types.Axis') -> Tuple[str, str]:
+    """Convert solver axis enum to VLProps axis string."""
+    match axis:
+        case solver.types.Axis.PositiveX:
+            return 'X', 'POSITIVE'
+        case solver.types.Axis.PositiveY:
+            return 'Y', 'POSITIVE'
+        case solver.types.Axis.PositiveZ:
+            return 'Z', 'POSITIVE'
+        case solver.types.Axis.NegativeX:
+            return 'X', 'NEGATIVE'
+        case solver.types.Axis.NegativeY:
+            return 'Y', 'NEGATIVE'
+        case solver.types.Axis.NegativeZ:
+            return 'Z', 'NEGATIVE'
+        case _:
+            raise ValueError(f"Unknown solver axis: {axis}")
 
 def to_solver_reference_axis(axis_str:Literal['ANCHOR', 'SCREEN', 'X_AXIS', 'Y_AXIS', 'Z_AXIS']) -> 'solver.types.ReferenceAxis':
     """Convert VLProps reference axis string to solver reference axis enum."""
