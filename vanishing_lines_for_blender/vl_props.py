@@ -46,7 +46,7 @@ class VLProps(bpy.types.PropertyGroup):
         default=False,
         description="Enable vanishing line based camera calibration",
         options=set(),
-        update=on_prop_update
+
     ) # type: ignore
 
     auto_solve: bpy.props.BoolProperty(
@@ -365,64 +365,40 @@ def unsolve(vl:VLProps):
     ):
         print("[VLProps.unsolve] No valid camera object assigned.")
         return
+
     
     viewport = solver.types.Rect(-1,-1,2,2)
 
-    # 1. adjust vanishing lines to current view and projection matrices
+    # -- Adjust vanishing lines to current view and projection matrices --
     glm_proj, glm_view = vl_utils.get_camera_matrices(vl.camera_object, solver.types.Rect(-1,-1,2,2))
 
-    new_first_lines, new_second_lines, new_third_lines = solver.utils.adjust_vanishing_lines_to_camera_orientation(
-        [(line.start, line.end) for line in vl.first_vanishing_lines],
-        [(line.start, line.end) for line in vl.second_vanishing_lines],
-        [(line.start, line.end) for line in vl.third_vanishing_lines],
-        vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign),
-        vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign),
-        glm.mat3(glm_view),
-        glm_proj,
+    vp1, vp2, vp3 = solver.utils.orientation_to_three_vanishing_points(
+        glm.mat3(glm_view), 
+        glm_proj, 
+        solver.types.Rect(-1,-1,2,2),
+        first_axis=vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign),
+        second_axis=vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
     )
 
-    for vl_setting_lines, new_lines in zip(
+    new_first_lines, new_second_lines, new_third_lines = solver.utils.align_lines_to_vanishing_points(
+        [
+            [(line.start, line.end) for line in vl.first_vanishing_lines], 
+            [(line.start, line.end) for line in vl.second_vanishing_lines], 
+            [(line.start, line.end) for line in vl.third_vanishing_lines]
+        ],
+        [vp1, vp2, vp3])
+
+    for vl_prop_lines, new_lines in zip(
         [vl.first_vanishing_lines, vl.second_vanishing_lines, vl.third_vanishing_lines],
         [new_first_lines, new_second_lines,new_third_lines]
     ):
-        for i in range(len(vl_setting_lines)):
-            vl_setting_lines[i].start = new_lines[i][0]
-            vl_setting_lines[i].end =   new_lines[i][1]
+        for i in range(len(vl_prop_lines)):
+            vl_prop_lines[i].start = new_lines[i][0]
+            vl_prop_lines[i].end =   new_lines[i][1]
 
-    # --- 3. adjust axis signs, to match closest vanishing points ---
-    def resolve_axis_sign(view:glm.mat4, axis:Literal['X', 'Y', 'Z']) -> Literal['POSITIVE', 'NEGATIVE']:
-        view_mat3 = glm.mat3(glm_view)
-
-        # 2. Define your world axes
-        world_axes = {
-            'X': glm.vec3(1, 0, 0),
-            'Y': glm.vec3(0, 1, 0),
-            'Z': glm.vec3(0, 0, 1)
-        }
-
-        axis_vec = world_axes[axis]
-
-        # Transform the direction vector to view space
-        # (We only care about direction, so we use the 3x3)
-        view_direction:glm.vec3 = view_mat3 * axis_vec
-        
-        # In GLM/Blender view space, -Z is forward.
-        # If view_direction.z is negative, it's pointing away from the camera.
-        if view_direction.z < 0:
-            return 'POSITIVE'
-        else:
-            return 'NEGATIVE'
-
-    map_axis = {
-        'X+': ('X', +1),
-        'Y+': ('Y', +1),
-        'Z+': ('Z', +1),
-        'X-': ('X', -1),
-        'Y-': ('Y', -1),
-        'Z-': ('Z', -1)
-    }
-    vl.first_axis_sign =  resolve_axis_sign(glm_view, vl.first_axis)
-    vl.second_axis_sign = resolve_axis_sign(glm_view, vl.second_axis)
+    # --- Adjust axis signs, to match closest vanishing points ---
+    vl.first_axis_sign =  'NEGATIVE' if solver.utils.resolve_axis_flip(glm_view, vl.first_axis) else 'POSITIVE'
+    vl.second_axis_sign = 'NEGATIVE' if solver.utils.resolve_axis_flip(glm_view, vl.second_axis) else 'POSITIVE'
 
     # -- adjust ANCHOR SCREEN --
     anchor_screen:glm.vec2 = glm.project(
@@ -470,6 +446,52 @@ def unsolve(vl:VLProps):
         world_length = glm.length(ref_end_world - ref_start_world)
 
         vl.reference_scene_scale = world_length
+
+def unsolve(vl:VLProps):
+    if not (vl.camera_object 
+        and isinstance(vl.camera_object, bpy.types.Object) 
+        and vl.camera_object.data
+        and isinstance(vl.camera_object.data, bpy.types.Camera)
+    ):
+        print("[VLProps.unsolve] No valid camera object assigned.")
+        return
+    
+    # -- unsolve --
+    glm_proj, glm_view = vl_utils.get_camera_matrices(vl.camera_object, solver.types.Rect(-1,-1,2,2))
+    unsolve_results = solver.core.unsolve(
+        viewport = solver.types.Rect(-1,-1,2,2),
+        projection = glm_proj,
+        view = glm_view,
+        anchor_world = glm.vec3(vl.anchor_world[0], vl.anchor_world[1], vl.anchor_world[2]),
+        reference_axis = vl_utils.to_solver_reference_axis(vl.reference_scale_mode),
+        reference_screen_segment = (vl.reference_screen_segment[0], vl.reference_screen_segment[1]),
+        first_axis = vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign),
+        second_axis = vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
+    )
+
+    # --align lines to vanishing points --
+    for vanishing_lines, vanishing_point in [
+        (vl.first_vanishing_lines, unsolve_results.vp1),
+        (vl.second_vanishing_lines, unsolve_results.vp2),
+        (vl.third_vanishing_lines, unsolve_results.vp3)
+    ]:
+        new_lines = solver.utils.align_lines_to_vanishing_points(
+            [(line.start, line.end) for line in vanishing_lines],
+            vanishing_point
+        )
+        for i in range(len(vanishing_lines)):
+            vanishing_lines[i].start = new_lines[i][0]
+            vanishing_lines[i].end =   new_lines[i][1]
+
+    # -- Set axis signs --
+    vl.first_axis_sign =  'NEGATIVE' if unsolve_results.first_axis_flip else 'POSITIVE'
+    vl.second_axis_sign = 'NEGATIVE' if unsolve_results.second_axis_flip else 'POSITIVE'
+
+    # -- adjust ANCHOR SCREEN --
+    vl.anchor_screen = unsolve_results.anchor_screen.x, unsolve_results.anchor_screen.y
+
+    # -- adjust REFERENCE SCENE SCALE --
+    vl.reference_scene_scale = unsolve_results.reference_scene_scale
 
 def get_current(context) -> VLProps:
     return context.window_manager.vanishing_lines

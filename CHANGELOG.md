@@ -5,7 +5,7 @@
 - [ ] ADD draw antialiased lines, and circles shader
 
 ###
-- [ ] ADD align tracked/animated camera at a speciofic frame (with a parent?)
+- [ ] ADD align tracked/animated camera at a specific frame (with a parent?)
 - [ ] ADD animation
 - [ ] ADD Loupe
 - [ ] Use the blender settings keymap preferences settings in the modal panel
@@ -22,32 +22,29 @@
 
 ## Review
 - [ ] review types. make them consistent
-- [ ] revieow #TODO notes
-
+- [ ] review #TODO notes
 
 
 # TODO:
-- [ ] ADD adjustiung scene scale with scrollwheel
+- [X] ADD adjusting scene scale with scrollwheel
 - [X] Add scene scale to the context menu
 - [ ] TEST unsolve.
-- [ ] let appropriate events PASS THROUGH
-- [ ] add plane switches
+- [ ] ~~let appropriate events PASS THROUGH~~
+- [ ] ~~add plane switches~~ -> NEXT VERSION?
 - [ ] on invoke, if camera has tilt shift, use 3 point vanishing mode, othervise 2 point vanishing mode
-- [ ] move vl settings to the operator (in next version consider adding a settings to save it per camera)
+- [ ] ~~move vl settings to the operator (in next version consider adding a settings to save it per camera)~~
 - [ ] NEXT version add multiple vanishing lines
-- [ ] allow _native_ pan and orbit(?) as well
+- [ ] ~~allow _native_ pan and orbit(?) as well~~
 - [ ] what about the tools panel? add ui there?
-- [ ] allow selecting anchor objects: DEFAULT(the view orbit pivot), ORIGIN, CURRENTLY SELECTED OBJECT
-- [ ] what to do with the scene scale? add it to the current pivot point? 
-      What if the pivot point is behind the camera. 
-      (this is probably not necessary anymore.)Allow setting the height of the camera instead?
-      Consider implementing it in the next version.
+- [x] allow selecting anchor objects: DEFAULT(the view orbit pivot), ORIGIN, CURRENTLY SELECTED OBJECT
+- [x] what to do with the scene scale? add it to the current pivot point? 
+      ~~What if the pivot point is behind the camera?~~
 
 ### FIX bugs
-- [ ] FIX when wuad mode is activated, adjust vanishing line to the current orientation 
+- [ ] FIX when quad mode is activated, adjust vanishing line to the current orientation 
 - [x] FIX: origin annotation seem to be drawn twice?, also dont draw the value on hover
 - [ ] FIX: two point mode. first axis i Y second axis is Z and up. move tha axis when its almost vertical, the up vector flips downwards.
-- [ ] FIX when axis changed on the right mouse context menu, updates are not triggered. 
+- [x] FIX when axis changed on the right mouse context menu, updates are not triggered. 
 - [ ] ~~this is wierd: ```is_modal_running = vl_utils.is_operator_running("VIEW_OT_vanishing_lines_operator")``` TRIPLE CHECK THIS is_operator_running takes bl_id or bl_idname?~~
 - [x] FIX 🔥 when camera is too close to the origin (scene scale is small), there is an uncaught error. 
   -> with the orientation tool this is not an issue anymore
@@ -55,6 +52,7 @@
 
 
 ### **0.8 vanishing lines tool
+- [x] ADD unsolve to solver
 - [x] cleanup codebase (remove unnecesary files and components)
 - [x] consider renaming variable names, classes and attributes
 - [x] figure out proper mouse and keyboard gesture for editing vl_Settings, and display them in the statusbar

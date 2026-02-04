@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Literal, Tuple, List, cast
 
 from pyglm import glm
 import math
@@ -256,53 +256,6 @@ def intersect_ray_with_rect(P: glm.vec2, Q: glm.vec2, rect: Rect) -> glm.vec2 | 
 # UTILITY FUNCTIONS #
 #####################
 
-def orientation_to_three_vanishing_points(
-        view_matrix: glm.mat3, 
-        projection_matrix: glm.mat4, 
-        viewport: Rect,
-        first_axis: Axis = Axis.PositiveX,
-        second_axis: Axis = Axis.PositiveY
-    ) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
-    """Calculate vanishing points for the camera, optionally ordered by axis assignment.
-    
-    Args:
-        view_matrix: Camera view matrix (rotation only, mat3)
-        projection_matrix: Camera projection matrix
-        viewport: Viewport rectangle
-        first_axis: Optional Axis enum for first vanishing point
-        second_axis: Optional Axis enum for second vanishing point  
-        third_axis: Optional Axis enum for third vanishing point
-        
-    Returns:
-        Tuple of three vanishing points. If axes are specified, returns them in order
-        (vp_for_first_axis, vp_for_second_axis, vp_for_third_axis).
-        Otherwise returns (vpX, vpY, vpZ).
-    """
-    vpX, vpY, vpZ = _impl_orientation_to_three_vanishing_points(view_matrix, projection_matrix, viewport)
-    
-    # Map axes to their corresponding vanishing points
-    from . import types
-    def get_vp_for_axis(axis: 'types.Axis') -> glm.vec2:
-        """Map axis enum to corresponding vanishing point."""
-        match axis:
-            case Axis.PositiveX | Axis.NegativeX:
-                return vpX
-            case Axis.PositiveY | Axis.NegativeY:
-                return vpY
-            case Axis.PositiveZ | Axis.NegativeZ:
-                return vpZ
-            case _:
-                raise ValueError(f"Invalid axis: {axis}")
-    
-    vp1 = get_vp_for_axis(first_axis)
-    vp2 = get_vp_for_axis(second_axis)
-    
-    # Calculate third axis from first and second
-    from . import helpers
-    third_axis = helpers.third_axis(first_axis, second_axis)
-    vp3 = get_vp_for_axis(third_axis)
-    
-    return vp1, vp2, vp3
 
 def _impl_orientation_to_three_vanishing_points(
         view_matrix: glm.mat3, 
@@ -366,49 +319,90 @@ def flip_coordinate_handness(mat: glm.mat4) -> glm.mat4:
     flipZ = glm.scale(glm.vec3(1.0, 1.0, -1.0))  # type: ignore[attr-defined]
     return flipZ * mat # todo: check order
 
-def adjust_vanishing_lines_to_camera_orientation(
-        first_vanishing_lines: List[Line2],
-        second_vanishing_lines: List[Line2],
-        third_vanishing_lines: List[Line2],
-        first_axis: Axis,
-        second_axis: Axis,
-        view_matrix: glm.mat3,
-        projection_matrix: glm.mat4
-    ) -> List[List[Line2]]:
-        # Map vanishing points by axis assignment
+def orientation_to_three_vanishing_points(
+        view_matrix: glm.mat3, 
+        projection_matrix: glm.mat4, 
+        viewport: Rect,
+        first_axis: Axis = Axis.PositiveX,
+        second_axis: Axis = Axis.PositiveY
+    ) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
+    """Calculate vanishing points for the camera, optionally ordered by axis assignment.
+    
+    Args:
+        view_matrix: Camera view matrix (rotation only, mat3)
+        projection_matrix: Camera projection matrix
+        viewport: Viewport rectangle
+        first_axis: Optional Axis enum for first vanishing point
+        second_axis: Optional Axis enum for second vanishing point  
+        third_axis: Optional Axis enum for third vanishing point
+        
+    Returns:
+        Tuple of three vanishing points. If axes are specified, returns them in order
+        (vp_for_first_axis, vp_for_second_axis, vp_for_third_axis).
+        Otherwise returns (vpX, vpY, vpZ).
+    """
+    vpX, vpY, vpZ = _impl_orientation_to_three_vanishing_points(view_matrix, projection_matrix, viewport)
+    
+    # Map axes to their corresponding vanishing points
+    from . import types
+    def get_vp_for_axis(axis: 'types.Axis') -> glm.vec2:
+        """Map axis enum to corresponding vanishing point."""
+        match axis:
+            case Axis.PositiveX | Axis.NegativeX:
+                return vpX
+            case Axis.PositiveY | Axis.NegativeY:
+                return vpY
+            case Axis.PositiveZ | Axis.NegativeZ:
+                return vpZ
+            case _:
+                raise ValueError(f"Invalid axis: {axis}")
+    
+    vp1 = get_vp_for_axis(first_axis)
+    vp2 = get_vp_for_axis(second_axis)
+    
+    # Calculate third axis from first and second
+    from . import helpers
+    third_axis = helpers.third_axis(first_axis, second_axis)
+    vp3 = get_vp_for_axis(third_axis)
+    
+    return vp1, vp2, vp3
 
-        vp1, vp2, vp3 = orientation_to_three_vanishing_points(
-            glm.mat3(view_matrix), 
-            projection_matrix, 
-            Rect(-1,-1,2,2),
-            first_axis=first_axis,
-            second_axis=second_axis
-        )
+def align_lines_to_vanishing_points(vanishing_lines: List[Line2], vanishing_point: glm.vec2) -> List[Line2]:
+    new_lines = []
+    for line in vanishing_lines:
+        start = glm.vec2(*line[0])
+        end = glm.vec2(*line[1])
+        center = (start + end) * 0.5
+        dir = glm.normalize(vanishing_point - center)
+        
+        # Preserve direction: check if point is in same direction as VP
+        start_vec = start - center
+        end_vec = end - center
+        start_dist = glm.length(start_vec) * glm.sign(glm.dot(start_vec, dir))
+        end_dist = glm.length(end_vec) * glm.sign(glm.dot(end_vec, dir))
 
-        new_line_sets: List[List[Line2]] = []
-        for lines, vp in [(first_vanishing_lines, vp1), (second_vanishing_lines, vp2), (third_vanishing_lines, vp3)]:
-            new_lines = []
-            for line in lines:
-                start = glm.vec2(*line[0])
-                end = glm.vec2(*line[1])
-                center = (start + end) * 0.5
-                dir = glm.normalize(vp - center)
-                
-                # Preserve direction: check if point is in same direction as VP
-                start_vec = start - center
-                end_vec = end - center
-                start_dist = glm.length(start_vec) * glm.sign(glm.dot(start_vec, dir))
-                end_dist = glm.length(end_vec) * glm.sign(glm.dot(end_vec, dir))
+        new_start = center + dir * start_dist
+        new_end =   center + dir * end_dist
+        new_line = new_start, new_end
+        new_lines.append(new_line)
 
-                new_start = center + dir * start_dist
-                new_end =   center + dir * end_dist
-                new_line = new_start, new_end
-                new_lines.append(new_line)
-            new_line_sets.append(new_lines)
+    return new_lines
 
-        return new_line_sets
+def resolve_axis_flip(view:glm.mat4, axis:Literal['X', 'Y', 'Z']) -> bool:
+    view_mat3 = glm.mat3(view)
 
+    axis_vec = {
+        'X': glm.vec3(1,0,0),
+        'Y': glm.vec3(0,1,0),
+        'Z': glm.vec3(0,0,1)
+    }[axis]
 
+    transformed_axis = cast(glm.vec3, view_mat3 * axis_vec)
+
+    if transformed_axis.z < 0:
+        return False
+    else:
+        return True
 ##################
 # GLM EXTENSIONS #
 ##################

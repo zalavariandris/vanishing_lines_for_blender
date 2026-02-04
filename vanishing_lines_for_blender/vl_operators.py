@@ -32,7 +32,6 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
 
     @classmethod
     def poll(cls, context):
-        
         vl = vl_props.get_current(context)
         if not vl.active:
             return False
@@ -53,10 +52,13 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
         layout = self.layout
         assert layout is not None, "Layout is None in VL Context Menu"
         
-        layout.label(text="Mode")
+        layout.label(text="Mode", icon='VIEW_PERSPECTIVE')
         mode_col = layout.column(heading="Vanishing Lines Mode", align=True)
         mode_col.emboss = 'NORMAL'
         mode_col.prop_tabs_enum(vl, 'mode')
+
+        layout.separator()
+        layout.label(text="Settings", icon='SETTINGS')
 
         row = layout.row()
         row.enabled = vl.mode in {'ONE_POINT'}
@@ -69,27 +71,20 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
         row = layout.row()
         row.enabled = vl.mode in {'ONE_POINT', 'TWO_POINT'}
 
+        layout.separator()
+        # layout.label(text="Axes", icon='AXIS_TOP')
+        # layout.label(text="Axes", icon='EMPTY_DATA')
+        layout.label(text="Axes", icon='EMPTY_AXIS')
+        # layout.label(text="Axes", icon='EMPTY_ARROWS')
+        layout.prop_menu_enum(vl, 'first_axis')
         
-        # row.emboss = 'NORMAL'
-        # row.scale_x = 0.55  # optional
-        # for option in vl.bl_rna.properties["first_axis"].enum_items:
-        #     row.enabled = False
-        #     row.prop_enum(vl, 'first_axis', option.identifier)
-        #     row.enabled = True
-        # items_row = row.column()
-        # for item in vl.bl_rna.properties["first_axis"].enum_items:
-        #     items_row.prop_enum(vl,"first_axis",item.identifier)
-        # row = layout.row(align=True)
-        # row.emboss = 'NORMAL'
-        # # row.scale_x = 0.55  # optional
-        # for item in vl.bl_rna.properties["first_axis_sign"].enum_items:
-        #     row.prop_enum(vl,"first_axis_sign",item.identifier)
-        
-        # row = layout.row(align=True, heading="Primary Axis Sign")
-        # layout.prop_menu_enum(vl, 'first_axis')
-        # layout.prop_menu_enum(vl, 'first_axis_sign')
-        # layout.prop_menu_enum(vl, 'second_axis')
-        # layout.prop_menu_enum(vl, 'second_axis_sign')
+        layout.prop_menu_enum(vl, 'first_axis_sign')
+
+        layout.prop_menu_enum(vl, 'second_axis')
+        layout.prop_menu_enum(vl, 'second_axis_sign')
+        layout.separator()
+        layout.label(text="Size", icon='DRIVER_DISTANCE')
+
         layout.prop_menu_enum(vl, 'reference_scale_mode')
 
         layout.prop(vl, 'reference_scene_scale')
@@ -97,11 +92,6 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
         col.enabled = vl.reference_scale_mode != 'ORIGIN'
         col.prop(vl, 'reference_screen_segment', index=0)
         col.prop(vl, 'reference_screen_segment', index=1)
-
-        layout.label(text="Primary Axis")
-        mode_col = layout.row(heading="Primary Axis", align=True)
-        # mode_col.emboss = 'NORMAL'
-        mode_col.prop_tabs_enum(vl, 'first_axis')
 
 
 class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
@@ -175,6 +165,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         vl.camera_object = camera_object
         vl.active = True
         vl.auto_solve = False
+        print("auto solve OFF")
         vl_props.ensure_vanishing_lines(vl)
 
         # Set the anchor point based on cursor position
@@ -192,6 +183,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # Match VLProps to current Camera
         vl.fovx = camera_object.data.angle_x
         vl_props.unsolve(vl)
+        print("auto solve ON")
         vl.auto_solve = True
 
         ##################################

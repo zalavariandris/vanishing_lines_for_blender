@@ -143,55 +143,99 @@ class UnsolveResults:
     vp1:glm.vec2
     vp2:glm.vec2
     vp3:glm.vec2
+    first_axis_flip: bool
+    second_axis_flip: bool
     anchor_screen: glm.vec2
     reference_scene_scale: float
-
-# def unsolve(
-#         viewport:Rect, 
-#         projection:glm.mat4, 
-#         view:glm.mat4, 
-#         anchor_world:glm.vec3,
-#         reference_axis:ReferenceAxis|None,
-#         reference_screen_segment:Tuple[float, float], # 2D distance from origin to camera
-#         first_axis:Axis, 
-#         second_axis:Axis, 
-#         handedness:Literal['right-handed', 'left-handed']="right-handed")->UnsolveResults:
     
-#     # unsolve orientaion
-#     vp1, vp2, vp3 = utils.orientation_to_three_vanishing_points(
-#         glm.mat3(view), 
-#         projection, 
-#         viewport, 
-#         first_axis=first_axis, 
-#         second_axis=second_axis
-#     )
 
-#     # unsolve anchor world
-#     anchor_screen = glm.project(anchor_world, view, projection, tuple(viewport)).xy
-#     match reference_axis:
-#         case ReferenceAxis.X_Axis | ReferenceAxis.Y_Axis | ReferenceAxis.Z_Axis:
-#             ref_axis_vec = helpers.vector_from_reference_axis(reference_axis)
-#         case ReferenceAxis.Screen | _:
-#             # Right vector is column 0 of the inverse view matrix
-#             ref_axis_vec = glm.vec3(glm.inverse(view)[0])
-#         case None:
-#             ...
-#     anchor_camera_space = view * glm.vec4(anchor_world, 1.0)
-#     is_behind_camera = anchor_camera_space.z > 0
-#     anchor_distance = glm.length(glm.vec3(anchor_camera_space))
-#     if is_behind_camera:
-#         # flip anchor around the rectangle center if distance is negative
-#         rect_center = glm.vec2(viewport.x + viewport.width / 2, viewport.y + viewport.height / 2)
-#         anchor_screen = rect_center * 2.0 - anchor_screen
-#         anchor_distance = -anchor_distance
+def unsolve(
+        viewport:Rect, 
+        projection:glm.mat4, 
+        view:glm.mat4, 
+        anchor_world:glm.vec3,
+        reference_axis:ReferenceAxis|None,
+        reference_screen_segment:Tuple[float, float], # 2D distance from origin to camera
+        first_axis:Axis, 
+        second_axis:Axis, 
+        handedness:Literal['right-handed', 'left-handed']="right-handed")->UnsolveResults:
 
-#     return UnsolveResults(
-#         vp1=vp1,
-#         vp2=vp2,
-#         vp3=vp3,
-#         anchor_screen=anchor_screen,
-#         reference_scene_scale=reference_scene_scale
-#     )
+    # -- Compute vanishing points --
+    vp1, vp2, vp3 = utils.orientation_to_three_vanishing_points(
+        glm.mat3(view), 
+        projection, 
+        Rect(-1,-1,2,2),
+        first_axis=first_axis,
+        second_axis=second_axis
+    )
+
+    # -- Determine axis flips --
+    def map_axis_to_name(axis:Axis)->Literal['X', 'Y', 'Z']:
+        match axis:
+            case Axis.PositiveX | Axis.NegativeX:
+                return 'X'
+            case Axis.PositiveY | Axis.NegativeY:
+                return 'Y'
+            case Axis.PositiveZ | Axis.NegativeZ:
+                return 'Z'
+            
+    first_axis_flip =  utils.resolve_axis_flip(view, map_axis_to_name(first_axis))
+    second_axis_flip = utils.resolve_axis_flip(view, map_axis_to_name(second_axis))
+
+    # -- Compute reference scene scale --
+    anchor_screen:glm.vec2 = glm.project(
+        anchor_world,
+        view, projection, tuple(viewport)
+    ).xy
+
+    # -- adjust REFERENCE SCENE SCALE --
+    
+    if reference_axis == None:
+        # world distance from anchor
+        camera_location, camera_quat = utils.decompose_extrinsics(view)
+        anchor_distance = glm.distance(anchor_world, camera_location)
+        reference_scene_scale = anchor_distance
+
+    else:
+        match reference_axis:
+            case None:
+                assert False, "Should not reach here, handled above"
+                
+            case ReferenceAxis.X_Axis:
+                ref_axis_vec = glm.vec3(1, 0, 0)
+            case ReferenceAxis.Y_Axis:
+                ref_axis_vec = glm.vec3(0, 1, 0)
+            case ReferenceAxis.Z_Axis:
+                ref_axis_vec = glm.vec3(0, 0, 1)
+            case ReferenceAxis.Screen | _:
+                # Right vector is column 0 of the inverse view matrix
+                ref_axis_vec = glm.vec3(glm.inverse(view)[0])
+
+        # --- 2. Measure current world length on screen ---
+        A_screen = glm.project(anchor_world, view, projection, tuple(viewport)).xy
+        V_screen = glm.project(anchor_world + ref_axis_vec, view, projection, tuple(viewport)).xy
+        dir_screen = glm.normalize(V_screen - anchor_screen)
+
+        def get_world_pos(screen_pos):
+            ray = utils.cast_ray(screen_pos, view, projection, viewport)
+            return utils.closest_point_between_lines((glm.vec3(0,0,0), glm.vec3(0,0,0) + ref_axis_vec), ray)
+
+        reference_offset, reference_length = reference_screen_segment
+        ref_start_world = get_world_pos(A_screen + dir_screen * reference_offset)
+        ref_end_world = get_world_pos(A_screen + dir_screen * (reference_offset + reference_length))
+        world_length = glm.distance(ref_end_world, ref_start_world)
+
+        reference_scene_scale = world_length
+
+    return UnsolveResults(
+        vp1=vp1,
+        vp2=vp2,
+        vp3=vp3,
+        first_axis_flip=first_axis_flip,
+        second_axis_flip=second_axis_flip,
+        anchor_screen=anchor_screen,
+        reference_scene_scale=reference_scene_scale
+    )
 
 #####################
 # SOLVER COMPONENTS #
