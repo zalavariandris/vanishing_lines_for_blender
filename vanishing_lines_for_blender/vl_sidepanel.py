@@ -4,6 +4,7 @@ import bpy
 from . import vl_utils
 from . import vl_props
 
+
 class AXIS_MT_custom_menu(bpy.types.Menu):
     bl_label = "Select Axis Alignment"
     bl_idname = "AXIS_MT_custom_menu"
@@ -50,6 +51,7 @@ class AXIS_MT_custom_menu(bpy.types.Menu):
             # This creates the toggle buttons inside the menu
             row.prop_enum(vl, "axes", value=items[i][0])
             row.prop_enum(vl, "axes", value=items[i+1][0])
+
 
 class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
     """Creates a Panel in the 3D Viewport sidebar"""
@@ -111,8 +113,9 @@ class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
         first_axis_row.prop(vl, 'first_axis')
         first_axis_row.prop(vl, 'first_axis_sign', text="")
 
-        layout.prop(vl, 'second_axis')
-        layout.prop(vl, 'second_axis_sign')
+        second_axis_row = layout.row()
+        second_axis_row.prop(vl, 'second_axis')
+        second_axis_row.prop(vl, 'second_axis_sign', text="")
         layout.separator()
         layout.label(text="Size", icon='DRIVER_DISTANCE')
 

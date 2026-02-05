@@ -394,7 +394,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 case solver.types.Axis.PositiveZ | solver.types.Axis.NegativeZ:
                     return BLUE
         
-        first_axis = vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign)
+        first_axis = vl_utils.to_solver_axis(vl.x_axis, vl.first_axis_sign)
         second_axis = vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
         third_axis = solver.helpers.third_axis(first_axis, second_axis) # find third axis based on the first two
 
@@ -459,7 +459,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             for idx, line in enumerate(vl.first_vanishing_lines):
                 self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(first_axis))
                 self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(first_axis))
-                self.uiview.prop_point(vl, 'first_vanishing_lines', text=f"{vl.first_axis}", index=idx, color=get_axis_color(first_axis), set_transform=set_vl_transform(vp1), get_transform=get_midpoint_transform)
+                self.uiview.prop_point(vl, 'first_vanishing_lines', text=f"{vl.x_axis}", index=idx, color=get_axis_color(first_axis), set_transform=set_vl_transform(vp1), get_transform=get_midpoint_transform)
                 self.uiview._painter.add_line(line.start, line.end, get_axis_color(first_axis))
 
         if vl.mode in {'ONE_POINT'}:
