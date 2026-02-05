@@ -17,7 +17,7 @@ def trigger_autounsolve(self, context):
     vl:VLProps = get_current(context)
     if vl.auto_solve:
         unsolve(vl)
-        solve(vl) # trigger solve, to update redraw. THIS is a HACK, we should refactor the widget system to seperate paint from interaction, by making the widgets persistent
+        # solve(vl) # TODO:    trigger solve, to update redraw. THIS is a HACK, we should refactor the widget system to seperate paint from interaction, by making the widgets persistent
 
 def on_fovx_update(self, context):
     vl:VLProps = get_current(context)

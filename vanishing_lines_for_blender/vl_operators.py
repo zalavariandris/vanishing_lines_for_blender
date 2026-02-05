@@ -232,7 +232,6 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 args=(self,),
                 notify=property_change_callback
             )
-    
 
     def modal(self, context, event):
         vl = vl_props.get_current(context)

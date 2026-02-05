@@ -358,9 +358,8 @@ class View3dGUI:
     
     def get_widget_under_mouse(self, mouse_region_x: float, mouse_region_y: float, threshold:float=DEFAULT_CLICK_THRESHOLD) -> ControlIdType|None:
         compute_space_threshold = 0.03 # TODO: make this scale with zoom level
-        mouse_proj =self.unproject((mouse_region_x, mouse_region_y))
+        mouse_proj = self.unproject((mouse_region_x, mouse_region_y))
         for control_id, control_point in reversed(self._widgets.items()):
-            
             if control_point.hit_test(mouse_proj[0], mouse_proj[1], compute_space_threshold):
                 return control_id
 
