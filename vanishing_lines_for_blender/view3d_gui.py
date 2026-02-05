@@ -408,7 +408,6 @@ class View3dGUI:
                 setter=set_transform, 
                 getter=get_transform)
 
-
         is_active = (self._active_id == control_id)
         is_hovered = (self._hovered_id == control_id)
 

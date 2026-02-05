@@ -203,11 +203,37 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # Register the statusbar draw callback
         bpy.context.workspace.status_text_set(lambda header, context: self.status_text(header, context))
 
+        # Subscribe to property changes
+        self._subscribe_to_properties(context)
+
         # Run the modal operator with correct region context
         with context.temp_override(region=self._context_region):
             context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
     
+    def _subscribe_to_properties(self, context):
+        """Subscribe to VL property changes to trigger redraws"""
+        wm = context.window_manager
+        
+        subscribe_to = [
+            "first_axis", "first_axis_sign",
+            "second_axis", "second_axis_sign",
+            "mode", "quad_mode",
+        ]
+
+        def property_change_callback(self):
+            self._context_area.tag_redraw()
+            print("VL property changed, triggering redraw")
+        
+        for prop_name in subscribe_to:
+            bpy.msgbus.subscribe_rna(
+                key=wm.path_resolve(f"vanishing_lines.{prop_name}", False),
+                owner=self,
+                args=(self,),
+                notify=property_change_callback
+            )
+    
+
     def modal(self, context, event):
         vl = vl_props.get_current(context)
 
@@ -394,9 +420,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 case solver.types.Axis.PositiveZ | solver.types.Axis.NegativeZ:
                     return BLUE
         
-        first_axis = vl_utils.to_solver_axis(vl.x_axis, vl.first_axis_sign)
+        first_axis =  vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign)
         second_axis = vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
-        third_axis = solver.helpers.third_axis(first_axis, second_axis) # find third axis based on the first two
+        third_axis =  solver.helpers.third_axis(first_axis, second_axis) # find third axis based on the first two
 
         # create line midpoint handlers
         def set_midpoint_transform(data:'bpy.types.ID', prop:str, index:int, value:Tuple[float, float]):
@@ -452,49 +478,51 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             mid_x = (line.start[0] + line.end[0]) / 2
             mid_y = (line.start[1] + line.end[1]) / 2
             return (mid_x, mid_y)
+        
+        first_prop, second_prop, third_prop = vl_props.get_vanishing_line_prop_names_in_order(vl)
 
         if vl.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
-            vp1 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl.first_vanishing_lines])
+            vp1 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in getattr(vl, first_prop)])
             # Draw first vanishing lines
-            for idx, line in enumerate(vl.first_vanishing_lines):
+            for idx, line in enumerate(getattr(vl, first_prop)):
                 self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(first_axis))
                 self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(first_axis))
-                self.uiview.prop_point(vl, 'first_vanishing_lines', text=f"{vl.x_axis}", index=idx, color=get_axis_color(first_axis), set_transform=set_vl_transform(vp1), get_transform=get_midpoint_transform)
+                self.uiview.prop_point(vl, first_prop, text=f"{vl.first_axis}", index=idx, color=get_axis_color(first_axis), set_transform=set_vl_transform(vp1), get_transform=get_midpoint_transform)
                 self.uiview._painter.add_line(line.start, line.end, get_axis_color(first_axis))
 
         if vl.mode in {'ONE_POINT'}:
             # Draw the horizontal line for the vp1 mode:
-            line = vl.second_vanishing_lines[0]
+            line = getattr(vl, second_prop)[0]
             self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(second_axis))
             self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(second_axis))
-            self.uiview.prop_point(vl, 'second_vanishing_lines', text="", index=0, color=get_axis_color(second_axis), set_transform=set_midpoint_transform, get_transform=get_midpoint_transform)
+            self.uiview.prop_point(vl, second_prop, text="", index=0, color=get_axis_color(second_axis), set_transform=set_midpoint_transform, get_transform=get_midpoint_transform)
             self.uiview._painter.add_line(line.start, line.end, get_axis_color(second_axis))
 
         if vl.mode in {'TWO_POINT', 'THREE_POINT'}:
             if vl.quad_mode:
                 # transpose first vanishing lines for quad mode
-                first_line = vl.first_vanishing_lines[ 0]
-                last_line =  vl.first_vanishing_lines[-1]
+                first_line = getattr(vl, first_prop)[ 0]
+                last_line =  getattr(vl, first_prop)[-1]
                 second_vanishing_lines_coordinates = [(first_line.start, last_line.start), (first_line.end, last_line.end)]
                 
                 for P, Q in second_vanishing_lines_coordinates:
                     self.uiview._painter.add_line(P, Q, get_axis_color(second_axis))
                     
             else:
-                vp2 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl.second_vanishing_lines])
-                for idx, line in enumerate(vl.second_vanishing_lines):
+                vp2 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in getattr(vl, second_prop)])
+                for idx, line in enumerate(getattr(vl, second_prop)):
                     self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(second_axis))
                     self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(second_axis))
-                    self.uiview.prop_point(vl, 'second_vanishing_lines', text=f"{vl.second_axis}", index=idx, color=get_axis_color(second_axis), set_transform=set_vl_transform(vp2), get_transform=get_midpoint_transform)
+                    self.uiview.prop_point(vl, second_prop, text=f"{vl.second_axis}", index=idx, color=get_axis_color(second_axis), set_transform=set_vl_transform(vp2), get_transform=get_midpoint_transform)
                     self.uiview._painter.add_line(line.start, line.end, get_axis_color(second_axis))
 
         if vl.mode in {'THREE_POINT'}:
-            vp3 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in vl.third_vanishing_lines])
+            vp3 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in getattr(vl, third_prop)])
             vl_third_axis, vl_third_axis_sign = vl_utils.from_solver_axis(third_axis)
-            for idx, line in enumerate(vl.third_vanishing_lines):
+            for idx, line in enumerate(getattr(vl, third_prop)):
                 self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(third_axis))
                 self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(third_axis))
-                self.uiview.prop_point(vl, 'third_vanishing_lines', text=f"{vl_third_axis}", index=idx, color=get_axis_color(third_axis), set_transform=set_vl_transform(vp3), get_transform=get_midpoint_transform)
+                self.uiview.prop_point(vl, third_prop, text=f"{vl_third_axis}", index=idx, color=get_axis_color(third_axis), set_transform=set_vl_transform(vp3), get_transform=get_midpoint_transform)
                 self.uiview._painter.add_line(line.start, line.end, get_axis_color(third_axis))
 
         ###############################
@@ -545,17 +573,14 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         ###########################################
         # DRAW Extended lines to vanishing points #
         ###########################################
-
-        
-            
         if not vl.error_message:
             if vl.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
                 try:
                     vp1 = solver.core.compute_vanishing_point([
                         (glm.vec2(*line.start), glm.vec2(*line.end)) 
-                        for line in vl.first_vanishing_lines])
+                        for line in getattr(vl, first_prop)])
 
-                    for line in vl.first_vanishing_lines:
+                    for line in getattr(vl, first_prop):
                         start, end = vl_utils.extend_line(mathutils.Vector(line.start), mathutils.Vector(line.end), mathutils.Vector(vp1))
                         self.uiview._painter.add_line(
                             start, end, 
@@ -568,8 +593,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             if vl.mode in {'TWO_POINT', 'THREE_POINT'}:
                 if vl.quad_mode:
                     try:
-                        first_line = vl.first_vanishing_lines[ 0]
-                        last_line =  vl.first_vanishing_lines[-1]
+                        first_line = getattr(vl, first_prop)[0]
+                        last_line =  getattr(vl, first_prop)[-1]
 
                         second_vanishing_lines = [
                             (glm.vec2(first_line.start.x, first_line.start.y), glm.vec2(last_line.start.x, last_line.start.y)),
@@ -589,9 +614,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                     try:
                         vp2 = solver.core.compute_vanishing_point([
                             (glm.vec2(*line.start), glm.vec2(*line.end)) 
-                            for line in vl.second_vanishing_lines])
+                            for line in getattr(vl, second_prop)])
                         
-                        for line in vl.second_vanishing_lines:
+                        for line in getattr(vl, second_prop):
                             start, end = vl_utils.extend_line(mathutils.Vector(line.start), mathutils.Vector(line.end), mathutils.Vector(vp2))
                             self.uiview._painter.add_line(
                                 start, end,
@@ -605,9 +630,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 try:
                     vp3 = solver.core.compute_vanishing_point([
                         (glm.vec2(*line.start), glm.vec2(*line.end)) 
-                        for line in vl.third_vanishing_lines])
+                        for line in getattr(vl, third_prop)])
                     
-                    for line in vl.third_vanishing_lines:
+                    for line in getattr(vl, third_prop):
                         start, end = vl_utils.extend_line(mathutils.Vector(line.start), mathutils.Vector(line.end), mathutils.Vector(vp3))
                         self.uiview._painter.add_line(
                             start, end,
@@ -699,7 +724,10 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         vl.active = False
         vl.auto_solve = False
 
-        # remove draw hundler
+        # Unsubscribe from property changes
+        bpy.msgbus.clear_by_owner(self)  # Clean up subscriptions
+
+        # remove draw handler
         if self._draw_handler is not None:
             bpy.types.SpaceView3D.draw_handler_remove(self._draw_handler, 'WINDOW')
             self._draw_handler = None

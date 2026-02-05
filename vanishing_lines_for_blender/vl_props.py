@@ -8,10 +8,16 @@ from pyglm import glm
     
 from . import vl_utils
 
-def on_prop_update(self, context):
+def trigger_autosolve(self, context):
     vl:VLProps = get_current(context)
     if vl.auto_solve:
         solve(vl)
+
+def trigger_autounsolve(self, context):
+    vl:VLProps = get_current(context)
+    if vl.auto_solve:
+        unsolve(vl)
+        solve(vl) # trigger solve, to update redraw. THIS is a HACK, we should refactor the widget system to seperate paint from interaction, by making the widgets persistent
 
 def on_fovx_update(self, context):
     vl:VLProps = get_current(context)
@@ -27,7 +33,7 @@ class VLLineProp(bpy.types.PropertyGroup):
         subtype='COORDINATES',
         default=(0.0, 0.0),
         description="Start point of the line.",
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
     end: bpy.props.FloatVectorProperty(
@@ -36,7 +42,7 @@ class VLLineProp(bpy.types.PropertyGroup):
         subtype='COORDINATES',
         default=(0.0, 0.0),
         description="End point of the line.",
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
 
@@ -72,7 +78,7 @@ class VLProps(bpy.types.PropertyGroup):
         default='TWO_POINT',
         description="Number of vanishing points to use for camera calibration", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
     fovx: bpy.props.FloatProperty(
@@ -98,7 +104,7 @@ class VLProps(bpy.types.PropertyGroup):
         default='SCREEN',
         description="Method for determining scene scale reference", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
     quad_mode: bpy.props.BoolProperty(
@@ -106,7 +112,7 @@ class VLProps(bpy.types.PropertyGroup):
         default=False,
         description="Use quadrilateral corners to define second vanishing point", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
     # enable_manual_principal: bpy.props.BoolProperty(
@@ -125,7 +131,7 @@ class VLProps(bpy.types.PropertyGroup):
         subtype='DISTANCE',
         description="Real-world size of the reference measurement for scale calibration", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
     reference_screen_segment: bpy.props.FloatVectorProperty(
@@ -134,7 +140,7 @@ class VLProps(bpy.types.PropertyGroup):
         default=(0.0, 0.5),
         description="Start and end points of the reference distance segment for scale measurement", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
     axes: bpy.props.EnumProperty(
@@ -174,7 +180,7 @@ class VLProps(bpy.types.PropertyGroup):
         default='Y',
         description="First vanishing point axis orientation", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autounsolve
     ) # type: ignore
 
     first_axis_sign: bpy.props.EnumProperty(
@@ -186,7 +192,7 @@ class VLProps(bpy.types.PropertyGroup):
         default='POSITIVE',
         description="Sign of the first vanishing point axis orientation", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
     second_axis: bpy.props.EnumProperty(
@@ -202,7 +208,7 @@ class VLProps(bpy.types.PropertyGroup):
         default='X',
         description="Second vanishing point axis orientation", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autounsolve
     ) # type: ignore
 
     second_axis_sign: bpy.props.EnumProperty(
@@ -214,7 +220,7 @@ class VLProps(bpy.types.PropertyGroup):
         default='NEGATIVE',
         description="Sign of the second vanishing point axis orientation",
         options=set(),
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
     anchor_screen: bpy.props.FloatVectorProperty(
@@ -223,7 +229,7 @@ class VLProps(bpy.types.PropertyGroup):
         default=(0.0, 0.0),
         description="Anchor point for reference measurements in normalized image space", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
     anchor_world: bpy.props.FloatVectorProperty(
@@ -234,7 +240,7 @@ class VLProps(bpy.types.PropertyGroup):
         default=(0.0, 0.0, 0.0),
         description="Anchor point in world space for reference measurements", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
     
     principal: bpy.props.FloatVectorProperty(
@@ -243,18 +249,18 @@ class VLProps(bpy.types.PropertyGroup):
         default=(0.0, 0.0),
         description="Principal point (optical center) in normalized image space", 
         options=set(),
-        update=on_prop_update
+        update=trigger_autosolve
     ) # type: ignore
 
-    first_vanishing_lines: bpy.props.CollectionProperty(
+    x_vanishing_lines: bpy.props.CollectionProperty(
         type=VLLineProp, 
         options=set()) # type: ignore
     
-    second_vanishing_lines: bpy.props.CollectionProperty(
+    y_vanishing_lines: bpy.props.CollectionProperty(
         type=VLLineProp, 
         options=set()) # type: ignore
 
-    third_vanishing_lines: bpy.props.CollectionProperty(
+    z_vanishing_lines: bpy.props.CollectionProperty(
         type=VLLineProp, 
         options=set()) # type: ignore
 
@@ -268,30 +274,30 @@ class VLProps(bpy.types.PropertyGroup):
 
 def ensure_vanishing_lines(vl:VLProps):
     """Ensure there is at least one line in each vanishing line collection."""
-    if len(vl.first_vanishing_lines) == 0:
-        item = vl.first_vanishing_lines.add()
+    if len(vl.y_vanishing_lines) == 0:
+        item = vl.y_vanishing_lines.add()
         item.start = (-0.2, -0.53)
         item.end =   ( 0.6,  0.12)
 
-        item = vl.first_vanishing_lines.add()
+        item = vl.y_vanishing_lines.add()
         item.start = (-0.88, 0.0)
         item.end =   ( 0.09, 0.20)
 
-    if len(vl.second_vanishing_lines) == 0:
-        item = vl.second_vanishing_lines.add()
+    if len(vl.x_vanishing_lines) == 0:
+        item = vl.x_vanishing_lines.add()
         item.start =  (0.22, -0.48)
         item.end =   (-0.80,  0.05)
 
-        item = vl.second_vanishing_lines.add()
+        item = vl.x_vanishing_lines.add()
         item.start =  (0.65, 0.05)
         item.end =   (-0.10, 0.20)
 
-    if len(vl.third_vanishing_lines) == 0:
-        item = vl.third_vanishing_lines.add()
+    if len(vl.z_vanishing_lines) == 0:
+        item = vl.z_vanishing_lines.add()
         item.start = (-0.3, -0.52)
         item.end =   (-0.4, 0.5)
 
-        item = vl.third_vanishing_lines.add()
+        item = vl.z_vanishing_lines.add()
         item.start = (0.3, -0.52)
         item.end =   (0.4, 0.5)
 
@@ -311,10 +317,11 @@ def solve(vl:VLProps):
         first_axis = vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign)
         second_axis = vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
 
-        second_vanishing_lines = [(line.start, line.end) for line in vl.second_vanishing_lines]
+        first_prop, second_prop, third_prop = get_vanishing_line_prop_names_in_order(vl)
+        second_vanishing_lines = [(line.start, line.end) for line in getattr(vl, second_prop)]
         if vl.quad_mode and mode in {solver.types.SolverMode.TwoVP, solver.types.SolverMode.ThreeVP}:
-            first_line = vl.first_vanishing_lines[ 0]
-            last_line =  vl.first_vanishing_lines[-1]
+            first_line = getattr(vl, first_prop)[0]
+            last_line =  getattr(vl, first_prop)[-1]
 
             second_vanishing_lines = [
                 (first_line.start, last_line.start), (first_line.end, last_line.end)
@@ -332,9 +339,9 @@ def solve(vl:VLProps):
         projection, view = solver.core.solve(
             mode = mode,
             viewport=compute_space,
-            first_vanishing_lines= [(glm.vec2(*line.start), glm.vec2(*line.end)) for line in  vl.first_vanishing_lines],
+            first_vanishing_lines= [(glm.vec2(*line.start), glm.vec2(*line.end)) for line in  getattr(vl, first_prop)],
             second_vanishing_lines=second_vanishing_lines,
-            third_vanishing_lines= [(glm.vec2(*line.start), glm.vec2(*line.end)) for line in  vl.third_vanishing_lines],
+            third_vanishing_lines= [(glm.vec2(*line.start), glm.vec2(*line.end)) for line in  getattr(vl, third_prop)],
 
             f = solver.utils.focal_length_from_fov(vl.fovx, compute_space.width), # used only in one point mode
             P = glm.vec2(0,0), # TODO: is [0], [1] necessary?
@@ -381,95 +388,93 @@ def solve(vl:VLProps):
         import traceback
         traceback.print_exc()
 
-def unsolve(vl:VLProps):
-    if not (vl.camera_object 
-        and isinstance(vl.camera_object, bpy.types.Object) 
-        and vl.camera_object.data
-        and isinstance(vl.camera_object.data, bpy.types.Camera)
-    ):
-        print("[VLProps.unsolve] No valid camera object assigned.")
-        return
+# def unsolve(vl:VLProps):
+#     if not (vl.camera_object 
+#         and isinstance(vl.camera_object, bpy.types.Object) 
+#         and vl.camera_object.data
+#         and isinstance(vl.camera_object.data, bpy.types.Camera)
+#     ):
+#         print("[VLProps.unsolve] No valid camera object assigned.")
+#         return
 
+#     # store current autosolve state
+#     previous_auto_solve  = vl.auto_solve
+#     vl.auto_solve = False
     
-    viewport = solver.types.Rect(-1,-1,2,2)
+#     viewport = solver.types.Rect(-1,-1,2,2)
 
-    # -- Adjust vanishing lines to current view and projection matrices --
-    glm_proj, glm_view = vl_utils.get_camera_matrices(vl.camera_object, solver.types.Rect(-1,-1,2,2))
+#     # -- Adjust vanishing lines to current view and projection matrices --
+#     glm_proj, glm_view = vl_utils.get_camera_matrices(vl.camera_object, solver.types.Rect(-1,-1,2,2))
 
-    vp1, vp2, vp3 = solver.utils.orientation_to_three_vanishing_points(
-        glm.mat3(glm_view), 
-        glm_proj, 
-        solver.types.Rect(-1,-1,2,2),
-        first_axis=vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign),
-        second_axis=vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
-    )
+#     vp1, vp2, vp3 = solver.utils.orientation_to_three_vanishing_points(
+#         glm.mat3(glm_view), 
+#         glm_proj, 
+#         solver.types.Rect(-1,-1,2,2),
+#         first_axis=vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign),
+#         second_axis=vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
+#     )
 
-    new_first_lines, new_second_lines, new_third_lines = solver.utils.align_lines_to_vanishing_points(
-        [
-            [(line.start, line.end) for line in vl.first_vanishing_lines], 
-            [(line.start, line.end) for line in vl.second_vanishing_lines], 
-            [(line.start, line.end) for line in vl.third_vanishing_lines]
-        ],
-        [vp1, vp2, vp3])
+#     first_prop, second_prop, third_prop = get_vanishing_line_prop_names_in_order(vl)
+#     for lines, vp in zip([getattr(vl, first_prop), getattr(vl, second_prop), getattr(vl, third_prop)], [vp1, vp2, vp3]):
+#         for line in lines:
+#             start, end = vl_utils.extend_line(mathutils.Vector(line.start), mathutils.Vector(line.end), mathutils.Vector(vp))
+#             line.start = start.x, start.y
+#             line.end = end.x, end.y
 
-    for vl_prop_lines, new_lines in zip(
-        [vl.first_vanishing_lines, vl.second_vanishing_lines, vl.third_vanishing_lines],
-        [new_first_lines, new_second_lines,new_third_lines]
-    ):
-        for i in range(len(vl_prop_lines)):
-            vl_prop_lines[i].start = new_lines[i][0]
-            vl_prop_lines[i].end =   new_lines[i][1]
 
-    # --- Adjust axis signs, to match closest vanishing points ---
-    vl.first_axis_sign =  'NEGATIVE' if solver.utils.resolve_axis_flip(glm_view, vl.first_axis) else 'POSITIVE'
-    vl.second_axis_sign = 'NEGATIVE' if solver.utils.resolve_axis_flip(glm_view, vl.second_axis) else 'POSITIVE'
+#     # --- Adjust axis signs, to match closest vanishing points ---
+#     vl.first_axis_sign =  'NEGATIVE' if solver.utils.resolve_axis_flip(glm_view, vl.first_axis) else 'POSITIVE'
+#     vl.second_axis_sign = 'NEGATIVE' if solver.utils.resolve_axis_flip(glm_view, vl.second_axis) else 'POSITIVE'
 
-    # -- adjust ANCHOR SCREEN --
-    anchor_screen:glm.vec2 = glm.project(
-        glm.vec3(vl.anchor_world.x, vl.anchor_world.y, vl.anchor_world.z), 
-        glm_view, glm_proj, tuple(viewport)
-    ).xy
-    vl.anchor_screen = (anchor_screen.x, anchor_screen.y)
+#     # -- adjust ANCHOR SCREEN --
+#     anchor_screen:glm.vec2 = glm.project(
+#         glm.vec3(vl.anchor_world.x, vl.anchor_world.y, vl.anchor_world.z), 
+#         glm_view, glm_proj, tuple(viewport)
+#     ).xy
+#     vl.anchor_screen = (anchor_screen.x, anchor_screen.y)
 
-    # -- adjust REFERENCE SCENE SCALE --
-    anchor_world = glm.vec3(vl.anchor_world[0], vl.anchor_world[1], vl.anchor_world[2])
-    if vl.reference_scale_mode == 'ANCHOR':
-        # world distance from anchor
-        camera_location, camera_quat = solver.utils.decompose_extrinsics(glm_view)
-        anchor_distance = glm.length(anchor_world - camera_location)
-        vl.reference_scene_scale = anchor_distance
-    else:
-        match vl.reference_scale_mode:
-            case 'ANCHOR':
-                assert False, "Should not reach here, handled above"
+#     # -- adjust REFERENCE SCENE SCALE --
+#     anchor_world = glm.vec3(vl.anchor_world[0], vl.anchor_world[1], vl.anchor_world[2])
+#     if vl.reference_scale_mode == 'ANCHOR':
+#         # world distance from anchor
+#         camera_location, camera_quat = solver.utils.decompose_extrinsics(glm_view)
+#         anchor_distance = glm.length(anchor_world - camera_location)
+#         vl.reference_scene_scale = anchor_distance
+#     else:
+#         match vl.reference_scale_mode:
+#             case 'ANCHOR':
+#                 assert False, "Should not reach here, handled above"
                 
-            case 'SCREEN' | 'X_AXIS' | 'Y_AXIS' | 'Z_AXIS':
-                match vl.reference_scale_mode:
-                    case 'X_AXIS':
-                        ref_axis_vec = glm.vec3(1, 0, 0)
-                    case 'Y_AXIS':
-                        ref_axis_vec = glm.vec3(0, 1, 0)
-                    case 'Z_AXIS':
-                        ref_axis_vec = glm.vec3(0, 0, 1)
-                    case 'SCREEN' | _:
-                        # Right vector is column 0 of the inverse view matrix
-                        ref_axis_vec = glm.vec3(glm.inverse(glm_view)[0])
+#             case 'SCREEN' | 'X_AXIS' | 'Y_AXIS' | 'Z_AXIS':
+#                 match vl.reference_scale_mode:
+#                     case 'X_AXIS':
+#                         ref_axis_vec = glm.vec3(1, 0, 0)
+#                     case 'Y_AXIS':
+#                         ref_axis_vec = glm.vec3(0, 1, 0)
+#                     case 'Z_AXIS':
+#                         ref_axis_vec = glm.vec3(0, 0, 1)
+#                     case 'SCREEN' | _:
+#                         # Right vector is column 0 of the inverse view matrix
+#                         ref_axis_vec = glm.vec3(glm.inverse(glm_view)[0])
 
-        # --- 2. Measure current world length on screen ---
-        A_screen = glm.project(anchor_world, glm_view, glm_proj, tuple(viewport)).xy
-        V_screen = glm.project(anchor_world + ref_axis_vec, glm_view, glm_proj, tuple(viewport)).xy
-        dir_screen = glm.normalize(V_screen - anchor_screen)
+#         # --- 2. Measure current world length on screen ---
+#         A_screen = glm.project(anchor_world, glm_view, glm_proj, tuple(viewport)).xy
+#         V_screen = glm.project(anchor_world + ref_axis_vec, glm_view, glm_proj, tuple(viewport)).xy
+#         dir_screen = glm.normalize(V_screen - anchor_screen)
 
-        def get_world_pos(screen_pos):
-            ray = solver.utils.cast_ray(screen_pos, glm_view, glm_proj, tuple(viewport))
-            return solver.utils.closest_point_between_lines((glm.vec3(0,0,0), glm.vec3(0,0,0) + ref_axis_vec), ray)
+#         def get_world_pos(screen_pos):
+#             ray = solver.utils.cast_ray(screen_pos, glm_view, glm_proj, tuple(viewport))
+#             return solver.utils.closest_point_between_lines((glm.vec3(0,0,0), glm.vec3(0,0,0) + ref_axis_vec), ray)
 
-        reference_offset, reference_length = vl.reference_screen_segment
-        ref_start_world = get_world_pos(A_screen + dir_screen * reference_offset)
-        ref_end_world = get_world_pos(A_screen + dir_screen * (reference_offset + reference_length))
-        world_length = glm.length(ref_end_world - ref_start_world)
+#         reference_offset, reference_length = vl.reference_screen_segment
+#         ref_start_world = get_world_pos(A_screen + dir_screen * reference_offset)
+#         ref_end_world = get_world_pos(A_screen + dir_screen * (reference_offset + reference_length))
+#         world_length = glm.length(ref_end_world - ref_start_world)
 
-        vl.reference_scene_scale = world_length
+#         vl.reference_scene_scale = world_length
+
+#     # restore autosolve state
+#     vl.auto_solve = previous_auto_solve 
 
 def unsolve(vl:VLProps):
     if not (vl.camera_object 
@@ -479,6 +484,9 @@ def unsolve(vl:VLProps):
     ):
         print("[VLProps.unsolve] No valid camera object assigned.")
         return
+    
+    previous_auto_solve  = vl.auto_solve
+    vl.auto_solve = False
     
     # -- unsolve --
     glm_proj, glm_view = vl_utils.get_camera_matrices(vl.camera_object, solver.types.Rect(-1,-1,2,2))
@@ -494,10 +502,11 @@ def unsolve(vl:VLProps):
     )
 
     # --align lines to vanishing points --
+    first_prop, second_prop, third_prop = get_vanishing_line_prop_names_in_order(vl)
     for vanishing_lines, vanishing_point in [
-        (vl.first_vanishing_lines, unsolve_results.vp1),
-        (vl.second_vanishing_lines, unsolve_results.vp2),
-        (vl.third_vanishing_lines, unsolve_results.vp3)
+        (getattr(vl, first_prop),  unsolve_results.vp1),
+        (getattr(vl, second_prop), unsolve_results.vp2),
+        (getattr(vl, third_prop),  unsolve_results.vp3)
     ]:
         new_lines = solver.utils.align_lines_to_vanishing_points(
             [(line.start, line.end) for line in vanishing_lines],
@@ -517,8 +526,22 @@ def unsolve(vl:VLProps):
     # -- adjust REFERENCE SCENE SCALE --
     vl.reference_scene_scale = unsolve_results.reference_scene_scale
 
+    # restore autosolve state
+    vl.auto_solve = previous_auto_solve
+
 def get_current(context) -> VLProps:
     return context.window_manager.vanishing_lines
+
+def get_vanishing_line_prop_names_in_order(vl:VLProps)->Tuple[str, str, str]:
+    """Get the vanishing line properties corresponding to the first vanishing point, based on the selected axes."""
+    axis_mapping = {
+        'X': 'x_vanishing_lines',
+        'Y': 'y_vanishing_lines',
+        'Z': 'z_vanishing_lines'
+    }
+    third_axis = ({'X', 'Y', 'Z'} - {vl.first_axis, vl.second_axis}).pop()
+    
+    return axis_mapping[vl.first_axis], axis_mapping[vl.second_axis], axis_mapping[third_axis]
 
 ######################
 # REGISTER FUNCTIONS #
