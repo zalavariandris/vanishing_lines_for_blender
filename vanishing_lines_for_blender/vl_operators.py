@@ -10,7 +10,7 @@ import mathutils
 from bpy_extras import view3d_utils
 
 # third party
-from pyglm import glm
+import glm
 
 # local
 from .view3d_gui import View3dGUI
@@ -22,8 +22,6 @@ from . import solver
 # Constants
 FONT_SIZE = 16
 LINE_HEIGHT = 18
-
-
 
 
 class MODAL_MT_VLContextMenu(bpy.types.Menu):

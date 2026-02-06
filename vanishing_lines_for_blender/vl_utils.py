@@ -4,7 +4,7 @@ import math
 import mathutils
 from typing import List, Tuple, Iterable, cast
 from . import solver
-from pyglm import glm
+import glm
 import warnings
 
 

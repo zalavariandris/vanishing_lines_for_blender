@@ -1,6 +1,6 @@
 from typing import Literal, Tuple, List, cast
 
-from pyglm import glm
+import glm
 import math
 import warnings
 

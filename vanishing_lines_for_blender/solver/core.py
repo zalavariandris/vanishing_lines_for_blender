@@ -3,7 +3,7 @@ from typing import List, Tuple, Literal
 import warnings
 
 # third party library
-from pyglm import glm
+import glm
 
 from dataclasses import dataclass
 
@@ -203,10 +203,13 @@ def unsolve(
                 
             case ReferenceAxis.X_Axis:
                 ref_axis_vec = glm.vec3(1, 0, 0)
+
             case ReferenceAxis.Y_Axis:
                 ref_axis_vec = glm.vec3(0, 1, 0)
+
             case ReferenceAxis.Z_Axis:
                 ref_axis_vec = glm.vec3(0, 0, 1)
+                
             case ReferenceAxis.Screen | _:
                 # Right vector is column 0 of the inverse view matrix
                 ref_axis_vec = glm.vec3(glm.inverse(view)[0])

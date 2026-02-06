@@ -42,6 +42,7 @@
       ~~What if the pivot point is behind the camera?~~
 
 ### FIX bugs
+- [ ] unsolve does not match the scene scale, when anchor is not in the origin, and screen is used for measuring
 - [ ] FIX when quad mode is activated, adjust vanishing line to the current orientation 
 - [x] FIX: origin annotation seem to be drawn twice?, also dont draw the value on hover
 - [ ] FIX: two point mode. first axis i Y second axis is Z and up. move tha axis when its almost vertical, the up vector flips downwards.

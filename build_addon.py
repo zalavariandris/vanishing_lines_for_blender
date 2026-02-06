@@ -19,9 +19,10 @@ SOURCE = [
     "__init__.py",
     "view3d_painter.py",
     "view3d_gui.py",
-    "vl_ppropss.py",
+    "vl_props.py",
     "vl_utils.py",
     "vl_operators.py",
+    "vl_sidepanel.py",
     "solver/**/*"
 ]
 
@@ -86,7 +87,7 @@ if __name__ == "__main__":
 
     # Create zip file directly from source
     Path(DIST_DIR).mkdir(exist_ok=True)
-    zip_filename = Path(DIST_DIR) / f"{ADDON_NAME}-v{version}-beta.zip"
+    zip_filename = Path(DIST_DIR) / f"{ADDON_NAME}-v{version}.zip"
     with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for file_path in Path(BUILD_DIR).rglob('*'):
             if file_path.is_file():

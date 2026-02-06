@@ -4,7 +4,7 @@ from . import solver
 import mathutils
 import math
 
-from pyglm import glm
+import glm
     
 from . import vl_utils
 

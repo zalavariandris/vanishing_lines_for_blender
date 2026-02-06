@@ -5,7 +5,7 @@ from typing import Tuple, Callable, Any
 import mathutils
 
 # third party
-from pyglm import glm
+import glm
 
 # local
 from . import vl_utils

@@ -1,7 +1,7 @@
 from enum import IntEnum
 from typing import Tuple
 from dataclasses import dataclass
-from pyglm import glm
+import glm
 #########
 # TYPES #
 #########

@@ -2,7 +2,7 @@ from typing import Tuple, Literal, List
 import math
 from . import utils
 from . types import Axis, Rect
-from pyglm import glm
+import glm
 
 from . types import Line2
 import warnings

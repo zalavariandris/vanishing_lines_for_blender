@@ -1,5 +1,5 @@
 import pytest
-from pyglm import glm
+import glm
 import numpy as np
 import sys
 from pathlib import Path

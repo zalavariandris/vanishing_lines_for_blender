@@ -4,7 +4,7 @@ schema_version = "1.0.0"
 # Change the values according to your extension
 id = "vanishinglines"
 name = "VanishingLines"
-version = "0.8.1"
+version = "0.8.1-beta"
 
 tagline = "Align a camera using vanishing lines, right inside Blender."
 maintainer = "BabLab (András Zalavári)"
@@ -41,9 +41,9 @@ wheels = [
 
 # Optional: build settings.
 # https://docs.blender.org/manual/en/dev/advanced/extensions/command_line_arguments.html#command-line-args-extension-build
-# [build]
-# paths_exclude_pattern = [
-#   "__pycache__/",
-#   "/.git/",
-#   "/*.zip",
-# ]
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "/.git/",
+  "/*.zip",
+]

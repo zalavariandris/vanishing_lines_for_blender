@@ -2,7 +2,7 @@ import pytest
 import math
 from typing import Final
 
-from pyglm import glm
+import glm
 
 from vanishing_lines_for_blender import solver
 

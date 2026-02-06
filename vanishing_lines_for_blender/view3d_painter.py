@@ -10,7 +10,7 @@ import blf
 import mathutils
 
 # third party
-from pyglm import glm
+import glm
 
 
 # -- Constants --
