@@ -41,10 +41,10 @@ def create_roll_matrix(
     The roll is computed in canonical space; user axis assignment is applied
     separately by adjust_axis_assignment() afterward.
     """
-    # Project the second vanishing line the forward plane in 3D world space
+    # Get the second vanishing line in screen space
     A, B = glm.vec2(*second_vanishing_line[0]), glm.vec2(*second_vanishing_line[1])
-
-    # Unproject pixel coordinates to world space rays 
+    
+    # Now unproject to 3D to compute the roll angle
     A_ray = utils.cast_ray(A, view_matrix, projection_matrix, glm.vec4(*viewport))
     B_ray = utils.cast_ray(B, view_matrix, projection_matrix, glm.vec4(*viewport))
 
@@ -54,6 +54,7 @@ def create_roll_matrix(
 
     plane_origin = view_origin + forward * 0.01 # glm.vec3(0, 0, 0) TODO: the computation is dependent on the plane position. Consider removing this dependency from the algorithm.
     plane_normal = axis_positive_vector(first_axis)
+    
     plane_y_axis = glm.cross(plane_normal, third_axis_vector(first_axis, second_axis)) # along the line
     plane_x_axis = glm.cross(plane_normal, plane_y_axis)  # perpendicular in the plane
 
@@ -65,12 +66,23 @@ def create_roll_matrix(
     v_proj = v - glm.dot(v, plane_normal) * plane_normal # project vector onto plane
 
     # --- Compute angle using atan2, normalized to (-π/2, π/2) range ---
-    x_on_plane = glm.dot(v_proj, plane_y_axis)
+    x_on_plane = glm.dot(v_proj, plane_y_axis)  
     y_on_plane = glm.dot(v_proj, plane_x_axis)
     angle = math.atan2(y_on_plane, x_on_plane)
     
+    # respect the second axis sign
+    # - note: to determinte the sign, we need to check the angle of the line to the first axis in screen space
+    O_screen =   glm.project(plane_origin, view_matrix, projection_matrix, glm.vec4(*viewport)).xy
+    vp1_screen = glm.project(plane_origin + plane_normal, view_matrix, projection_matrix, glm.vec4(*viewport)).xy
+    vp1_dir_screen = glm.normalize(vp1_screen - O_screen)
+    
+    line_dir_screen = glm.normalize(B - A)
+    dot = glm.dot(vp1_dir_screen, line_dir_screen)
+    if dot> 0: # if the line is more aligned with the negative direction of the first axis, we consider it as a negative second axis
+        angle = angle + math.pi
+    
     roll_axis = plane_normal # plane normal
-    roll_matrix: glm.mat4 = glm.rotate(glm.mat4(1.0), angle+math.radians(180), roll_axis)  # type: ignore[attr-defined]
+    roll_matrix: glm.mat4 = glm.rotate(glm.mat4(1.0), angle, roll_axis)  # type: ignore[attr-defined]
     return roll_matrix
 
 @deprecated

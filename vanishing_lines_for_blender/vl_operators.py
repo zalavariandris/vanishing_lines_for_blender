@@ -517,7 +517,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             line = getattr(vl, second_prop)[0]
             self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(second_axis))
             self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(second_axis))
-            self.uiview.prop_point(vl, second_prop, text="", index=0, color=get_axis_color(second_axis), set_transform=set_midpoint_transform, get_transform=get_midpoint_transform)
+            self.uiview.prop_point(vl, second_prop, text=f"{vl.second_axis}", index=0, color=get_axis_color(second_axis), set_transform=set_midpoint_transform, get_transform=get_midpoint_transform)
             self.uiview._painter.add_line(line.start, line.end, get_axis_color(second_axis))
 
         if vl.mode in {'TWO_POINT', 'THREE_POINT'}:
@@ -596,6 +596,25 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # DRAW Extended lines to vanishing points #
         ###########################################
         if not vl.error_message:
+            if vl.mode == 'ONE_POINT':
+                proj, view = vl_utils.get_camera_matrices(camera_object=context.area.spaces.active.camera, compute_space=solver.types.Rect(-1,-1,2,2))
+                _, vp2, _ = solver.utils.orientation_to_three_vanishing_points(
+                    view_matrix=glm.mat3(view),
+                    projection_matrix=proj, 
+                    viewport= solver.types.Rect(-1,-1,2,2),
+                    first_axis=first_axis,
+                    second_axis=second_axis
+                   )
+                # draw horizon line
+                line = getattr(vl, second_prop)[0]
+                start = mathutils.Vector((line.start[0], line.start[1]))
+                end = mathutils.Vector((line.end[0], line.end[1]))
+                start, end = vl_utils.extend_line(mathutils.Vector(line.start), mathutils.Vector(line.end), mathutils.Vector(vp2))
+                self.uiview._painter.add_line(
+                    start, end, 
+                    dim_color(get_axis_color(second_axis))
+                )
+
             if vl.mode in {'ONE_POINT', 'TWO_POINT', 'THREE_POINT'}:
                 try:
                     vp1 = solver.core.compute_vanishing_point([
