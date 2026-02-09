@@ -21,7 +21,8 @@ from . types import (
     Rect, 
     SolverMode, 
     Axis, 
-    ReferenceAxis
+    ReferenceAxis,
+    ScreenMeasurement
 )
 
 from . exceptions import (
@@ -36,6 +37,11 @@ from dataclasses import dataclass
 # MAIN SOLVER FUNCTIONS #
 #########################
 
+@dataclass
+class SolveResult:
+    projection: glm.mat4
+    view: glm.mat4
+
 def solve(
         mode:SolverMode, 
         viewport: Rect,
@@ -49,13 +55,13 @@ def solve(
         anchor_world:glm.vec3,
 
         reference_axis:ReferenceAxis|None,
-        reference_screen_segment:Tuple[float, float], # 2D distance from origin to camera
+        reference_screen_measurement:ScreenMeasurement,
         reference_world_size:float,
 
         first_axis:Axis,
         second_axis:Axis,
         handedness:Literal['right-handed', 'left-handed']="right-handed" 
-    )->Tuple[glm.mat4, glm.mat4]:
+    )->SolveResult:
 
     # print(f"Solve")
     # print(f" Mode: {mode}")
@@ -121,7 +127,7 @@ def solve(
             projection, 
             reference_world_size, 
             reference_axis, 
-            reference_screen_segment, 
+            reference_screen_measurement, 
             view
         )
 
@@ -135,7 +141,7 @@ def solve(
     # finally, translate view matrix by anchor_world
     view = view * glm.inverse(glm.translate(glm.mat4(1.0), anchor_world))
 
-    return projection, view
+    return SolveResult(projection=projection, view=view)
 
 
 @dataclass
@@ -155,7 +161,7 @@ def unsolve(
         view:glm.mat4, 
         anchor_world:glm.vec3,
         reference_axis:ReferenceAxis|None,
-        reference_screen_segment:Tuple[float, float], # 2D distance from origin to camera
+        reference_screen_measurement:ScreenMeasurement,
         first_axis:Axis, 
         second_axis:Axis, 
         handedness:Literal['right-handed', 'left-handed']="right-handed")->UnsolveResults:
@@ -189,10 +195,10 @@ def unsolve(
     ).xy
 
     # -- adjust REFERENCE SCENE SCALE --
-    
     if reference_axis == None:
         # world distance from anchor
-        camera_location, camera_quat = utils.decompose_extrinsics(view)
+        # camera_location, camera_quat = utils.decompose_extrinsics(view)
+        camera_location = glm.vec3(glm.inverse(view)[3]) # TODO: does this work, if so why?
         anchor_distance = glm.distance(anchor_world, camera_location)
         reference_scene_scale = anchor_distance
 
@@ -215,17 +221,15 @@ def unsolve(
                 ref_axis_vec = glm.vec3(glm.inverse(view)[0])
 
         # --- 2. Measure current world length on screen ---
-        A_screen = glm.project(anchor_world, view, projection, tuple(viewport)).xy
         V_screen = glm.project(anchor_world + ref_axis_vec, view, projection, tuple(viewport)).xy
         dir_screen = glm.normalize(V_screen - anchor_screen)
 
         def get_world_pos(screen_pos):
             ray = utils.cast_ray(screen_pos, view, projection, viewport)
-            return utils.closest_point_between_lines((glm.vec3(0,0,0), glm.vec3(0,0,0) + ref_axis_vec), ray)
+            return utils.closest_point_between_lines((anchor_world, anchor_world + ref_axis_vec), ray)
 
-        reference_offset, reference_length = reference_screen_segment
-        ref_start_world = get_world_pos(A_screen + dir_screen * reference_offset)
-        ref_end_world = get_world_pos(A_screen + dir_screen * (reference_offset + reference_length))
+        ref_start_world = get_world_pos(anchor_screen + dir_screen * reference_screen_measurement.offset)
+        ref_end_world = get_world_pos(anchor_screen + dir_screen * (reference_screen_measurement.offset + reference_screen_measurement.length))
         world_length = glm.distance(ref_end_world, ref_start_world)
 
         reference_scene_scale = world_length
@@ -493,11 +497,11 @@ def adjust_scale_to_reference_distance(
         projection: glm.mat4,
         reference_world_size: float, 
         reference_axis: ReferenceAxis,
-        reference_screen_segment: Tuple[float, float],
+        reference_screen_measurement: ScreenMeasurement,
         view: glm.mat4, 
     ) -> glm.mat4:
     
-    reference_offset, reference_length = reference_screen_segment
+    reference_offset, reference_length = reference_screen_measurement
 
     # --- 1. Determine Axis ---
     match reference_axis:

@@ -12,7 +12,7 @@ from vanishing_lines_for_blender import solver
 ############################
 
 def test_solve_with_one_vp():
-    projection, view = solver.core.solve(
+    solve_result = solver.core.solve(
         mode = solver.types.SolverMode.OneVP,
         viewport = solver.types.Rect(0,0, 1280,720),
 
@@ -31,14 +31,14 @@ def test_solve_with_one_vp():
         anchor_world=glm.vec3(0,0,0),
 
         reference_axis=solver.types.ReferenceAxis.X_Axis,
-        reference_screen_segment=(0,100),
+        reference_screen_measurement=solver.types.ScreenMeasurement(offset=0, length=100),
         reference_world_size=1.0,
 
         first_axis = solver.types.Axis.NegativeX,
         second_axis = solver.types.Axis.PositiveY,
     )
 
-    # print("View Matrix:\n", glm.transpose(view))
+    # print("View Matrix:\n", glm.transpose(solve_result.view))
     # print("Projection Matrix:\n", glm.transpose(projection))
 
     view_expected = glm.mat4(
@@ -48,9 +48,9 @@ def test_solve_with_one_vp():
          3.72529e-08, -1.0285, -4.62827,  1 
     )
 
-    assert np.allclose(np.array(view), np.array(view_expected)),\
+    assert np.allclose(np.array(solve_result.view), np.array(view_expected)),\
         f"View matrix does not match expected."\
-        f"\nGot:\n{view}\nExpected:\n{view_expected}"
+        f"\nGot:\n{solve_result.view}\nExpected:\n{view_expected}"
     
     projection_expected = glm.mat4(
         1.125, 0,       0,  0,
@@ -58,12 +58,12 @@ def test_solve_with_one_vp():
             0, 0,  -1.002, -1,
             0, 0, -0.2002,  0
     )
-    assert np.allclose(np.array(projection), np.array(projection_expected)),\
+    assert np.allclose(np.array(solve_result.projection), np.array(projection_expected)),\
         f"Projection matrix does not match expected."\
-        f"\nGot:\n{projection}\nExpected:\n{projection_expected}"
+        f"\nGot:\n{solve_result.projection}\nExpected:\n{projection_expected}"
     
 def test_solve_with_two_vp():
-    projection, view = solver.core.solve(
+    solve_result = solver.core.solve(
         mode = solver.types.SolverMode.TwoVP,
         viewport = solver.types.Rect(0,0, 1280,720),
 
@@ -83,7 +83,7 @@ def test_solve_with_two_vp():
         anchor_world=glm.vec3(0,0,0),
 
         reference_axis=solver.types.ReferenceAxis.X_Axis,
-        reference_screen_segment=(0,100),
+        reference_screen_measurement=solver.types.ScreenMeasurement(offset=0, length=100),
         reference_world_size=1.0,
 
         first_axis = solver.types.Axis.NegativeX,
@@ -97,9 +97,9 @@ def test_solve_with_two_vp():
        -1.21072e-08, -0.5473, -6.85105,  1)
 
 
-    assert np.allclose(np.array(view), np.array(view_expected)),\
+    assert np.allclose(np.array(solve_result.view), np.array(view_expected)),\
         f"View matrix does not match expected."\
-        f"\nGot:\n{view}\nExpected:\n{view_expected}"
+        f"\nGot:\n{solve_result.view}\nExpected:\n{view_expected}"
     
     projection_expected = glm.mat4(
         1.56474,      0,       0,  0,
@@ -107,13 +107,13 @@ def test_solve_with_two_vp():
               0,      0,  -1.002, -1,
               0,      0, -0.2002,  0,
     )
-    assert np.allclose(np.array(projection), np.array(projection_expected)),\
+    assert np.allclose(np.array(solve_result.projection), np.array(projection_expected)),\
         f"Projection matrix does not match expected."\
-        f"\nGot:\n{projection}\nExpected:\n{projection_expected}"
+        f"\nGot:\n{solve_result.projection}\nExpected:\n{projection_expected}"
     
 def test_solve_with_three_vp():
     """ Test the solver with three vanishing points."""
-    projection, view = solver.core.solve(
+    solve_result = solver.core.solve(
         mode = solver.types.SolverMode.ThreeVP,
         viewport = solver.types.Rect(0,0, 1757,2040),
 
@@ -136,7 +136,7 @@ def test_solve_with_three_vp():
         anchor_world=glm.vec3(0,0,0),
 
         reference_axis=solver.types.ReferenceAxis.X_Axis,
-        reference_screen_segment=(0,100),
+        reference_screen_measurement=solver.types.ScreenMeasurement(offset=0, length=100),
         reference_world_size=1.0,
 
         first_axis = solver.types.Axis.NegativeX,
@@ -150,9 +150,9 @@ def test_solve_with_three_vp():
          1.23902,   -15.152,  -19.7499,   1
     )
 
-    assert np.allclose(np.array(view), np.array(expected_view)),\
+    assert np.allclose(np.array(solve_result.view), np.array(expected_view)),\
         f"View matrix does not match expected."\
-        f"\nGot:\n{view}\nExpected:\n{expected_view}"
+        f"\nGot:\n{solve_result.view}\nExpected:\n{expected_view}"
 
     expected_projection = glm.mat4(
         2.20622,   0,          0,      0,
@@ -161,13 +161,13 @@ def test_solve_with_three_vp():
         0,         0,         -0.2002, 0
     )
 
-    assert np.allclose(np.array(expected_projection), np.array(expected_projection)),\
+    assert np.allclose(np.array(solve_result.projection), np.array(expected_projection)),\
         f"Projection matrix does not match expected."\
-        f"\nGot:\n{projection}\nExpected:\n{expected_view}"
+        f"\nGot:\n{solve_result.projection}\nExpected:\n{expected_projection}"
 
 def test_solve_with_no_reference_axis():
     ORIGIN_DISTANCE = 7.0
-    projection, view = solver.core.solve(
+    solve_result = solver.core.solve(
         mode = solver.types.SolverMode.TwoVP,
         viewport = solver.types.Rect(0,0, 1280,720),
 
@@ -187,14 +187,14 @@ def test_solve_with_no_reference_axis():
         anchor_world=glm.vec3(0,0,0),
 
         reference_axis=None,
-        reference_screen_segment=(0,100),
+        reference_screen_measurement=solver.types.ScreenMeasurement(offset=0, length=100),
         reference_world_size=ORIGIN_DISTANCE,
 
         first_axis = solver.types.Axis.NegativeX,
         second_axis = solver.types.Axis.PositiveY,
     )
 
-    camera_position = glm.inverse(view)[3]
+    camera_position = glm.inverse(solve_result.view)[3]
     camera_distance = glm.length(glm.vec3(camera_position))
 
     assert pytest.approx(camera_distance, rel=1e-3) == ORIGIN_DISTANCE

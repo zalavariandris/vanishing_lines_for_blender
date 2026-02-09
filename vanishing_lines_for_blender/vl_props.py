@@ -77,8 +77,7 @@ class VLProps(bpy.types.PropertyGroup):
         ],
         default='TWO_POINT',
         description="Number of vanishing points to use for camera calibration", 
-        options=set(),
-        update=trigger_autosolve
+        options=set()
     ) # type: ignore
 
     fovx: bpy.props.FloatProperty(
@@ -134,63 +133,27 @@ class VLProps(bpy.types.PropertyGroup):
         update=trigger_autosolve
     ) # type: ignore
 
-    reference_screen_segment: bpy.props.FloatVectorProperty(
-        name="Reference Distance Segment",
+    reference_screen_measurement: bpy.props.FloatVectorProperty(
+        name="Reference Screen Measurement",
         size=2,
         default=(0.0, 0.5),
-        description="Start and end points of the reference distance segment for scale measurement", 
+        description="Offset and length of the reference measurement along the reference direction (from anchor projection)", 
         options=set(),
         update=trigger_autosolve
-    ) # type: ignore
-
-    axes: bpy.props.EnumProperty(
-        name="Axes",
-        items=[
-            ('X+Y-', "X+ Y-", ""),  ('X-Y-', "X- Y-", ""),
-            ('X+Y+', "X+ Y+", ""),  ('X-Y+', "X- Y+", ""),
-            ('X+Z-', "X+ Z-", ""),  ('X-Z-', "X- Z-", ""),
-            ('X+Z+', "X+ Z+", ""),  ('X-Z+', "X- Z+", ""),
-
-            ('Y+X-', "Y+ X-", ""),  ('Y-X-', "Y- X-", ""),
-            ('Y+X+', "Y+ X+", ""),  ('Y-X+', "Y- X+", ""),
-            ('Y+Z-', "Y+ Z-", ""),  ('Y-Z-', "Y- Z-", ""),
-            ('Y+Z+', "Y+ Z+", ""),  ('Y-Z+', "Y- Z+", ""),
-            
-            ('Z+X-', "Z+ X-", ""),  ('Z-X-', "Z- X-", ""),
-            ('Z+X+', "Z+ X+", ""),  ('Z-X+', "Z- X+", ""),
-            ('Z+Y-', "Z+ Y-", ""),  ('Z-Y-', "Z- Y-", ""),
-            ('Z+Y+', "Z+ Y+", ""),  ('Z-Y+', "Z- Y+", "")
-        ],
-        default='Y+X-',
-        description="Order of axes for vanishing points", 
-        options=set(),
-        # update=on_prop_update
     ) # type: ignore
 
     first_axis: bpy.props.EnumProperty(
         name="First Axis",
         items=[
-            ('X', "X", "Positive X axis direction"),
-            ('Y', "Y", "Positive Y axis direction"),
-            ('Z', "Z", "Positive Z axis direction")
-            # ('X-', "X-", "Negative X axis direction"),
-            # ('Y-', "Y-", "Negative Y axis direction"),
-            # ('Z-', "Z-", "Negative Z axis direction")
+            ('X+', "X+", "Positive X axis direction"),
+            ('X-', "X-", "Negative X axis direction"),
+            ('Y+', "Y+", "Positive Y axis direction"),
+            ('Y-', "Y-", "Negative Y axis direction"),
+            ('Z+', "Z+", "Positive Z axis direction"),
+            ('Z-', "Z-", "Negative Z axis direction"),
         ],
-        default='Y',
+        default='Y+',
         description="First vanishing point axis orientation", 
-        options=set(),
-        update=trigger_autounsolve
-    ) # type: ignore
-
-    first_axis_sign: bpy.props.EnumProperty(
-        name="First Axis Sign",
-        items=[
-            ('POSITIVE', "+", "Positive direction"),
-            ('NEGATIVE', "-", "Negative direction")
-        ],
-        default='POSITIVE',
-        description="Sign of the first vanishing point axis orientation", 
         options=set(),
         update=trigger_autosolve
     ) # type: ignore
@@ -198,27 +161,15 @@ class VLProps(bpy.types.PropertyGroup):
     second_axis: bpy.props.EnumProperty(
         name="Second Axis",
         items=[
-            ('X', "X", "Positive X axis direction"),
-            ('Y', "Y", "Positive Y axis direction"),
-            ('Z', "Z", "Positive Z axis direction")
-            # ('X-', "X-", "Negative X axis direction"),
-            # ('Y-', "Y-", "Negative Y axis direction"),
-            # ('Z-', "Z-", "Negative Z axis direction")
+            ('X+', "X+", "Positive X axis direction"),
+            ('X-', "X-", "Negative X axis direction"),
+            ('Y+', "Y+", "Positive Y axis direction"),
+            ('Y-', "Y-", "Negative Y axis direction"),
+            ('Z+', "Z+", "Positive Z axis direction"),
+            ('Z-', "Z-", "Negative Z axis direction"),
         ],
-        default='X',
+        default='X-',
         description="Second vanishing point axis orientation", 
-        options=set(),
-        update=trigger_autounsolve
-    ) # type: ignore
-
-    second_axis_sign: bpy.props.EnumProperty(
-        name="Second Axis Sign",
-        items=[
-            ('POSITIVE', "+", "Positive direction"),
-            ('NEGATIVE', "-", "Negative direction")
-        ],
-        default='NEGATIVE',
-        description="Sign of the second vanishing point axis orientation",
         options=set(),
         update=trigger_autosolve
     ) # type: ignore
@@ -271,7 +222,6 @@ class VLProps(bpy.types.PropertyGroup):
     ) # type: ignore
 
 
-
 def ensure_vanishing_lines(vl:VLProps):
     """Ensure there is at least one line in each vanishing line collection."""
     if len(vl.y_vanishing_lines) == 0:
@@ -314,8 +264,8 @@ def solve(vl:VLProps):
 
         reference_axis = vl_utils.to_solver_reference_axis(vl.reference_scale_mode)
 
-        first_axis = vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign)
-        second_axis = vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
+        first_axis = vl_utils.to_solver_axis(vl.first_axis)
+        second_axis = vl_utils.to_solver_axis(vl.second_axis)
 
         first_prop, second_prop, third_prop = get_vanishing_line_prop_names_in_order(vl)
         second_vanishing_lines = [(line.start, line.end) for line in getattr(vl, second_prop)]
@@ -336,7 +286,7 @@ def solve(vl:VLProps):
         if vl.mode == 'ONE_POINT':
             ... # TODO: query the fov from the camera?
             
-        projection, view = solver.core.solve(
+        solve_result = solver.core.solve(
             mode = mode,
             viewport=compute_space,
             first_vanishing_lines= [(glm.vec2(*line.start), glm.vec2(*line.end)) for line in  getattr(vl, first_prop)],
@@ -349,7 +299,10 @@ def solve(vl:VLProps):
             anchor_world = glm.vec3(*vl.anchor_world),
 
             reference_axis=reference_axis, 
-            reference_screen_segment=(vl.reference_screen_segment[0], vl.reference_screen_segment[1]-vl.reference_screen_segment[0]), # TODO: make fist value configurable
+            reference_screen_measurement=solver.types.ScreenMeasurement(
+                offset=vl.reference_screen_measurement[0],
+                length=vl.reference_screen_measurement[1]
+            ),
             reference_world_size=vl.reference_scene_scale,
 
             first_axis=first_axis,
@@ -357,7 +310,7 @@ def solve(vl:VLProps):
         )
 
         if vl.mode in {'TWO_POINT', 'THREE_POINT'}:
-            _, f = solver.utils.decompose_intrinsics(compute_space, projection)
+            _, f = solver.utils.decompose_intrinsics(compute_space, solve_result.projection)
             vl.fovx = solver.utils.fov_from_focal_length(f, compute_space.width)
 
         if (vl.camera_object 
@@ -367,8 +320,8 @@ def solve(vl:VLProps):
         ):
             vl_utils.apply_solver_results_to_blender_camera(
                 camera_object=vl.camera_object,
-                projection=projection, #TODO: why do wee need to transpose here?
-                view=view,
+                projection=solve_result.projection, #TODO: why do wee need to transpose here?
+                view=solve_result.view,
                 compute_space=(-1,-1,2,2),
                 fit_mode=vl.camera_object.data.sensor_fit
             )
@@ -490,15 +443,19 @@ def unsolve(vl:VLProps):
     
     # -- unsolve --
     glm_proj, glm_view = vl_utils.get_camera_matrices(vl.camera_object, solver.types.Rect(-1,-1,2,2))
+    
     unsolve_results = solver.core.unsolve(
         viewport = solver.types.Rect(-1,-1,2,2),
         projection = glm_proj,
         view = glm_view,
         anchor_world = glm.vec3(vl.anchor_world[0], vl.anchor_world[1], vl.anchor_world[2]),
         reference_axis = vl_utils.to_solver_reference_axis(vl.reference_scale_mode),
-        reference_screen_segment = (vl.reference_screen_segment[0], vl.reference_screen_segment[1]),
-        first_axis = vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign),
-        second_axis = vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
+        reference_screen_measurement = solver.types.ScreenMeasurement(
+            offset=vl.reference_screen_measurement[0],
+            length=vl.reference_screen_measurement[1]
+        ),
+        first_axis = vl_utils.to_solver_axis(vl.first_axis),
+        second_axis = vl_utils.to_solver_axis(vl.second_axis)
     )
 
     # --align lines to vanishing points --
@@ -517,8 +474,8 @@ def unsolve(vl:VLProps):
             vanishing_lines[i].end =   new_lines[i][1]
 
     # -- Set axis signs --
-    vl.first_axis_sign =  'NEGATIVE' if unsolve_results.first_axis_flip else 'POSITIVE'
-    vl.second_axis_sign = 'NEGATIVE' if unsolve_results.second_axis_flip else 'POSITIVE'
+    vl.first_axis =  vl.first_axis[0] + ('-' if unsolve_results.first_axis_flip else '+')
+    vl.second_axis = vl.second_axis[0] + ('-' if unsolve_results.second_axis_flip else '+')
 
     # -- adjust ANCHOR SCREEN --
     vl.anchor_screen = unsolve_results.anchor_screen.x, unsolve_results.anchor_screen.y
@@ -539,9 +496,9 @@ def get_vanishing_line_prop_names_in_order(vl:VLProps)->Tuple[str, str, str]:
         'Y': 'y_vanishing_lines',
         'Z': 'z_vanishing_lines'
     }
-    third_axis = ({'X', 'Y', 'Z'} - {vl.first_axis, vl.second_axis}).pop()
+    third_axis = ({'X', 'Y', 'Z'} - {vl.first_axis[0], vl.second_axis[0]}).pop()
     
-    return axis_mapping[vl.first_axis], axis_mapping[vl.second_axis], axis_mapping[third_axis]
+    return axis_mapping[vl.first_axis[0]], axis_mapping[vl.second_axis[0]], axis_mapping[third_axis]
 
 ######################
 # REGISTER FUNCTIONS #

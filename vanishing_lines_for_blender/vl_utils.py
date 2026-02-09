@@ -528,39 +528,39 @@ def to_solver_mode(mode_str:str) -> 'solver.types.SolverMode':
         case _:
             raise ValueError(f"Unknown mode string: {mode_str}")
         
-def to_solver_axis(axis_str:str, axis_sign:str) -> 'solver.types.Axis':
-    """Convert VLProps axis string to solver axis enum."""
-    match axis_str, axis_sign:
-        case 'X', 'POSITIVE':
+def to_solver_axis(axis_str:str) -> 'solver.types.Axis':
+    """Convert VLProps axis string (e.g. 'X+', 'Y-') to solver axis enum."""
+    match axis_str:
+        case 'X+':
             return solver.types.Axis.PositiveX
-        case 'Y', 'POSITIVE':
+        case 'Y+':
             return solver.types.Axis.PositiveY
-        case 'Z', 'POSITIVE':
+        case 'Z+':
             return solver.types.Axis.PositiveZ
-        case 'X', 'NEGATIVE':
+        case 'X-':
             return solver.types.Axis.NegativeX
-        case 'Y', 'NEGATIVE':
+        case 'Y-':
             return solver.types.Axis.NegativeY
-        case 'Z', 'NEGATIVE':
+        case 'Z-':
             return solver.types.Axis.NegativeZ
         case _:
             raise ValueError(f"Unknown axis string: {axis_str}")
         
-def from_solver_axis(axis:'solver.types.Axis') -> Tuple[str, str]:
-    """Convert solver axis enum to VLProps axis string."""
+def from_solver_axis(axis:'solver.types.Axis') -> str:
+    """Convert solver axis enum to VLProps axis string (e.g. 'X+', 'Y-')."""
     match axis:
         case solver.types.Axis.PositiveX:
-            return 'X', 'POSITIVE'
+            return 'X+'
         case solver.types.Axis.PositiveY:
-            return 'Y', 'POSITIVE'
+            return 'Y+'
         case solver.types.Axis.PositiveZ:
-            return 'Z', 'POSITIVE'
+            return 'Z+'
         case solver.types.Axis.NegativeX:
-            return 'X', 'NEGATIVE'
+            return 'X-'
         case solver.types.Axis.NegativeY:
-            return 'Y', 'NEGATIVE'
+            return 'Y-'
         case solver.types.Axis.NegativeZ:
-            return 'Z', 'NEGATIVE'
+            return 'Z-'
         case _:
             raise ValueError(f"Unknown solver axis: {axis}")
 

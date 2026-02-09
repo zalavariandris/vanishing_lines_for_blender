@@ -109,13 +109,8 @@ class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
         # layout.label(text="Axes", icon='EMPTY_DATA')
         layout.label(text="Axes", icon='EMPTY_AXIS')
         # layout.label(text="Axes", icon='EMPTY_ARROWS')
-        first_axis_row = layout.row()
-        first_axis_row.prop(vl, 'first_axis')
-        first_axis_row.prop(vl, 'first_axis_sign', text="")
-
-        second_axis_row = layout.row()
-        second_axis_row.prop(vl, 'second_axis')
-        second_axis_row.prop(vl, 'second_axis_sign', text="")
+        layout.prop(vl, 'first_axis')
+        layout.prop(vl, 'second_axis')
         layout.separator()
         layout.label(text="Size", icon='DRIVER_DISTANCE')
 
@@ -124,8 +119,8 @@ class VIEW_PT_VanishingLinesPanel(bpy.types.Panel):
         layout.prop(vl, 'reference_scene_scale')
         col = layout.column()
         col.enabled = vl.reference_scale_mode != 'ORIGIN'
-        col.prop(vl, 'reference_screen_segment', index=0)
-        col.prop(vl, 'reference_screen_segment', index=1)
+        col.prop(vl, 'reference_screen_measurement', index=0)
+        col.prop(vl, 'reference_screen_measurement', index=1)
 
 def register():
     bpy.utils.register_class(AXIS_MT_custom_menu)

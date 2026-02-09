@@ -30,12 +30,16 @@ def create_roll_matrix(
         view_matrix:glm.mat4,
         projection_matrix:glm.mat4,
         viewport: Rect,
-        first_axis: Axis=Axis.PositiveX, # TODO: are these needed?
+        first_axis: Axis=Axis.PositiveX,
         second_axis: Axis=Axis.PositiveY
 )->glm.mat4:
     """
     Apply a roll correction matrix to the viewmatrix
     to align the horizon based on the second vanishing lines.
+
+    Note: first_axis/second_axis default to canonical space axes (PositiveX/PositiveY).
+    The roll is computed in canonical space; user axis assignment is applied
+    separately by adjust_axis_assignment() afterward.
     """
     # Project the second vanishing line the forward plane in 3D world space
     A, B = glm.vec2(*second_vanishing_line[0]), glm.vec2(*second_vanishing_line[1])
@@ -65,14 +69,8 @@ def create_roll_matrix(
     y_on_plane = glm.dot(v_proj, plane_x_axis)
     angle = math.atan2(y_on_plane, x_on_plane)
     
-    # Normalize angle to (-π/2, π/2), so horizon is not upside down
-    if angle > math.pi / 2:
-        angle -= math.pi
-    elif angle < -math.pi / 2:
-        angle += math.pi
-    
     roll_axis = plane_normal # plane normal
-    roll_matrix: glm.mat4 = glm.rotate(glm.mat4(1.0), angle, roll_axis)  # type: ignore[attr-defined]
+    roll_matrix: glm.mat4 = glm.rotate(glm.mat4(1.0), angle+math.radians(180), roll_axis)  # type: ignore[attr-defined]
     return roll_matrix
 
 @deprecated
@@ -190,11 +188,12 @@ def vector_from_axis(axis: Axis)->glm.vec3:
             return glm.vec3(0, 0, 1)
         
 def axis_positive_vector(axis: Axis)->glm.vec3:
+    """Return the positive unit vector for the given axis, ignoring sign."""
     match axis:
         case Axis.PositiveX | Axis.NegativeX:
             return glm.vec3(1, 0, 0)
         case Axis.PositiveY | Axis.NegativeY:
-            return glm.vec3(0, -1, 0)
+            return glm.vec3(0, 1, 0)
         case Axis.PositiveZ | Axis.NegativeZ:
             return glm.vec3(0, 0, 1)
         

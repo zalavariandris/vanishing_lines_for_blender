@@ -1,5 +1,5 @@
 from enum import IntEnum
-from typing import Tuple
+from typing import NamedTuple, Tuple
 from dataclasses import dataclass
 import glm
 #########
@@ -38,6 +38,15 @@ class SolverMode(IntEnum):
     OneVP =   0
     TwoVP =   1
     ThreeVP = 2
+
+class ScreenMeasurement(NamedTuple):
+    """A measurement along a screen direction, relative to the anchor point projection.
+    
+    offset: distance from the anchor projection along the reference direction to the start of the measurement.
+    length: length of the measurement segment along the reference direction.
+    """
+    offset: float
+    length: float
 
 @dataclass
 class Rect:

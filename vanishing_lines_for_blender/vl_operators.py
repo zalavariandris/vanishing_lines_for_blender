@@ -75,11 +75,7 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
         layout.label(text="Axes", icon='EMPTY_AXIS')
         # layout.label(text="Axes", icon='EMPTY_ARROWS')
         layout.prop_menu_enum(vl, 'first_axis')
-        
-        layout.prop_menu_enum(vl, 'first_axis_sign')
-
         layout.prop_menu_enum(vl, 'second_axis')
-        layout.prop_menu_enum(vl, 'second_axis_sign')
         layout.separator()
         layout.label(text="Size", icon='DRIVER_DISTANCE')
 
@@ -88,8 +84,8 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
         layout.prop(vl, 'reference_scene_scale')
         col = layout.column()
         col.enabled = vl.reference_scale_mode != 'ORIGIN'
-        col.prop(vl, 'reference_screen_segment', index=0)
-        col.prop(vl, 'reference_screen_segment', index=1)
+        col.prop(vl, 'reference_screen_measurement', index=0)
+        col.prop(vl, 'reference_screen_measurement', index=1)
 
 
 class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
@@ -184,6 +180,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         print("auto solve ON")
         vl.auto_solve = True
 
+        # Push initial undo step so Ctrl+Z can restore the pre-operator camera state
+        bpy.ops.ed.undo_push(message="Vanishing Lines Start")
+
         ##################################
         # Initialize UIView3D for drawing and interaction in the viewport
         #################################
@@ -214,8 +213,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         wm = context.window_manager
         
         subscribe_to = [
-            "first_axis", "first_axis_sign",
-            "second_axis", "second_axis_sign",
+            "first_axis",
+            "second_axis",
             "mode", "quad_mode",
         ]
 
@@ -236,7 +235,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
         if event.type in {'ESC'}:
             self._context_area.tag_redraw()
-            self.cleanup(context)
+            self.cancel(context)
             return {'CANCELLED'}
         
         if event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
@@ -300,12 +299,38 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
         # capture ui controls events
         changed = self.uiview.event(context, event)
         self.view3d_gui_loop(context)
+
+        # Push undo step after a completed drag interaction
+        if self.uiview._drag_completed:
+            self.uiview._drag_completed = False
+            bpy.ops.ed.undo_push(message="Vanishing Lines")
+
+        # Handle undo/redo: re-sync VL props to the (restored) camera state
+        if event.type == 'Z' and event.value == 'PRESS' and event.ctrl:
+            # Let Blender process the undo/redo first, then re-sync
+            def _resync_after_undo():
+                try:
+                    vl = vl_props.get_current(context)
+                    if vl.camera_object:
+                        vl.auto_solve = False
+                        vl.fovx = vl.camera_object.data.angle_x
+                        vl_props.unsolve(vl)
+                        vl.auto_solve = True
+                        self.view3d_gui_loop(context)
+                        self._context_area.tag_redraw()
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+                return None  # unregister timer
+            bpy.app.timers.register(_resync_after_undo, first_interval=0.05)
+            return {'PASS_THROUGH'}  # let Blender handle the undo event
         
         if event.type == 'MIDDLEMOUSE':
             if event.value == 'PRESS':
                 self._middle_mouse_pressed = True
             elif event.value == 'RELEASE':
                 self._middle_mouse_pressed = False
+                bpy.ops.ed.undo_push(message="Vanishing Lines")
         
         # --- MOUSE INPUT ---
         match event.type:
@@ -317,7 +342,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 distance_scale = math.log2(distance + 1.0)
                 zoom_factor = math.pow(base_zoom, wheel_direction * distance_scale)
                 vl.reference_scene_scale *= zoom_factor
-                
+                bpy.ops.ed.undo_push(message="Vanishing Lines")
                 return {'RUNNING_MODAL'}
             
             case 'MOUSEMOVE' if self._middle_mouse_pressed and event.ctrl:
@@ -417,8 +442,8 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 case solver.types.Axis.PositiveZ | solver.types.Axis.NegativeZ:
                     return BLUE
         
-        first_axis =  vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign)
-        second_axis = vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
+        first_axis =  vl_utils.to_solver_axis(vl.first_axis)
+        second_axis = vl_utils.to_solver_axis(vl.second_axis)
         third_axis =  solver.helpers.third_axis(first_axis, second_axis) # find third axis based on the first two
 
         # create line midpoint handlers
@@ -515,7 +540,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
 
         if vl.mode in {'THREE_POINT'}:
             vp3 = solver.core.compute_vanishing_point([((line.start[0], line.start[1]), (line.end[0], line.end[1])) for line in getattr(vl, third_prop)])
-            vl_third_axis, vl_third_axis_sign = vl_utils.from_solver_axis(third_axis)
+            vl_third_axis = vl_utils.from_solver_axis(third_axis)
             for idx, line in enumerate(getattr(vl, third_prop)):
                 self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(third_axis))
                 self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(third_axis))
@@ -557,7 +582,7 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 case 'INCHES':
                     length_unit = "in"
                 
-            self.uiview.prop_distance_segment(vl, "reference_screen_segment", 
+            self.uiview.prop_distance_segment(vl, "reference_screen_measurement", 
                 origin=vl.anchor_screen,
                 direction=get_distance_measurement_direction(),
                 text=f"{vl.reference_scene_scale:.2f}{length_unit}",
@@ -706,13 +731,13 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
     def cancel(self, context):
         print("Cancel Vanishing Lines Orientation Operator")
         # Restore previous camera state
-        # if context.area.spaces.active.camera and self._initial_camera_matrix is not None:
-        #     camera_object = context.area.spaces.active.camera
+        if context.area and context.area.spaces.active.camera and self._initial_camera_matrix is not None:
+            camera_object = context.area.spaces.active.camera
 
-        #     camera_object.matrix_world = self._initial_camera_matrix
-        #     camera_object.data.lens = self._initial_camera_lens
-        #     camera_object.data.shift_x = self._initial_camera_shift_x
-        #     camera_object.data.shift_y = self._initial_camera_shift_y
+            camera_object.matrix_world = self._initial_camera_matrix
+            camera_object.data.lens = self._initial_camera_lens
+            camera_object.data.shift_x = self._initial_camera_shift_x
+            camera_object.data.shift_y = self._initial_camera_shift_y
         
         self.cleanup(context)
         

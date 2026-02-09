@@ -173,6 +173,7 @@ class View3dGUI:
         # mouse dragging
         self._is_left_mouse_down = False
         self._active_down_pos: Tuple[float, float] = (0.0, 0.0)
+        self._drag_completed = False  # set True when a drag finishes (mouse release after active drag)
 
         # coordinate system
         self._view: glm.mat4 = glm.mat4(1.0)
@@ -183,6 +184,7 @@ class View3dGUI:
         # self.uiview.update_viewport_state(context)
         self._painter.clear()
         self._widgets.clear()
+        self._drag_completed = False
 
     def end(self):
         pass
@@ -328,6 +330,7 @@ class View3dGUI:
             self._is_left_mouse_down = False
             """Mouse Release Event"""
             if self._active_id is not None:
+                self._drag_completed = True
                 self._active_id = None
 
                 # trigger redraw
@@ -429,14 +432,20 @@ class View3dGUI:
             P = glm.vec2(P[0], P[1])
             O = glm.vec2(origin[0], origin[1])
             dir = glm.normalize(glm.vec2(direction[0], direction[1]))
-            end_distance = glm.dot(P - O, dir)
-            segment = list([_ for _ in getattr(data, prop)])
-            segment[index] = end_distance
-            setattr(data, prop, segment)
+            distance = glm.dot(P - O, dir)
+            measurement = list([_ for _ in getattr(data, prop)])
+            if index == 0:
+                measurement[0] = distance
+            else:
+                measurement[1] = distance - measurement[0]
+            setattr(data, prop, measurement)
 
         def getter(data:'bpy.types.ID', prop:str, index:int) -> Tuple[float, float]:
-            segment = getattr(data, prop)
-            end_distance = segment[index]
+            measurement = getattr(data, prop)
+            if index == 0:
+                end_distance = measurement[0]
+            else:
+                end_distance = measurement[0] + measurement[1]
 
             # set direction magnitude
             dx, dy = direction
