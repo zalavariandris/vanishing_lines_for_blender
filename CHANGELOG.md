@@ -29,7 +29,9 @@
 # TODO:
 - [X] ADD adjusting scene scale with scrollwheel
 - [X] Add scene scale to the context menu
-- [ ] TEST unsolve.
+- [ ] TEST unsolve. 
+- [ ] TEST on vp unsolve
+- [ ] test one vp second axis respects the second axis sign.
 - [ ] ~~let appropriate events PASS THROUGH~~
 - [ ] ~~add plane switches~~ -> NEXT VERSION?
 - [ ] on invoke, if camera has tilt shift, use 3 point vanishing mode, othervise 2 point vanishing mode
