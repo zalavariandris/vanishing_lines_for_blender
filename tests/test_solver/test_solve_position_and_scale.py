@@ -21,7 +21,7 @@ def test_position_by_origin():
     adjusted_view = solver.core.adjust_position_to_origin(
         viewport=solver.types.Rect(-1,-1,2,2),
         projection=projection,
-        O=O,
+        origin_screen==O,
         view=view,
         distance=CAMERA_DISTANCE
     )

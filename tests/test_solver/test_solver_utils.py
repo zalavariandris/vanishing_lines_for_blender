@@ -87,4 +87,4 @@ def test_euler_extraction(order):
 
     euler = extract_euler(mat) # return angles expected in specified order
     expected_angles = tuple(angles[axis] for axis in order) #
-    assert euler == pytest.approx(expected_angles)
+    assert tuple(euler) == pytest.approx(tuple(expected_angles)), f"Euler angles extracted {euler} do not match expected {expected_angles} for order {order}"
