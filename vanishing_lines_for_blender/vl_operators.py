@@ -509,7 +509,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             for idx, line in enumerate(getattr(vl, first_prop)):
                 self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(first_axis))
                 self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(first_axis))
-                self.uiview.prop_point(vl, first_prop, text=f"{vl.first_axis}", index=idx, color=get_axis_color(first_axis), set_transform=set_vl_transform(vp1), get_transform=get_midpoint_transform)
+                self.uiview.prop_point(vl, first_prop, text=f"{vl.first_axis}", index=idx, color=get_axis_color(first_axis), 
+                                       set_transform=set_vl_transform(vp1), 
+                                       get_transform=get_midpoint_transform)
                 self.uiview._painter.add_line(line.start, line.end, get_axis_color(first_axis))
 
         if vl.mode in {'ONE_POINT'}:
@@ -517,7 +519,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             line = getattr(vl, second_prop)[0]
             self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(second_axis))
             self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(second_axis))
-            self.uiview.prop_point(vl, second_prop, text=f"{vl.second_axis}", index=0, color=get_axis_color(second_axis), set_transform=set_midpoint_transform, get_transform=get_midpoint_transform)
+            self.uiview.prop_point(vl, second_prop, text=f"{vl.second_axis}", index=0, color=get_axis_color(second_axis), 
+                                   set_transform=set_midpoint_transform, 
+                                   get_transform=get_midpoint_transform)
             self.uiview._painter.add_line(line.start, line.end, get_axis_color(second_axis))
 
         if vl.mode in {'TWO_POINT', 'THREE_POINT'}:
@@ -535,7 +539,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
                 for idx, line in enumerate(getattr(vl, second_prop)):
                     self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(second_axis))
                     self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(second_axis))
-                    self.uiview.prop_point(vl, second_prop, text=f"{vl.second_axis}", index=idx, color=get_axis_color(second_axis), set_transform=set_vl_transform(vp2), get_transform=get_midpoint_transform)
+                    self.uiview.prop_point(vl, second_prop, text=f"{vl.second_axis}", index=idx, color=get_axis_color(second_axis), 
+                                           set_transform=set_vl_transform(vp2), 
+                                           get_transform=get_midpoint_transform)
                     self.uiview._painter.add_line(line.start, line.end, get_axis_color(second_axis))
 
         if vl.mode in {'THREE_POINT'}:
@@ -544,7 +550,9 @@ class VIEW3D_OT_vl_solve_orientation(bpy.types.Operator):
             for idx, line in enumerate(getattr(vl, third_prop)):
                 self.uiview.prop_point(line, 'start', text=" ", color=get_axis_color(third_axis))
                 self.uiview.prop_point(line, 'end', text=" ", color=get_axis_color(third_axis))
-                self.uiview.prop_point(vl, third_prop, text=f"{vl_third_axis}", index=idx, color=get_axis_color(third_axis), set_transform=set_vl_transform(vp3), get_transform=get_midpoint_transform)
+                self.uiview.prop_point(vl, third_prop, text=f"{vl_third_axis}", index=idx, color=get_axis_color(third_axis), 
+                                       set_transform=set_vl_transform(vp3), 
+                                       get_transform=get_midpoint_transform)
                 self.uiview._painter.add_line(line.start, line.end, get_axis_color(third_axis))
 
         ###############################
