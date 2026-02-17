@@ -18,8 +18,8 @@ from vanishing_lines_for_blender import solver
 ##############################
 
 def test_focal_length_from_two_vp():
-    vp1 = (-368, 731)
-    vp2 = (1229, 613)
+    vp1 = glm.vec2(-368, 731)
+    vp2 = glm.vec2(1229, 613)
 
     f = solver.helpers.calc_focal_length_from_vanishing_points(
         Fu=vp1,

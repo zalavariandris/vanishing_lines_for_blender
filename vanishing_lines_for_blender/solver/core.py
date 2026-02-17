@@ -101,7 +101,7 @@ def solve(
 
     # validate if matrix is a purely rotational matrix
     if utils.validate_orthogonality(glm.mat3(view)) is False:
-        view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
+        # view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
         warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
 
     view = adjust_position_to_origin(
@@ -320,12 +320,18 @@ def orientation_from_one_vanishing_point(
     projection = utils.compose_intrinsics(viewport, f, P, DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE)
 
     # compute orientation
-    view:glm.mat4x4 = glm.mat4(_impl_compute_orientation_from_single_vanishing_point(
-        Fu=vp1,
-        P=P,
-        f=f,
-        horizon_direction=glm.vec2(1,0)
-    ))
+
+    Fu = glm.vec2(*vp1)
+    horizon_direction = glm.vec2(1,0)
+    # Direction from principal point to vanishing point
+    v1_vector = Fu - P
+    forward = glm.normalize( glm.vec3(v1_vector.x, v1_vector.y, -f))
+    up =      glm.normalize( glm.cross(glm.vec3(horizon_direction.x, horizon_direction.y, 0), forward))
+    right =   glm.normalize( glm.cross(up, forward))
+
+    #
+    orientation = glm.mat3(forward, right, up)
+    view:glm.mat4x4 = glm.mat4(orientation)
 
     # validate if matrix is a purely rotational matrix
     if utils.validate_orthogonality(glm.mat3(view)) is False:
@@ -360,18 +366,27 @@ def orientation_from_two_vanishing_points(
     projection = utils.compose_intrinsics(viewport, f, P, DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE)
 
     # compute orientation
-    view:glm.mat4 = glm.mat4(_impl_compute_orientation_from_two_vanishing_points(
-        Fu=vp1,
-        Fv=vp2,
-        P=P,
-        f=f
-    ))
+    Fu = glm.vec2(*vp1)
+    Fv = glm.vec2(*vp2)
+
+    vp1_vector = Fu - P
+    vp2_vector = Fv - P
+
+    forward = glm.normalize(glm.vec3(vp1_vector.x, vp1_vector.y, -f))
+    right =   glm.normalize(glm.vec3(vp2_vector.x, vp2_vector.y, -f))
+    if right.x < 0: # ensure right vector points to the right half of the image, to avoid 180 degree roll ambiguity
+        right = -right
+    
+    up = glm.cross(forward, right)
+
+    orientation = glm.mat3(forward, right, up)
+    view = glm.mat4(orientation)
         
     # validate if matrix is a purely rotational matrix
     if utils.validate_orthogonality(glm.mat3(view)) is False:
         raise VanishingLinesError("Invalid vanishing point configuration: computed view orientation matrix is not orthogonal.")
         view = glm.mat4(utils.apply_gram_schmidt_orthogonalization(glm.mat3(view))) # note this will remove scaling and translation
-        # warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
+        warnings.warn('Warning: Invalid vanishing point configuration.\n'+"View orientation matrix was not orthogonal, applied Gram-Schmidt orthogonalization")
     
 
     return projection, view
@@ -388,20 +403,27 @@ def orientation_from_three_vanishing_points(
     vp2 = glm.vec2(*vp2)
     vp3 = glm.vec2(*vp3)
 
-    P = utils.triangle_orthocenter(vp1, vp2, vp3)
+    P:glm.vec2 = utils.triangle_orthocenter(vp1, vp2, vp3)
     f = helpers.calc_focal_length_from_vanishing_points(Fu=vp1,Fv=vp2,P=P)
 
     # compute projection
     projection = utils.compose_intrinsics(viewport, f, P, DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE)
 
     # compute orientation
-    view:glm.mat4 = glm.mat4(_impl_compute_orientation_from_two_vanishing_points(
-        Fu=vp1,
-        Fv=vp2,
-        P=P,
-        f=f
-    ))
+    Fu = glm.vec2(*vp1)
+    Fv = glm.vec2(*vp2)
 
+    vp1_vector = Fu - P
+    vp2_vector = Fv - P
+    vp2_vector = vp2_vector if vp2_vector.x>0 else -vp2_vector # ensure right vector points to the right half of the image, to avoid 180 degree roll ambiguity
+
+
+    forward = glm.normalize(glm.vec3(vp1_vector.x, vp1_vector.y, -f))
+    right =   glm.normalize(glm.vec3(vp2_vector.x, vp2_vector.y, -f))
+    up =      glm.cross(forward, right)
+
+    orientation = glm.mat3(forward, right, up)
+    view = glm.mat4(orientation)
         
     # validate if matrix is a purely rotational matrix
     if utils.validate_orthogonality(glm.mat3(view)) is False:

@@ -66,21 +66,33 @@ def create_roll_matrix(
     v = B_on_plane - A_on_plane # vector along the line on the plane
     v_proj = v - glm.dot(v, plane_normal) * plane_normal # project vector onto plane
 
-    # --- Compute angle using atan2, normalized to (-π/2, π/2) range ---
-    x_on_plane = glm.dot(v_proj, plane_y_axis)  
-    y_on_plane = glm.dot(v_proj, plane_x_axis)
-    angle = math.atan2(y_on_plane, x_on_plane)
-    
-    # respect the second axis sign
-    # - note: to determinte the sign, we need to check the angle of the line to the first axis in screen space
-    O_screen =   glm.project(plane_origin, view_matrix, projection_matrix, glm.vec4(*viewport)).xy
-    vp1_screen = glm.project(plane_origin + plane_normal, view_matrix, projection_matrix, glm.vec4(*viewport)).xy
-    vp1_dir_screen = glm.normalize(vp1_screen - O_screen)
-    
-    line_dir_screen = glm.normalize(B - A)
-    dot = glm.dot(vp1_dir_screen, line_dir_screen)
-    if dot> 0: # if the line is more aligned with the negative direction of the first axis, we consider it as a negative second axis
-        angle = angle + math.pi
+    flip_to_secondary_axis = False
+    if flip_to_secondary_axis:
+        # Note: this is an old code, that was matching the 2vp solver.
+        #       previously, the vp2 solver axes signs were pointing to the vanishing point. 
+        #       now, only the primary points to the sign, the secondary axes always points to the right. 
+        #       It feels more predictabble, because it wont flip.
+        x_on_plane = glm.dot(v_proj, plane_y_axis)  
+        y_on_plane = glm.dot(v_proj, plane_x_axis)
+        angle = math.atan2(y_on_plane, x_on_plane) # Compute angle using atan2, normalized to (-π/2, π/2) range ---
+
+        # respect the second axis sign
+        # - note: to determinte the sign, we need to check the angle of the line to the first axis in screen space
+        O_screen =   glm.project(plane_origin, view_matrix, projection_matrix, glm.vec4(*viewport)).xy
+        vp1_screen = glm.project(plane_origin + plane_normal, view_matrix, projection_matrix, glm.vec4(*viewport)).xy
+        vp1_dir_screen = glm.normalize(vp1_screen - O_screen)
+        
+        # flip the angle to match vp2 orientation
+        line_dir_screen = glm.normalize(B - A)
+        dot = glm.dot(vp1_dir_screen, line_dir_screen)
+        if dot> 0: # if the line is more aligned with the negative direction of the first axis, we consider it as a negative second axis
+            angle = angle + math.pi
+    else:
+        x_on_plane = glm.dot(v_proj, plane_y_axis)  
+        y_on_plane = glm.dot(v_proj, plane_x_axis)
+        angle = math.atan(y_on_plane/x_on_plane) # Compute angle using atan2, normalized to (-π/2, π/2) range ---
+
+
     
     roll_axis = plane_normal # plane normal
     roll_matrix: glm.mat4 = glm.rotate(glm.mat4(1.0), angle, roll_axis)  # type: ignore[attr-defined]
@@ -117,17 +129,15 @@ def calc_second_vanishing_point_from_focal_length(
     return Fv
 
 def calc_focal_length_from_vanishing_points(
-        Fu:Tuple[float, float], # first vanishing point
-        Fv:Tuple[float, float], # second vanishing point
-        P: Tuple[float, float]   # principal point
+        Fu:glm.vec2, # first vanishing point
+        Fv:glm.vec2, # second vanishing point
+        P: glm.vec2   # principal point
     )-> float:
     """
     Computes the focal length from two orthogonal vanishing points using the cross-ratio formula.
     Enhanced with numerical stability improvements for distant vanishing points.
     """
-    Fu = glm.vec2(*Fu)
-    Fv = glm.vec2(*Fv)
-    P = glm.vec2(*P)
+
     
     # Check for degenerate cases
     Fu_Fv_distance = glm.distance(Fu, Fv)
