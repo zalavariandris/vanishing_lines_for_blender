@@ -46,7 +46,7 @@ if __name__ == "__main__":
     project_root = Path(__file__).parent.parent
     sys.path.insert(0, str(project_root / "vanishing_lines_for_blender"))
 
-from vanishing_lines_for_blender import vl_coord_utils
+from vanishing_lines_for_blender import vl_utils
 
 wide_output = (1920, 1080)
 tall_output = (1080, 1920)
@@ -86,7 +86,7 @@ compute_combinations = [
   ['VERTICAL',   tall_region, tall_output, tall_sensor, (-0.3, 1.5), (711.1875956135596, 1692.8479145924057)]
 ]
 
-from vanishing_lines_for_blender import view3d_ui
+from vanishing_lines_for_blender import view3d_gui
 from conftest import MockContext
 
 @pytest.mark.parametrize("fit_mode, region_size, output_size, sensor_size, compute_coords, region_coords",
@@ -102,7 +102,7 @@ def test_project_compute_to_region(
     # Create mock context
     context = MockContext(region_size, output_size, fit_mode)
     
-    uiview = view3d_ui.View3DUI()
+    uiview = view3d_gui.View3dGUI()
     uiview.set_coordinate_system_to_camera_frame(context)
 
     result = uiview.project(compute_coords)

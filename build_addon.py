@@ -17,14 +17,15 @@ DIST_DIR = "dist"
 SOURCE = [
     "blender_manifest.toml",
     "__init__.py",
-    "overlay_painter.py",
-    "view3d_ui.py",
-    "vl_params.py",
+    "view3d_painter.py",
+    "view3d_gui.py",
+    "vl_props.py",
     "vl_utils.py",
-    "vl_coord_utils.py",
-    "vanishing_lines_tool.py",
+    "vl_operators.py",
+    "vl_sidepanel.py",
     "solver/**/*"
 ]
+
 
 PACKAGES = [
     "pyglm"
@@ -87,7 +88,7 @@ if __name__ == "__main__":
 
     # Create zip file directly from source
     Path(DIST_DIR).mkdir(exist_ok=True)
-    zip_filename = Path(DIST_DIR) / f"{ADDON_NAME}-v{version}-beta.zip"
+    zip_filename = Path(DIST_DIR) / f"{ADDON_NAME}-v{version}.zip"
     with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for file_path in Path(BUILD_DIR).rglob('*'):
             if file_path.is_file():

@@ -1,11 +1,13 @@
-from . import vl_params
-from . import vanishing_lines_tool
-
+from . import vl_props
+from . import vl_operators
+from . import vl_sidepanel
 
 def register():
-    vl_params.register()
-    vanishing_lines_tool.register()
+    vl_props.register()
+    vl_operators.register()
+    vl_sidepanel.register()
 
 def unregister():
-    vanishing_lines_tool.unregister()
-    vl_params.unregister()
+    vl_sidepanel.unregister()
+    vl_operators.unregister()
+    vl_props.unregister()

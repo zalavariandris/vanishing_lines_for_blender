@@ -2,30 +2,50 @@ from typing import Tuple, Literal, List
 import math
 from . import utils
 from . types import Axis, Rect
-from pyglm import glm
+import glm
+
+from . types import Line2
 import warnings
 from . constants import EPSILON, MAX_VANISHING_POINT_DISTANCE
 
-from . types import Point2
 from . exceptions import VanishingLinesError
 
-def compute_roll_matrix(
-        second_vanishing_line:Tuple[Point2, Point2],
+import warnings
+import functools
+
+def deprecated(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):   
+        print(f"Deprecated: '{func.__name__}' is deprecated and will be removed in future versions.")
+        result = func(*args, **kwargs)
+        return result
+    return wrapper
+
+#################
+# Solve Helpers #
+#################
+
+def create_roll_matrix(
+        second_vanishing_line:Line2,
         view_matrix:glm.mat4,
         projection_matrix:glm.mat4,
         viewport: Rect,
-        first_axis: Axis=Axis.PositiveX, # TODO: are these needed?
+        first_axis: Axis=Axis.PositiveX,
         second_axis: Axis=Axis.PositiveY
 )->glm.mat4:
     """
     Apply a roll correction matrix to the viewmatrix
     to align the horizon based on the second vanishing lines.
+
+    Note: first_axis/second_axis default to canonical space axes (PositiveX/PositiveY).
+    The roll is computed in canonical space; user axis assignment is applied
+    separately by adjust_axis_assignment() afterward.
+    
     """
-
-    # Project the second vanishing line the forward plane in 3D world space
+    # Get the second vanishing line in screen space
     A, B = glm.vec2(*second_vanishing_line[0]), glm.vec2(*second_vanishing_line[1])
-
-    # Unproject pixel coordinates to world space rays 
+    
+    # Now unproject to 3D to compute the roll angle
     A_ray = utils.cast_ray(A, view_matrix, projection_matrix, glm.vec4(*viewport))
     B_ray = utils.cast_ray(B, view_matrix, projection_matrix, glm.vec4(*viewport))
 
@@ -35,6 +55,7 @@ def compute_roll_matrix(
 
     plane_origin = view_origin + forward * 0.01 # glm.vec3(0, 0, 0) TODO: the computation is dependent on the plane position. Consider removing this dependency from the algorithm.
     plane_normal = axis_positive_vector(first_axis)
+    
     plane_y_axis = glm.cross(plane_normal, third_axis_vector(first_axis, second_axis)) # along the line
     plane_x_axis = glm.cross(plane_normal, plane_y_axis)  # perpendicular in the plane
 
@@ -46,20 +67,26 @@ def compute_roll_matrix(
     v_proj = v - glm.dot(v, plane_normal) * plane_normal # project vector onto plane
 
     # --- Compute angle using atan2, normalized to (-π/2, π/2) range ---
-    x_on_plane = glm.dot(v_proj, plane_y_axis)
+    x_on_plane = glm.dot(v_proj, plane_y_axis)  
     y_on_plane = glm.dot(v_proj, plane_x_axis)
     angle = math.atan2(y_on_plane, x_on_plane)
     
-    # Normalize angle to (-π/2, π/2), so horizon is not upside down
-    if angle > math.pi / 2:
-        angle -= math.pi
-    elif angle < -math.pi / 2:
-        angle += math.pi
+    # respect the second axis sign
+    # - note: to determinte the sign, we need to check the angle of the line to the first axis in screen space
+    O_screen =   glm.project(plane_origin, view_matrix, projection_matrix, glm.vec4(*viewport)).xy
+    vp1_screen = glm.project(plane_origin + plane_normal, view_matrix, projection_matrix, glm.vec4(*viewport)).xy
+    vp1_dir_screen = glm.normalize(vp1_screen - O_screen)
+    
+    line_dir_screen = glm.normalize(B - A)
+    dot = glm.dot(vp1_dir_screen, line_dir_screen)
+    if dot> 0: # if the line is more aligned with the negative direction of the first axis, we consider it as a negative second axis
+        angle = angle + math.pi
     
     roll_axis = plane_normal # plane normal
     roll_matrix: glm.mat4 = glm.rotate(glm.mat4(1.0), angle, roll_axis)  # type: ignore[attr-defined]
     return roll_matrix
 
+@deprecated
 def calc_second_vanishing_point_from_focal_length(
         Fu: glm.vec2, 
         f: float, 
@@ -89,7 +116,7 @@ def calc_second_vanishing_point_from_focal_length(
 
     return Fv
 
-def compute_focal_length_from_vanishing_points(
+def calc_focal_length_from_vanishing_points(
         Fu:Tuple[float, float], # first vanishing point
         Fv:Tuple[float, float], # second vanishing point
         P: Tuple[float, float]   # principal point
@@ -153,6 +180,11 @@ def compute_focal_length_from_vanishing_points(
     focal_length = math.sqrt(focal_length_squared)
     return focal_length
 
+
+################
+# AXIS helpers #
+################
+
 def vector_from_axis(axis: Axis)->glm.vec3:
     match axis:
         case Axis.NegativeX:
@@ -169,11 +201,12 @@ def vector_from_axis(axis: Axis)->glm.vec3:
             return glm.vec3(0, 0, 1)
         
 def axis_positive_vector(axis: Axis)->glm.vec3:
+    """Return the positive unit vector for the given axis, ignoring sign."""
     match axis:
         case Axis.PositiveX | Axis.NegativeX:
             return glm.vec3(1, 0, 0)
         case Axis.PositiveY | Axis.NegativeY:
-            return glm.vec3(0, -1, 0)
+            return glm.vec3(0, 1, 0)
         case Axis.PositiveZ | Axis.NegativeZ:
             return glm.vec3(0, 0, 1)
         
@@ -226,6 +259,12 @@ def primary_axis_from_vector(vector: glm.vec3) -> Axis:
     
     return lookup[major_axis_index][0 if is_positive else 1]
 
+
+##########################
+# Vanishing Line helpers #
+##########################
+
+@deprecated
 def adjust_vanishing_lines(
         old_vp:glm.vec2, 
         new_vp:glm.vec2, 
@@ -273,6 +312,7 @@ def adjust_vanishing_lines(
                 new_vanishing_lines[i] = (P, new_moving_point)
     return new_vanishing_lines
 
+@deprecated
 def adjust_vanishing_lines_by_rotation(
         old_vp: glm.vec2, 
         new_vp: glm.vec2, 
@@ -305,6 +345,7 @@ def adjust_vanishing_lines_by_rotation(
     
     return new_vanishing_lines
 
+@deprecated
 def vanishing_points_from_camera(projection: glm.mat4, view: glm.mat4) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
     """Extract vanishing points from camera projection and view matrices.
     

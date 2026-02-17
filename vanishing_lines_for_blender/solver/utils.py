@@ -1,18 +1,25 @@
-from typing import Tuple, List
+from typing import Literal, Tuple, List, cast
 
-from pyglm import glm
+import glm
 import math
 import warnings
 
 from . constants import EPSILON
-from . types import Point2, Line2, Ray3, Line3, Rect
+from . types import Line2, Ray3, Line3, Rect, Axis
+
+
+import functools
+import inspect
+import warnings
+
+string_types = (type(b''), type(u''))
 
 
 ############################
 # 2D-3D GEOMETRY FUNCTIONS #
 ############################
 
-def dot2d(u: Point2, v: Point2) -> float:
+def dot2d(u: glm.vec2, v: glm.vec2) -> float:
     Ux, Uy = u
     Vx, Vy = v
     return Ux * Vx + Uy * Vy
@@ -46,7 +53,12 @@ def rotate_point_around_center(point: glm.vec2, center: glm.vec2, rotation_angle
     # Translate back
     return glm.vec2(rotated_x, rotated_y) + center
 
-def focal_length_from_fov(fovy, size)->float:
+def focal_length_from_fov(fovy:float, size)->float:
+    """
+    fovx in radians
+    size: sensor size
+    return: focal length in same units as size
+    """
     return (size / 2) / math.tan(fovy / 2)
 
 def fov_from_focal_length(f, size)->float:
@@ -56,15 +68,14 @@ def cast_ray(
     P: glm.vec2, 
     view_matrix: glm.mat4, 
     projection_matrix: glm.mat4, 
-    viewport: glm.vec4 | Tuple[float, float, float, float]
+    viewport: Rect
 ) -> Ray3:
     """
     Cast a ray from the camera through a pixel in screen space.
     returns the ray origin and target.
     
     Args:
-        screen_x: X coordinate in pixel space
-        screen_y: Y coordinate in pixel space
+        P: 2D point in screen space
         view_matrix: Camera view matrix
         projection_matrix: Camera projection matrix
         viewport: Viewport (x, y, width, height)
@@ -72,12 +83,12 @@ def cast_ray(
 
     ray_origin = glm.unProject(
         glm.vec3(P.x, P.y, 0.0),
-        view_matrix, projection_matrix, viewport
+        view_matrix, projection_matrix, tuple(viewport)
 )
 
     ray_target = glm.unProject(
         glm.vec3(P.x, P.y, 1.0),
-        view_matrix, projection_matrix, viewport
+        view_matrix, projection_matrix, tuple(viewport)
     )
 
     return ray_origin, ray_target
@@ -188,37 +199,215 @@ def apply_gram_schmidt_orthogonalization(matrix: glm.mat3) -> glm.mat3:
     
     return result
 
+def intersect_ray_with_rect(P: glm.vec2, Q: glm.vec2, rect: Rect) -> glm.vec2 | None:
+    """
+    Intersect an infinite ray starting at P and passing through Q with a rectangle.
+    """
+    rect_x, rect_y, rect_w, rect_h = rect
+    rect_min = glm.vec2(rect_x, rect_y)
+    rect_max = glm.vec2(rect_x + rect_w, rect_y + rect_h)
+
+    # Direction vector from P to Q
+    direction = Q - P
+    
+    # Avoid division by zero if P and Q are the same point
+    if glm.length2(direction) < 1e-12:
+        return None
+
+    # t_near: entry point into the 'slab', t_far: exit point
+    t_near = -math.inf
+    t_far = math.inf
+    EPSILON = 1e-9
+
+    for i in range(2):  # Check X (0) and Y (1) axes
+        if abs(direction[i]) < EPSILON:
+            # Ray is parallel to this axis. 
+            # If P is not between the min/max of this axis, it misses entirely.
+            if P[i] < rect_min[i] or P[i] > rect_max[i]:
+                return None
+        else:
+            # Slab intersection distances
+            inv_dir = 1.0 / direction[i]
+            t1 = (rect_min[i] - P[i]) * inv_dir
+            t2 = (rect_max[i] - P[i]) * inv_dir
+            
+            # Identify which is the entry and which is the exit for this specific axis
+            t_entry = min(t1, t2)
+            t_exit = max(t1, t2)
+            
+            # Shrink the overall interval to the intersection of all slabs
+            t_near = max(t_near, t_entry)
+            t_far = min(t_far, t_exit)
+
+    # 1. Logic check: If t_near > t_far, the ray missed the rectangle.
+    # 2. Infinite Ray check: If t_far < 0, the rectangle is behind the ray's origin.
+    if t_near > t_far or t_far < 0:
+        return None
+
+    # 3. Origin check: If t_near < 0, the ray starts INSIDE the rectangle.
+    # We return the first point forward (which is t_near if outside, or P if inside).
+    # If you want the EXIT point when starting inside, use max(0, t_near).
+    actual_t = max(0, t_near)
+
+    return P + direction * actual_t
+
+
 #####################
 # UTILITY FUNCTIONS #
 #####################
 
-def calc_vanishing_points_from_camera(
+
+def _impl_orientation_to_three_vanishing_points(
         view_matrix: glm.mat3, 
         projection_matrix: glm.mat4, 
         viewport: Rect
     ) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
     """
     Calculate the projected vanishing points from the camera matrices.
-    """
     
-    # Project vanishing Points
-    MAX_FLOAT32 = (2 - 2**-23) * 2**127
-    VPX = glm.project(glm.vec3(MAX_FLOAT32,0,0), view_matrix, projection_matrix, viewport)
-    VPY = glm.project(glm.vec3(0,MAX_FLOAT32,0), view_matrix, projection_matrix, viewport)
-    VPZ = glm.project(glm.vec3(0,0,MAX_FLOAT32), view_matrix, projection_matrix, viewport)
+    Reference implementation using large finite values (kept for comparison):
+        MAX_FLOAT32 = (2 - 2**-23) * 2**127
+        VPX = glm.project(glm.vec3(MAX_FLOAT32,0,0), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
+        VPY = glm.project(glm.vec3(0,MAX_FLOAT32,0), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
+        VPZ = glm.project(glm.vec3(0,0,MAX_FLOAT32), glm.mat4(view_matrix), projection_matrix, glm.vec4(*viewport))
+    """
 
-    return glm.vec2(VPX), glm.vec2(VPY), glm.vec2(VPZ)
+    if not isinstance(view_matrix, glm.mat3):
+        raise TypeError("view_matrix must be a glm.mat3")
+    if not isinstance(projection_matrix, glm.mat4):
+        raise TypeError("projection_matrix must be a glm.mat4")
+    
+    # Vanishing points are where points at infinity project to.
+    # In homogeneous coordinates, a point at infinity along direction d is (dx, dy, dz, 0)
+    # We use the rotation part only (view_matrix as mat3), since translation doesn't affect directions
+    
+    def project_direction_to_vanishing_point(direction: glm.vec3) -> glm.vec2:
+        """Project a world-space direction vector to its vanishing point in viewport space."""
+        # Transform direction to view space (rotation only, w=0 for point at infinity)
+        view_dir = view_matrix * direction
+        
+        # Apply projection matrix to the direction (as homogeneous point at infinity)
+        # For a point at infinity: P * vec4(view_dir, 0)
+        clip = projection_matrix * glm.vec4(view_dir, 0.0)
+        
+        # Perspective divide
+        # If clip.w is 0, the point is at infinity in clip space (parallel to view direction)
+        # In practice, clip.w should be non-zero for vanishing points
+        if abs(clip.w) < EPSILON:
+            # Direction is parallel to the image plane - vanishing point at infinity
+            # Return a point far outside the viewport to indicate this
+            return glm.vec2(float('inf'), float('inf'))
+        
+        # NDC coordinates
+        ndc = glm.vec2(clip.x / clip.w, clip.y / clip.w)
+        
+        # Transform from NDC [-1,1] to viewport coordinates
+        vp_x = viewport.x + viewport.width * (ndc.x + 1.0) / 2.0
+        vp_y = viewport.y + viewport.height * (ndc.y + 1.0) / 2.0
+        
+        return glm.vec2(vp_x, vp_y)
+    
+    # Calculate vanishing points for each world axis
+    VPX = project_direction_to_vanishing_point(glm.vec3(1, 0, 0))
+    VPY = project_direction_to_vanishing_point(glm.vec3(0, 1, 0))
+    VPZ = project_direction_to_vanishing_point(glm.vec3(0, 0, 1))
+    
+    return VPX, VPY, VPZ
 
 def flip_coordinate_handness(mat: glm.mat4) -> glm.mat4:
     """swap left-right handed coordinate system"""
     flipZ = glm.scale(glm.vec3(1.0, 1.0, -1.0))  # type: ignore[attr-defined]
     return flipZ * mat # todo: check order
 
+def orientation_to_three_vanishing_points(
+        view_matrix: glm.mat3, 
+        projection_matrix: glm.mat4, 
+        viewport: Rect,
+        first_axis: Axis = Axis.PositiveX,
+        second_axis: Axis = Axis.PositiveY
+    ) -> Tuple[glm.vec2, glm.vec2, glm.vec2]:
+    """Calculate vanishing points for the camera, optionally ordered by axis assignment.
+    
+    Args:
+        view_matrix: Camera view matrix (rotation only, mat3)
+        projection_matrix: Camera projection matrix
+        viewport: Viewport rectangle
+        first_axis: Optional Axis enum for first vanishing point
+        second_axis: Optional Axis enum for second vanishing point  
+        third_axis: Optional Axis enum for third vanishing point
+        
+    Returns:
+        Tuple of three vanishing points. If axes are specified, returns them in order
+        (vp_for_first_axis, vp_for_second_axis, vp_for_third_axis).
+        Otherwise returns (vpX, vpY, vpZ).
+    """
+    vpX, vpY, vpZ = _impl_orientation_to_three_vanishing_points(view_matrix, projection_matrix, viewport)
+    
+    # Map axes to their corresponding vanishing points
+    from . import types
+    def get_vp_for_axis(axis: 'types.Axis') -> glm.vec2:
+        """Map axis enum to corresponding vanishing point."""
+        match axis:
+            case Axis.PositiveX | Axis.NegativeX:
+                return vpX
+            case Axis.PositiveY | Axis.NegativeY:
+                return vpY
+            case Axis.PositiveZ | Axis.NegativeZ:
+                return vpZ
+            case _:
+                raise ValueError(f"Invalid axis: {axis}")
+    
+    vp1 = get_vp_for_axis(first_axis)
+    vp2 = get_vp_for_axis(second_axis)
+    
+    # Calculate third axis from first and second
+    from . import helpers
+    third_axis = helpers.third_axis(first_axis, second_axis)
+    vp3 = get_vp_for_axis(third_axis)
+    
+    return vp1, vp2, vp3
 
+def align_lines_to_vanishing_points(vanishing_lines: List[Line2], vanishing_point: glm.vec2) -> List[Line2]:
+    new_lines = []
+    for line in vanishing_lines:
+        start = glm.vec2(*line[0])
+        end = glm.vec2(*line[1])
+        center = (start + end) * 0.5
+        dir = glm.normalize(vanishing_point - center)
+        
+        # Preserve direction: check if point is in same direction as VP
+        start_vec = start - center
+        end_vec = end - center
+        start_dist = glm.length(start_vec) * glm.sign(glm.dot(start_vec, dir))
+        end_dist = glm.length(end_vec) * glm.sign(glm.dot(end_vec, dir))
+
+        new_start = center + dir * start_dist
+        new_end =   center + dir * end_dist
+        new_line = new_start, new_end
+        new_lines.append(new_line)
+
+    return new_lines
+
+def resolve_axis_flip(view:glm.mat4, axis:Literal['X', 'Y', 'Z']) -> bool:
+    view_mat3 = glm.mat3(view)
+
+    axis_vec = {
+        'X': glm.vec3(1,0,0),
+        'Y': glm.vec3(0,1,0),
+        'Z': glm.vec3(0,0,1)
+    }[axis]
+
+    transformed_axis = cast(glm.vec3, view_mat3 * axis_vec)
+
+    if transformed_axis.z < 0:
+        return False
+    else:
+        return True
 ##################
 # GLM EXTENSIONS #
 ##################
-def mat3_to_euler_zxy(M: glm.mat3) -> Tuple[float, float, float]:
+
+def mat3_to_euler_zxy(M: glm.mat3) -> glm.vec3:
     """
     # Assumes R is a flat list of 9 elements (col-major)
     """
@@ -237,61 +426,61 @@ def mat3_to_euler_zxy(M: glm.mat3) -> Tuple[float, float, float]:
         z = math.atan2(r10, r00)
         y = 0.0
 
-    return z, x, y  # Z, X, Y order
+    return glm.vec3(z, x, y)  # Z, X, Y order
 
-def extract_euler_XYZ(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_XYZ(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(M[2][1], M[2][2])
     C2 = math.sqrt(M[0][0] * M[0][0] + M[1][0] * M[1][0])
     T2 = math.atan2(-M[2][0], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(S1 * M[0][2] - C1 * M[0][1], C1 * M[1][1] - S1 * M[1][2])
-    return -T1, -T2, -T3
+    return glm.vec3(-T1, -T2, -T3)
 
-def extract_euler_YXZ(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_YXZ(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(M[2][0], M[2][2])
     C2 = math.sqrt(M[0][1] * M[0][1] + M[1][1] * M[1][1])
     T2 = math.atan2(-M[2][1], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(S1 * M[1][2] - C1 * M[1][0], C1 * M[0][0] - S1 * M[0][2])
-    return T1, T2, T3
+    return glm.vec3(T1, T2, T3)
 
-def extract_euler_XZY(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_XZY(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(M[1][2], M[1][1])
     C2 = math.sqrt(M[0][0] * M[0][0] + M[2][0] * M[2][0])
     T2 = math.atan2(-M[1][0], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(S1 * M[0][1] - C1 * M[0][2], C1 * M[2][2] - S1 * M[2][1])
-    return T1, T2, T3
+    return glm.vec3(T1, T2, T3)
 
-def extract_euler_YZX(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_YZX(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(-M[0][2], M[0][0])
     C2 = math.sqrt(M[1][1] * M[1][1] + M[2][1] * M[2][1])
     T2 = math.atan2(M[0][1], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(S1 * M[1][0] + C1 * M[1][2], S1 * M[2][0] + C1 * M[2][2])
-    return T1, T2, T3
+    return glm.vec3(T1, T2, T3)
 
-def extract_euler_ZYX(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_ZYX(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(M[0][1], M[0][0])
     C2 = math.sqrt(M[1][2] * M[1][2] + M[2][2] * M[2][2])
     T2 = math.atan2(-M[0][2], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(S1 * M[2][0] - C1 * M[2][1], C1 * M[1][1] - S1 * M[1][0])
-    return T1, T2, T3
+    return glm.vec3(T1, T2, T3)
 
-def extract_euler_ZXY(M: glm.mat4|glm.mat3) -> Tuple[float, float, float]:
+def extract_euler_ZXY(M: glm.mat4|glm.mat3) -> glm.vec3:
     T1 = math.atan2(-M[1][0], M[1][1])
     C2 = math.sqrt(M[0][2] * M[0][2] + M[2][2] * M[2][2])
     T2 = math.atan2(M[1][2], C2)
     S1 = math.sin(T1)
     C1 = math.cos(T1)
     T3 = math.atan2(C1 * M[2][0] + S1 * M[2][1], C1 * M[0][0] + S1 * M[0][1])
-    return T1, T2, T3
+    return glm.vec3(T1, T2, T3)
 
 def decompose(M: glm.mat4) -> Tuple[glm.vec3, glm.quat, glm.vec3, glm.vec3, glm.vec4]:
     """glm decompose wrapper.
@@ -340,7 +529,7 @@ def perspective_tiltshift(fovy:float, aspect:float, near:float, far:float, shift
 
 
 
-def decompose_perspective(P: glm.mat4):
+def decompose_perspective(P: glm.mat4)->Tuple[float, float, float, float]:
     """
     Decompose a perspective projection matrix.
     Works for both symmetric and tilt-shift (off-center) variants.
@@ -383,7 +572,7 @@ def decompose_perspective(P: glm.mat4):
 
     return fovy, aspect, near, far
 
-def decompose_perspective_tiltshift(P: glm.mat4):
+def decompose_perspective_tiltshift(P: glm.mat4)->Tuple[float, float, float, float, float, float]:
     """
     Decompose a perspective projection matrix.
     Works for both symmetric and tilt-shift (off-center) variants.
@@ -439,7 +628,30 @@ def decompose_extrinsics(view)->Tuple[glm.vec3, glm.quat]:
     
     return translation, quat
 
-def decompose_frustum(P: glm.mat4):
+def is_frustum_matrix(m: glm.mat4, tol=1e-6):
+    # 1. Perspective check: In a frustum, the W-component must 
+    # depend on -Z (OpenGL standard). 
+    # m[2][3] is the element at row 4, column 3 (0-indexed: [column][row])
+    if abs(m[2][3] + 1.0) > tol:
+        return False
+    
+    # 2. Hard Zeros: These slots MUST be zero in a standard frustum
+    # m[col][row]
+    if abs(m[0][1]) > tol or abs(m[0][3]) > tol: return False # Col 0
+    if abs(m[1][0]) > tol or abs(m[1][3]) > tol: return False # Col 1
+    if abs(m[3][3]) > tol: return False                      # Col 3, Row 4
+    
+    # 3. Determinant check: Must be a valid transformation
+    if abs(glm.determinant(m)) < tol:
+        return False
+
+    return True
+
+
+
+def decompose_frustum(P: glm.mat4)->Tuple[float, float, float, float, float, float]:
+    if not is_frustum_matrix(P):
+        raise ValueError("Matrix is not a valid frustum projection matrix.")
     # near / far
     near = P[3][2] / (P[2][2] - 1.0)
     far  = P[3][2] / (P[2][2] + 1.0)

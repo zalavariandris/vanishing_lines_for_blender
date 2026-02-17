@@ -1,5 +1,5 @@
 import pytest
-from pyglm import glm
+import glm
 import numpy as np
 import sys
 from pathlib import Path
@@ -21,7 +21,7 @@ def test_position_by_origin():
     adjusted_view = solver.core.adjust_position_to_origin(
         viewport=solver.types.Rect(-1,-1,2,2),
         projection=projection,
-        O=O,
+        origin_screen==O,
         view=view,
         distance=CAMERA_DISTANCE
     )
@@ -66,7 +66,7 @@ def test_scale_by_reference_axes(axis: Literal['X_Axis', 'Y_Axis', 'Z_Axis']):
         projection=projection,
         reference_world_size=1.0,
         reference_axis=reference_axis,
-        reference_distance_segment=(0, 0.25),
+        reference_screen_measurement=solver.types.ScreenMeasurement(offset=0, length=0.25),
         view=view
     )
 
@@ -88,7 +88,7 @@ def test_scale_by_screen():
         projection=projection,
         reference_world_size=1.0,
         reference_axis=solver.types.ReferenceAxis.Screen,
-        reference_distance_segment=(0, 0.5),
+        reference_screen_measurement=solver.types.ScreenMeasurement(offset=0, length=0.5),
         view=view
     )
 

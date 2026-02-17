@@ -2,7 +2,7 @@ import pytest
 from typing import Literal
 
 from tests.conftest import MockContext
-from vanishing_lines_for_blender import vl_coord_utils
+from vanishing_lines_for_blender import vl_utils
 
 WIDE_OUTPUT = (1920, 1080)
 TALL_OUTPUT = (1080, 1920)
@@ -56,7 +56,7 @@ def test_cameraframe_to_region(
         sensor_height=sensor_size[1]
     )
     
-    cameraframe = vl_coord_utils.get_camera_frame(context)
+    cameraframe = vl_utils.get_camera_frame(context)
     print(f"{cameraframe}")
     assert cameraframe is not None
 

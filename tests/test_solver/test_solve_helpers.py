@@ -1,5 +1,5 @@
 import pytest
-from pyglm import glm
+import glm
 import numpy as np
 import sys
 from pathlib import Path
@@ -21,7 +21,7 @@ def test_focal_length_from_two_vp():
     vp1 = (-368, 731)
     vp2 = (1229, 613)
 
-    f = solver.helpers.compute_focal_length_from_vanishing_points(
+    f = solver.helpers.calc_focal_length_from_vanishing_points(
         Fu=vp1,
         Fv=vp2,
         P=(640,360)
