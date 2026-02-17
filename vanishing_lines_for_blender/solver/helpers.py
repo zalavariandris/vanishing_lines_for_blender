@@ -40,6 +40,7 @@ def create_roll_matrix(
     Note: first_axis/second_axis default to canonical space axes (PositiveX/PositiveY).
     The roll is computed in canonical space; user axis assignment is applied
     separately by adjust_axis_assignment() afterward.
+    
     """
     # Get the second vanishing line in screen space
     A, B = glm.vec2(*second_vanishing_line[0]), glm.vec2(*second_vanishing_line[1])

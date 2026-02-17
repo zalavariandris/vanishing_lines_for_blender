@@ -174,6 +174,22 @@ class VLProps(bpy.types.PropertyGroup):
         update=trigger_autosolve
     ) # type: ignore
 
+    flip: bpy.props.BoolProperty(
+        name="Flip",
+        default=False,
+        description="Flip the orientation", 
+        options=set(),
+        update=trigger_autosolve
+    ) # type: ignore
+
+    updside_down: bpy.props.BoolProperty(
+        name="Upside Down",
+        default=False,
+        description="Flip the orientation upside down",
+        options=set(),
+        update=trigger_autosolve
+    ) # type: ignore
+
     anchor_screen: bpy.props.FloatVectorProperty(
         name="Anchor",
         size=2,
@@ -341,93 +357,6 @@ def solve(vl:VLProps):
         import traceback
         traceback.print_exc()
 
-# def unsolve(vl:VLProps):
-#     if not (vl.camera_object 
-#         and isinstance(vl.camera_object, bpy.types.Object) 
-#         and vl.camera_object.data
-#         and isinstance(vl.camera_object.data, bpy.types.Camera)
-#     ):
-#         print("[VLProps.unsolve] No valid camera object assigned.")
-#         return
-
-#     # store current autosolve state
-#     previous_auto_solve  = vl.auto_solve
-#     vl.auto_solve = False
-    
-#     viewport = solver.types.Rect(-1,-1,2,2)
-
-#     # -- Adjust vanishing lines to current view and projection matrices --
-#     glm_proj, glm_view = vl_utils.get_camera_matrices(vl.camera_object, solver.types.Rect(-1,-1,2,2))
-
-#     vp1, vp2, vp3 = solver.utils.orientation_to_three_vanishing_points(
-#         glm.mat3(glm_view), 
-#         glm_proj, 
-#         solver.types.Rect(-1,-1,2,2),
-#         first_axis=vl_utils.to_solver_axis(vl.first_axis, vl.first_axis_sign),
-#         second_axis=vl_utils.to_solver_axis(vl.second_axis, vl.second_axis_sign)
-#     )
-
-#     first_prop, second_prop, third_prop = get_vanishing_line_prop_names_in_order(vl)
-#     for lines, vp in zip([getattr(vl, first_prop), getattr(vl, second_prop), getattr(vl, third_prop)], [vp1, vp2, vp3]):
-#         for line in lines:
-#             start, end = vl_utils.extend_line(mathutils.Vector(line.start), mathutils.Vector(line.end), mathutils.Vector(vp))
-#             line.start = start.x, start.y
-#             line.end = end.x, end.y
-
-
-#     # --- Adjust axis signs, to match closest vanishing points ---
-#     vl.first_axis_sign =  'NEGATIVE' if solver.utils.resolve_axis_flip(glm_view, vl.first_axis) else 'POSITIVE'
-#     vl.second_axis_sign = 'NEGATIVE' if solver.utils.resolve_axis_flip(glm_view, vl.second_axis) else 'POSITIVE'
-
-#     # -- adjust ANCHOR SCREEN --
-#     anchor_screen:glm.vec2 = glm.project(
-#         glm.vec3(vl.anchor_world.x, vl.anchor_world.y, vl.anchor_world.z), 
-#         glm_view, glm_proj, tuple(viewport)
-#     ).xy
-#     vl.anchor_screen = (anchor_screen.x, anchor_screen.y)
-
-#     # -- adjust REFERENCE SCENE SCALE --
-#     anchor_world = glm.vec3(vl.anchor_world[0], vl.anchor_world[1], vl.anchor_world[2])
-#     if vl.reference_scale_mode == 'ANCHOR':
-#         # world distance from anchor
-#         camera_location, camera_quat = solver.utils.decompose_extrinsics(glm_view)
-#         anchor_distance = glm.length(anchor_world - camera_location)
-#         vl.reference_scene_scale = anchor_distance
-#     else:
-#         match vl.reference_scale_mode:
-#             case 'ANCHOR':
-#                 assert False, "Should not reach here, handled above"
-                
-#             case 'SCREEN' | 'X_AXIS' | 'Y_AXIS' | 'Z_AXIS':
-#                 match vl.reference_scale_mode:
-#                     case 'X_AXIS':
-#                         ref_axis_vec = glm.vec3(1, 0, 0)
-#                     case 'Y_AXIS':
-#                         ref_axis_vec = glm.vec3(0, 1, 0)
-#                     case 'Z_AXIS':
-#                         ref_axis_vec = glm.vec3(0, 0, 1)
-#                     case 'SCREEN' | _:
-#                         # Right vector is column 0 of the inverse view matrix
-#                         ref_axis_vec = glm.vec3(glm.inverse(glm_view)[0])
-
-#         # --- 2. Measure current world length on screen ---
-#         A_screen = glm.project(anchor_world, glm_view, glm_proj, tuple(viewport)).xy
-#         V_screen = glm.project(anchor_world + ref_axis_vec, glm_view, glm_proj, tuple(viewport)).xy
-#         dir_screen = glm.normalize(V_screen - anchor_screen)
-
-#         def get_world_pos(screen_pos):
-#             ray = solver.utils.cast_ray(screen_pos, glm_view, glm_proj, tuple(viewport))
-#             return solver.utils.closest_point_between_lines((glm.vec3(0,0,0), glm.vec3(0,0,0) + ref_axis_vec), ray)
-
-#         reference_offset, reference_length = vl.reference_screen_segment
-#         ref_start_world = get_world_pos(A_screen + dir_screen * reference_offset)
-#         ref_end_world = get_world_pos(A_screen + dir_screen * (reference_offset + reference_length))
-#         world_length = glm.length(ref_end_world - ref_start_world)
-
-#         vl.reference_scene_scale = world_length
-
-#     # restore autosolve state
-#     vl.auto_solve = previous_auto_solve 
 
 def unsolve(vl:VLProps):
     if not (vl.camera_object 

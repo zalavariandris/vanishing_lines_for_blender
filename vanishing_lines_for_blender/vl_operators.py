@@ -76,6 +76,12 @@ class MODAL_MT_VLContextMenu(bpy.types.Menu):
         # layout.label(text="Axes", icon='EMPTY_ARROWS')
         layout.prop_menu_enum(vl, 'first_axis')
         layout.prop_menu_enum(vl, 'second_axis')
+
+        layout.separator()
+        layout.label(text="Orientation", icon='EMPTY_AXIS')
+        layout.prop(vl, 'flip')
+        layout.prop(vl, 'updside_down')
+
         layout.separator()
         layout.label(text="Size", icon='DRIVER_DISTANCE')
 

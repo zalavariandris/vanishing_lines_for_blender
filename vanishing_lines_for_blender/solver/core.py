@@ -62,16 +62,7 @@ def solve(
         second_axis:Axis,
         handedness:Literal['right-handed', 'left-handed']="right-handed" 
     )->SolveResult:
-
-    # print(f"Solve")
-    # print(f" Mode: {mode}")
-    # print(f" Focal Length: {f}")
-    # print(f" P: {P}")
-    # print(f" A: {anchor_screen}")
-    # print(f" Reference Axis: {reference_axis}")
-    # print(f" reference_world_size: {reference_world_size}")
     
-
     match mode:
         case SolverMode.OneVP:
             vp1 = compute_vanishing_point(first_vanishing_lines)
@@ -130,8 +121,6 @@ def solve(
             reference_screen_measurement, 
             view
         )
-
-
 
     view = adjust_axis_assignment(
         first_axis,
@@ -490,8 +479,6 @@ def adjust_position_to_origin(
     
     return view
 
-
-
 import glm
 
 def adjust_scale_to_reference_distance(
@@ -564,7 +551,6 @@ def adjust_scale_to_reference_distance(
     
     return new_view
 
-
 def adjust_axis_assignment(
         first_axis: Axis, 
         second_axis: Axis,
@@ -617,8 +603,8 @@ def create_axis_assignment_matrix(first_axis: Axis, second_axis: Axis, handednes
     
     # Get the unit vectors for the specified axes
     forward = helpers.vector_from_axis(first_axis)
-    right = helpers.vector_from_axis(second_axis)
-    up = helpers.third_axis_vector(first_axis, second_axis, handedness=handedness) # Todo: make sure this is correct
+    right =   helpers.vector_from_axis(second_axis)
+    up =      helpers.third_axis_vector(first_axis, second_axis, handedness=handedness) # Todo: make sure this is correct
     
     # Build the matrix with each row representing the target world axis
     axis_assignment_matrix = glm.mat3( # Note: this is the inverse of the mat3_from_directions
