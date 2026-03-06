@@ -1,6 +1,7 @@
 """
 Build script for packaging Blender addon.
 """
+import sys
 import subprocess
 import shutil
 import zipfile
@@ -57,13 +58,13 @@ if __name__ == "__main__":
         ('macosx_11_0_arm64', '3.11'),    # macOS Apple Silicon
     ]
     
-    print("Downloading wheels for all platforms...")
+    print(f"Downloading wheels for all platforms... to {wheels_dir}")
     for module in PACKAGES:
         for platform, python_version in platforms:
             print(f"- {module} for {platform}...")
             try:
                 subprocess.run([
-                    "pip", "download",
+                    sys.executable, "-m", "pip", "download",
                     "--dest", str(wheels_dir),
                     "--platform", platform,
                     "--python-version", python_version,
@@ -95,7 +96,7 @@ if __name__ == "__main__":
                 arcname = f"{ADDON_NAME}/{file_path.relative_to(BUILD_DIR)}"
                 zipf.write(file_path, arcname)
 
-    print("Cleaning up build directory...")
-    shutil.rmtree(BUILD_DIR)
+    # print("Cleaning up build directory...")
+    # shutil.rmtree(BUILD_DIR)
 
     print(f"Addon packaged successfully: {zip_filename}")
